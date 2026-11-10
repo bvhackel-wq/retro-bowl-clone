@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Pocket Gridiron</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main id="app">
+  <section id="title" class="screen on">
+    <h1 class="logo">POCKET<span>GRIDIRON</span></h1>
+    <p class="tag">Call the plays. Sling the ball. Build a dynasty.</p>
+    <div id="title-actions"></div>
+    <h2>Pick your franchise</h2>
+    <div id="team-grid"></div>
+    <details class="how">
+      <summary>How to play</summary>
+      <ul>
+        <li><b>You run the offense.</b> Your defense's drives are simulated from its rating.</li>
+        <li><b>Pass:</b> after the snap, drag backwards anywhere on the field (like a slingshot) and release. The ring shows where the ball lands &mdash; lead your receiver.</li>
+        <li><b>Run / after the catch:</b> hold on the field to steer toward your finger, or use the arrow keys / WASD.</li>
+        <li><b>Kicks:</b> tap (or press space) when the marker is inside the green zone.</li>
+        <li>Win games to earn coaching points and upgrade your roster between weeks.</li>
+      </ul>
+    </details>
+  </section>
+
+  <section id="hub" class="screen"></section>
+
+  <section id="match" class="screen">
+    <div id="hud">
+      <div class="side"><span id="hud-me-name"></span><b id="hud-me">0</b></div>
+      <div class="mid"><span id="hud-q">Q1</span><b id="hud-clock">2:00</b><span id="hud-down"></span></div>
+      <div class="side"><b id="hud-opp">0</b><span id="hud-opp-name"></span></div>
+    </div>
+    <div id="stage">
+      <canvas id="field" width="1920" height="1080"></canvas>
+      <div id="panel" hidden></div>
+    </div>
+  </section>
+</main>
+<script src="js/data.js"></script>
+<script src="js/match.js"></script>
+<script src="js/ui.js"></script>
+</body>
+</html>

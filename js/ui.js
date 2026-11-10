@@ -1,0 +1,143 @@
+// Menu screens: title / team select, franchise hub, launching matches.
+(function () {
+  const GP = window.GP;
+  const $ = (s) => document.querySelector(s);
+  let S = null, viewConf = 0;
+
+  function show(id) {
+    document.querySelectorAll('.screen').forEach((e) => e.classList.toggle('on', e.id === id));
+    window.scrollTo(0, 0);
+  }
+  function h(tag, attrs, ...kids) {
+    const e = document.createElement(tag);
+    for (const k in attrs || {}) {
+      if (k === 'class') e.className = attrs[k];
+      else if (k === 'style') e.style.cssText = attrs[k];
+      else if (k.startsWith('on')) e[k] = attrs[k];
+      else e[k] = attrs[k];
+    }
+    for (const c of kids.flat()) if (c != null && c !== false) e.append(c);
+    return e;
+  }
+  const badge = (t) => h('span', { class: 'badge', style: `background:${t.c1};border-color:${t.c2};color:${t.c2}` });
+  const full = (t) => `${t.city} ${t.name}`;
+
+  function renderTitle() {
+    const saved = GP.load();
+    const act = $('#title-actions'); act.innerHTML = '';
+    if (saved) {
+      const t = GP.team(saved.teamId);
+      act.append(h('button', { class: 'btn', onclick: () => { S = saved; viewConf = t.conf; renderHub(); } }, `Continue — ${full(t)}, season ${saved.season}`));
+    }
+    const grid = $('#team-grid'); grid.innerHTML = '';
+    const start = (t) => {
+      if (saved && !confirm('Start a new career? This replaces your current save.')) return;
+      S = GP.newCareer(t.id); GP.save(S); viewConf = t.conf; renderHub();
+    };
+    GP.CONFS.forEach((cn, c) => {
+      grid.append(h('h3', { class: 'conf' }, cn + ' Conference'));
+      const row = h('div', { class: 'divs' });
+      GP.DIVS.forEach((dn, d) => {
+        row.append(h('div', { class: 'card' }, h('h2', null, dn),
+          ...GP.TEAMS.filter((t) => t.conf === c && t.div === d).map((t) =>
+            h('button', { class: 'team-card', onclick: () => start(t) }, badge(t), h('span', null, h('b', null, t.name), h('br'), h('small', null, t.city))))));
+      });
+      grid.append(row);
+    });
+    show('title');
+  }
+
+  function renderHub() {
+    const hub = $('#hub'); hub.innerHTML = '';
+    const me = GP.team(S.teamId), rec = GP.rec(S, S.teamId), game = GP.currentGame(S);
+
+    hub.append(h('div', { class: 'hub-head' },
+      badge(me), h('h1', null, full(me)),
+      h('span', { class: 'sp' }),
+      h('span', { class: 'pill' }, `Season ${S.season} · ${rec.w}-${rec.l}`),
+      h('span', { class: 'pill' }, 'Coaching points ', h('b', null, String(S.credits))),
+      h('button', { class: 'btn ghost small', onclick: renderTitle }, 'Menu')));
+
+    // next game / offseason
+    if (game && game.bye) {
+      hub.append(h('h2', null, 'Playoffs — ' + game.label), h('div', { class: 'card next' },
+        h('div', null, h('div', { class: 'vs' }, 'First-round bye'),
+          h('div', { class: 'dim' }, 'You earned a top-two seed. Rest up while the wild cards play.')),
+        h('span', { style: 'flex:1' }),
+        h('button', { class: 'btn', onclick: () => { GP.advance(S, null, null); renderHub(); } }, 'Advance')));
+    } else if (game) {
+      const o = GP.team(game.oppId), or = GP.rec(S, game.oppId);
+      hub.append(h('h2', null, (S.phase === 'playoffs' ? 'Playoffs — ' : '') + game.label), h('div', { class: 'card next' },
+        badge(o),
+        h('div', null, h('div', { class: 'vs' }, 'vs ' + full(o)),
+          h('div', { class: 'dim' }, `${or.w}-${or.l} · Offense ${or.off} · Defense ${or.def}`),
+          h('div', { class: 'dim' }, `You: Offense ${rec.off} · Defense ${rec.def}`)),
+        h('span', { style: 'flex:1' }),
+        h('button', { class: 'btn', onclick: () => startMatch(game) }, 'Play game')));
+    } else {
+      const ch = GP.team(S.champion);
+      hub.append(h('h2', null, `Season ${S.season} complete`), h('div', { class: 'card next' },
+        badge(ch),
+        h('div', null, h('div', { class: 'vs' }, S.champion === S.teamId ? 'You are the champions!' : `${full(ch)} win the title`),
+          h('div', { class: 'dim' }, `Your season: ${rec.w}-${rec.l} · ${S.seasonNote}`),
+          h('div', { class: 'dim' }, 'Young players develop and veterans decline over the offseason.')),
+        h('span', { style: 'flex:1' }),
+        h('button', { class: 'btn', onclick: () => { GP.newSeason(S); renderHub(); } }, 'Start next season')));
+    }
+
+    // roster
+    const roster = h('div', { class: 'card' });
+    for (const p of GP.POS) {
+      const r = S.roster[p.key], cost = GP.upgradeCost(r.ovr);
+      roster.append(h('div', { class: 'rost' },
+        h('span', { class: 'pos' }, p.key.replace(/\d/, '')),
+        h('div', null,
+          h('div', null, p.unit ? p.label : r.name, p.unit ? null : h('span', { class: 'dim' }, `  age ${r.age}`)),
+          h('div', { class: 'dim', style: 'font-size:13px' }, p.desc),
+          h('div', { class: 'bar' }, h('i', { style: `width:${r.ovr}%` }))),
+        h('span', { class: 'ovr' }, String(r.ovr)),
+        h('button', {
+          class: 'btn small', disabled: S.credits < cost,
+          onclick: () => { if (GP.upgrade(S, p.key)) renderHub(); },
+        }, cost === Infinity ? 'MAX' : `+1 (${cost})`)));
+    }
+
+    // standings: one table per division, with a conference switcher
+    const seeds = S.phase === 'regular' ? GP.seeds(S, viewConf) : S.playoff.seeds[viewConf];
+    const tabs = h('div', { class: 'tabs' }, ...GP.CONFS.map((cn, c) =>
+      h('button', { class: 'btn small' + (c === viewConf ? '' : ' ghost'), onclick: () => { viewConf = c; renderHub(); } }, cn)));
+    const tables = h('div', { class: 'card' }, tabs);
+    GP.DIVS.forEach((dn, d) => {
+      const tb = h('tbody');
+      for (const t of GP.divStandings(S, viewConf, d)) {
+        const tm = GP.team(t.id), seed = seeds.indexOf(t.id);
+        tb.append(h('tr', { class: t.id === S.teamId ? 'me' : '' },
+          h('td', null, seed >= 0 ? h('span', { class: 'seed' }, String(seed + 1)) : ''), h('td', null, full(tm)),
+          h('td', null, String(t.w)), h('td', null, String(t.l)),
+          h('td', null, String(t.pf)), h('td', null, String(t.pa))));
+      }
+      tables.append(h('table', null, h('thead', null, h('tr', null,
+        ...['', dn, 'W', 'L', 'PF', 'PA'].map((x) => h('th', null, x)))), tb));
+    });
+    const table = tables;
+
+    hub.append(h('div', { class: 'grid2' },
+      h('div', null, h('h2', null, 'Roster'), roster),
+      h('div', null, h('h2', null, 'Standings — numbered teams hold a playoff seed'), table,
+        S.history.length ? h('h2', null, 'History') : null,
+        S.history.length ? h('div', { class: 'card' }, ...S.history.map((x) => h('div', { class: 'dim' }, `Season ${x.season}: ${x.w}-${x.l} — ${x.note}`))) : null)));
+    show('hub');
+  }
+
+  function startMatch(game) {
+    const or = GP.rec(S, game.oppId);
+    show('match');
+    GP.match = new GP.Match($('#field'), {
+      me: GP.team(S.teamId), opp: GP.team(game.oppId), roster: S.roster,
+      oppOff: or.off, oppDef: or.def, label: game.label,
+      onEnd: (my, opp) => { GP.match = null; GP.advance(S, my, opp); renderHub(); },
+    });
+  }
+
+  renderTitle();
+})();
