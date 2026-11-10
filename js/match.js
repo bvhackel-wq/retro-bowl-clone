@@ -98,6 +98,16 @@
       this.hidePanel();
     }
 
+    // The QB is "throwing" while he holds the ball in the pocket on a pass play.
+    // Anyone else with the ball (including a scrambling QB) follows the run rules.
+    passing() { return this.carrier === this.qb && this.play && this.play.type === 'pass' && !this.scramble; }
+    running(c) { return !!c && (c !== this.qb || this.scramble); }
+    tuck() {
+      if (this.phase !== 'live' || !this.passing() || this.ball.state !== 'held') return;
+      this.scramble = true; this.aim = null; this.qb.spd = 6.3;
+      this.pop('SCRAMBLE!');
+    }
+
     // ---------- input ----------
     pos(e) {
       const r = this.cv.getBoundingClientRect();
@@ -109,7 +119,7 @@
       if (this.phase === 'presnap') return this.snap();
       if (this.phase === 'kick') return this.doKick();
       if (this.phase !== 'live') return;
-      if (this.carrier === this.qb && this.play.type === 'pass') this.aim = { sx: p.x, sy: p.y, cx: p.x, cy: p.y };
+      if (this.passing()) this.aim = { sx: p.x, sy: p.y, cx: p.x, cy: p.y };
       else this.gesture = { x: p.x, y: p.y, t: performance.now(), done: false };
     }
     pMove(e) {
@@ -122,9 +132,10 @@
       if (Math.abs(dy) > 22 && Math.abs(dy) > Math.abs(p.x - g.x) * 0.8) { g.done = true; this.swipe(Math.sign(dy)); }
     }
     pUp() {
-      if (this.aim && this.phase === 'live' && this.carrier === this.qb) {
-        const a = this.aim;
-        if (hyp(a.sx - a.cx, a.sy - a.cy) > 14) { const t = this.aimTarget(); this.throwBall(t.x, t.y); }
+      if (this.aim && this.phase === 'live' && this.passing()) {
+        const a = this.aim, dx = a.cx - a.sx, dy = a.cy - a.sy;
+        if (dx > 30 && dx > Math.abs(dy)) this.tuck();          // swiped toward the end zone: run it
+        else if (hyp(dx, dy) > 14) { const t = this.aimTarget(); this.throwBall(t.x, t.y); }
       }
       const g = this.gesture;
       if (g && !g.done && performance.now() - g.t < 300) this.lastTap = performance.now();
@@ -133,7 +144,7 @@
     // Swipe toward a sideline: a juke if it closely follows a tap, otherwise a cut.
     swipe(dir) {
       const c = this.carrier;
-      if (this.phase !== 'live' || !c || c === this.qb) return;
+      if (this.phase !== 'live' || !this.running(c)) return;
       const now = performance.now();
       if (now - (this.lastTap || -1e9) < TAP_WINDOW) { this.lastTap = -1e9; this.juke(c, dir); }
       else if (!c.juke || c.juke.t <= -JUKE_RECOVER) c.cut = { dir, t: CUT_TIME };
@@ -155,6 +166,8 @@
           if (this.phase === 'presnap') this.snap();
           else if (this.phase === 'kick') this.doKick();
           else this.lastTap = performance.now();       // space then up/down = juke
+        } else if (k === 'arrowright' || k === 'd') {
+          this.tuck();
         } else if (k === 'arrowup' || k === 'w' || k === 'arrowdown' || k === 's') {
           if (performance.now() - (this.lastTap || -1e9) < TAP_WINDOW) this.swipe(k === 'arrowup' || k === 'w' ? -1 : 1);
         }
@@ -218,7 +231,7 @@
     }
     snap() {
       if (this.play.type === 'run') for (const d of this.def) { d.shed *= 1.7; d.react = (d.react || 0) + 0.25; }
-      this.phase = 'live'; this.t = 0; this.caught = false; this.gesture = null; this.aim = null;
+      this.phase = 'live'; this.t = 0; this.caught = false; this.scramble = false; this.gesture = null; this.aim = null;
     }
 
     mk(team, role, x, y, spd) {
@@ -355,7 +368,7 @@
       this.t += dt; this.tick(dt);
       if (!isPass && this.carrier === qb && this.t >= 0.25) this.carrier = this.rb;
       const c = this.carrier;
-      const runPhase = !!c && c !== qb;
+      const runPhase = this.running(c);
       const ref = c || this.rb;      // who blockers protect / defenders chase
 
       // offense
@@ -418,7 +431,7 @@
       // tackles
       for (const d of this.def) {
         if (d.stun > 0 || d.held || hyp(d.x - c.x, d.y - c.y) > 1.15) continue;
-        if (c === qb) {
+        if (c === qb && !this.scramble) {
           if (Math.random() < 0.05) { d.stun = 1; continue; }
           this.stats.sack++;
           return this.gainResult(c.x, `SACKED — loss of ${Math.max(0, Math.round(L - c.x))}`);
@@ -489,7 +502,7 @@
     }
     credit(x) {
       const y = Math.round(Math.min(x, 110) - this.los);
-      if (this.caught) this.stats.pyd += y; else if (this.carrier !== this.qb) this.stats.ryd += y;
+      if (this.caught) this.stats.pyd += y; else if (this.running(this.carrier)) this.stats.ryd += y;
     }
     touchdown() {
       this.credit(110);
@@ -695,14 +708,14 @@
         for (const p of all) this.drawPlayer(p);
         this.drawBall();
       }
-      if (this.aim && this.carrier === this.qb) this.drawAim();
+      if (this.aim && this.passing()) this.drawAim();
       if (this.kick) this.drawKick();
 
       g.textAlign = 'center'; g.textBaseline = 'middle';
       if (this.phase === 'presnap') this.hint('TAP THE FIELD OR PRESS SPACE TO SNAP');
-      else if (this.phase === 'live' && this.carrier === this.qb && this.play.type === 'pass' && !this.aim) this.hint('DRAG BACK AND RELEASE TO THROW');
+      else if (this.phase === 'live' && this.passing() && !this.aim) this.hint('DRAG BACK TO THROW · SWIPE TOWARD THE END ZONE TO RUN');
       else if (this.phase === 'kick' && !this.kick.done) this.hint('TAP WHEN THE MARKER IS IN THE GREEN');
-      else if (this.phase === 'live' && this.carrier && this.carrier !== this.qb) this.hint('SWIPE UP/DOWN TO CUT · TAP THEN SWIPE TO JUKE');
+      else if (this.phase === 'live' && this.running(this.carrier)) this.hint('SWIPE UP/DOWN TO CUT · TAP THEN SWIPE TO JUKE');
       if (this.popup && this.carrier) {
         const c = this.carrier, a = Math.min(1, this.popup.t * 2.5);
         g.globalAlpha = a; g.font = '900 18px ui-rounded, system-ui, sans-serif';
