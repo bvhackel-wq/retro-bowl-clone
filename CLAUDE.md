@@ -4,7 +4,8 @@ Original browser football game. Plain HTML/CSS/JS, no build step: open `index.ht
 
 ## Preview
 
-Every push to `main` or a `claude/**` branch deploys to GitHub Pages:
+Every push to `main` or a `claude/**` branch copies the game into the `gh-pages` branch, which
+GitHub Pages serves (Settings → Pages → Source: Deploy from a branch, `gh-pages`, root):
 https://bvhackel-wq.github.io/retro-bowl-clone/
 
 The site shows whichever of those branches was pushed last. At the end of a session, push the
