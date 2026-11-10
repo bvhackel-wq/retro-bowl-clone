@@ -16,6 +16,10 @@
   const JUKE_WINDOW = 0.3;         // seconds a juke beats tackles (scaled by RB rating)
   const JUKE_RECOVER = 0.3;        // seconds of planting after the sidestep
   const JUKE_COOLDOWN = 0.8;       // seconds before another juke is possible
+  const FALL_TIME = 0.35;          // seconds the tackle animation takes (runner falls forward)
+  // Opponent defensive slots in the order setupFormation builds them, with a tackling offset vs team defense.
+  const DSLOTS = [['DL1', 'DL', 0], ['DL2', 'DL', 0], ['DL3', 'DL', 0], ['LB1', 'LB', 5], ['LB2', 'LB', 5],
+                  ['CB1', 'CB', -4], ['CB2', 'CB', -4], ['S', 'S', 2]];
 
   // Route points are [yards downfield, yards toward the middle of the field] from the receiver's start.
   const PLAYS = [
@@ -63,7 +67,14 @@
 
       this.q = 1; this.clock = QLEN;
       this.score = { me: 0, opp: 0 };
-      this.stats = { att: 0, comp: 0, pyd: 0, ptd: 0, int: 0, ryd: 0, rtd: 0, sack: 0, jukes: 0, broken: 0 };
+      this.stats = { att: 0, comp: 0, pyd: 0, ptd: 0, int: 0, ryd: 0, rtd: 0, sack: 0, jukes: 0, broken: 0, jbroken: 0, yac: 0, fum: 0 };
+      // Each opposing defender has a jersey number and a tackling rating (TKL) drawn from the team's defense.
+      const nums = { DL: [90, 99], LB: [50, 59], CB: [20, 29], S: [30, 39] }, used = new Set();
+      this.dRoster = {};
+      for (const [slot, pos, off] of DSLOTS) {
+        let n; do { n = GP.rint(...nums[pos]); } while (used.has(n)); used.add(n);
+        this.dRoster[slot] = { slot, pos, num: n, tkl: clamp(Math.round(cfg.oppDef + off + rnd(-5, 5)), 45, 99), tk: 0 };
+      }
       this.keys = {}; this.gesture = null; this.lastTap = -1e9; this.popup = null; this.aim = null; this.banner = null; this.kick = null;
       this.camX = 0; this.off = []; this.def = []; this.ball = { state: 'held' };
 
@@ -292,6 +303,7 @@
       }
       for (const p of dl) p.react = 0;
       this.def = [...dl, lb1, lb2, c1, c2, s];
+      this.def.forEach((p, i) => { p.info = this.dRoster[DSLOTS[i][0]]; });
 
       if (this.play && this.play.type === 'pass') {
         for (const p of this.off) {
@@ -431,17 +443,23 @@
       // tackles
       for (const d of this.def) {
         if (d.stun > 0 || d.held || hyp(d.x - c.x, d.y - c.y) > 1.15) continue;
+        const tkl = d.info.tkl;
         if (c === qb && !this.scramble) {
-          if (Math.random() < 0.05) { d.stun = 1; continue; }
-          this.stats.sack++;
-          return this.gainResult(c.x, `SACKED — loss of ${Math.max(0, Math.round(L - c.x))}`);
+          if (Math.random() > clamp(0.86 + (tkl - 70) * 0.006, 0.75, 0.97)) { d.stun = 1; this.pop('Slipped the sack!'); continue; }
+          this.stats.sack++; d.info.tk++;
+          return this.gainResult(c.x, `SACKED by #${d.info.num} — loss of ${Math.max(0, Math.round(L - c.x))}`);
         }
         if (c.juke && c.juke.t > 0) {
-          d.stun = 1.4; c.juke.hit = true; this.stats.broken++;
+          d.stun = 1.0; c.juke.hit = true; this.stats.broken++; this.stats.jbroken++;
           this.pop('BROKEN TACKLE!', '#ffd84a'); continue;
         }
-        if (Math.random() < clamp(0.08 + ((c.ovr || 65) - 60) * 0.004, 0.05, 0.3)) { d.stun = 1.1; this.pop('Shed him!'); continue; }
-        return this.finishRun(c.x, false);
+        const hit = this.contact(d, c);
+        if (Math.random() > hit.p) {
+          d.stun = 1.1; this.stats.broken++;
+          this.pop(hit.angle < -0.3 ? 'Outran the tackle!' : 'Missed tackle!');
+          continue;
+        }
+        return this.startTackle(d, c, hit);
       }
       if (runPhase) {
         if (c.x >= 110) return this.touchdown();
@@ -451,6 +469,56 @@
 
     // The ball carrier runs straight downfield. A cut angles him toward a sideline for a moment;
     // a juke is a hard sidestep with a short window in which he slips the next tackle.
+    // How a tackle attempt plays out. angle: +1 defender meets the runner head-on, 0 from the side,
+    // -1 from behind. Head-on hits by good tacklers land; side and rear arm-tackles on a fast runner often miss.
+    contact(d, c) {
+      const cs = hyp(c.vx, c.vy) || 0.01, ds = hyp(d.vx, d.vy);
+      const dist = hyp(d.x - c.x, d.y - c.y) || 0.01;
+      const angle = (c.vx * (d.x - c.x) + c.vy * (d.y - c.y)) / (cs * dist);
+      const power = (c.ovr || 65) + (c.role === 'TE' ? 6 : c.role === 'QB' ? -6 : 0);
+      let p = 0.72 + (d.info.tkl - 70) * 0.012 - (power - 65) * 0.01;
+      p += angle * 0.18;                                    // head-on +0.18, from behind -0.18
+      p += Math.min(ds / 7, 1) * 0.06;                      // defender arriving at speed
+      if (angle < 0.3) p -= Math.min(cs / 7, 1) * 0.07;     // a fast runner pulls away from side/rear grabs
+      // a "big hit": defender at speed, square-on; only these can jar the ball loose
+      const big = angle > 0.4 && ds > 4.5;
+      return { p: clamp(p, 0.25, 0.97), angle, big, power, cs };
+    }
+    startTackle(d, c, hit) {
+      // fall forward: more with momentum and power, less when stood up by a head-on hit
+      const fwd = Math.max(0, c.vx);
+      let fall = fwd * 0.22 * (1 - 0.6 * Math.max(0, hit.angle)) * (1 + (hit.power - 65) * 0.015);
+      fall = clamp(fall + rnd(-0.2, 0.3), 0, 2.6);
+      const fumble = hit.big && Math.random() < clamp(0.012 + (d.info.tkl - 70) * 0.0006 - (hit.power - 65) * 0.0006, 0.005, 0.02);
+      d.info.tk++;
+      this.phase = 'tackling';
+      this.tk = { d, c, x0: c.x, fall, t: 0, ox: d.x - c.x, oy: d.y - c.y, fumble };
+      this.pop(hit.big ? `BIG HIT by #${d.info.num}!` : `Tackled by #${d.info.num} ${d.info.pos}`, hit.big ? '#ff8a5c' : '#fff');
+    }
+    updateTackle(dt) {
+      const k = this.tk; k.t += dt;
+      const u = Math.min(1, k.t / FALL_TIME), e = 1 - (1 - u) * (1 - u);
+      k.c.x = k.x0 + k.fall * e; k.c.vx = k.c.vy = 0;
+      k.d.x = k.c.x + k.ox * (1 - e * 0.5); k.d.y = k.c.y + k.oy * (1 - e * 0.5);
+      if (u < 1) return;
+      this.tk = null;
+      const x = k.c.x;
+      this.stats.yac += Math.max(0, Math.round(x - k.x0));
+      if (k.fumble) return this.fumble(x);
+      if (x >= 110) return this.touchdown();
+      this.finishRun(x, false);
+    }
+    fumble(x) {
+      this.credit(x);
+      if (Math.random() < 0.6) {          // defense recovers
+        this.stats.fum++;
+        const dist = clamp(x - 10, 1, 99);
+        return this.endPlay(`FUMBLE! ${this.cfg.opp.abbr} recover`, () => this.checkClock(() => this.oppDrive(dist, 'They recovered the fumble.')));
+      }
+      const g = Math.round(x - this.los);
+      this.gainResult(x, `Fumble — you recover${g ? (g > 0 ? `, gain of ${g}` : `, loss of ${-g}`) : ''}`);
+    }
+
     steerRunner(p, dt) {
       const k = this.keys;
       let dy = 0, sp = p.spd * 0.97, acc = 10;       // a touch slower with the ball
@@ -603,11 +671,15 @@
       this.final();
     }
 
+    tacklers() {
+      const top = Object.values(this.dRoster).filter((r) => r.tk > 0).sort((a, b) => b.tk - a.tk).slice(0, 3);
+      return top.length ? top.map((r) => `#${r.num} ${r.pos} (TKL ${r.tkl}) ${r.tk}`).join(' · ') : 'none';
+    }
     final() {
       this.phase = 'final'; this.kick = null;
       const s = this.score, st = this.stats, won = s.me > s.opp;
       this.showPanel(won ? 'VICTORY' : 'DEFEAT',
-        `${this.cfg.me.abbr} ${s.me} — ${s.opp} ${this.cfg.opp.abbr}\n\nPassing ${st.comp}/${st.att}, ${st.pyd} yds, ${st.ptd} TD, ${st.int} INT\nRushing ${st.ryd} yds, ${st.rtd} TD · Sacked ${st.sack}x\nJukes ${st.jukes}, broken tackles ${st.broken}`,
+        `${this.cfg.me.abbr} ${s.me} — ${s.opp} ${this.cfg.opp.abbr}\n\nPassing ${st.comp}/${st.att}, ${st.pyd} yds, ${st.ptd} TD, ${st.int} INT\nRushing ${st.ryd} yds, ${st.rtd} TD · Sacked ${st.sack}x\nBroken tackles ${st.broken} (${st.jbroken} on jukes) · Yards after contact ${st.yac} · Fumbles lost ${st.fum}\n\n${this.cfg.opp.abbr} tacklers: ${this.tacklers()}`,
         [{ label: 'Continue', fn: () => { this.destroy(); this.cfg.onEnd(s.me, s.opp, st); } }], true);
     }
 
@@ -616,6 +688,7 @@
       if (this.banner && (this.banner.t -= dt) <= 0) this.banner = null;
       if (this.popup && (this.popup.t -= dt) <= 0) this.popup = null;
       if (this.phase === 'live') this.updateLive(dt);
+      else if (this.phase === 'tackling') { this.tick(dt); this.updateTackle(dt); }
       else if (this.phase === 'dead') {
         if ((this.deadT -= dt) <= 0) { const f = this.after; this.after = null; f(); }
       } else if (this.phase === 'kick') {
@@ -625,7 +698,7 @@
       }
       // camera
       let fx = this.los;
-      if (this.phase === 'live' || this.phase === 'dead') {
+      if (this.phase === 'live' || this.phase === 'dead' || this.phase === 'tackling') {
         const b = this.ball;
         if (b.state === 'air' || b.state === 'dead') fx = b.sx + (b.tx - b.sx) * Math.min(1, b.u);
         else if (this.carrier) fx = this.carrier.x;

@@ -22,6 +22,12 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
   slips any tackle; time it just before contact. A juke into empty space costs speed, and there is a
   short cooldown, so spamming it gains less than running straight. Better running backs get a
   slightly longer window.
+- **Tackling:** each opposing defender has a jersey number and a tackling rating (TKL) built from
+  his team's defense (linebackers highest, corners lowest). Whether a tackle lands depends on TKL,
+  the runner's rating, the angle (head-on lands about 97% of the time; from the side or behind
+  much less) and both players' speed. Tackled runners fall forward up to about 2.5 yards. Big
+  head-on hits fumble about 1-2% of the time, and the defense recovers 60% of those. The box
+  score lists broken tackles, yards after contact, fumbles lost and the opponent's top tacklers.
 - **4th down:** go for it, punt, or kick a field goal. Kicks use a timing meter (tap or space).
 - **Read the defense.** The play-call strip sits under the field so you can see the alignment
   before you choose. The defense mixes five calls:
