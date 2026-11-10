@@ -2,7 +2,7 @@
 (function () {
   const GP = window.GP;
   const $ = (s) => document.querySelector(s);
-  let S = null;
+  let S = null, viewConf = 0;
 
   function show(id) {
     document.querySelectorAll('.screen').forEach((e) => e.classList.toggle('on', e.id === id));
@@ -27,18 +27,23 @@
     const act = $('#title-actions'); act.innerHTML = '';
     if (saved) {
       const t = GP.team(saved.teamId);
-      act.append(h('button', { class: 'btn', onclick: () => { S = saved; renderHub(); } }, `Continue — ${full(t)}, season ${saved.season}`));
+      act.append(h('button', { class: 'btn', onclick: () => { S = saved; viewConf = t.conf; renderHub(); } }, `Continue — ${full(t)}, season ${saved.season}`));
     }
     const grid = $('#team-grid'); grid.innerHTML = '';
-    for (const t of GP.TEAMS) {
-      grid.append(h('button', {
-        class: 'team-card',
-        onclick: () => {
-          if (saved && !confirm('Start a new career? This replaces your current save.')) return;
-          S = GP.newCareer(t.id); GP.save(S); renderHub();
-        },
-      }, badge(t), h('span', null, h('b', null, t.name), h('br'), h('small', null, t.city))));
-    }
+    const start = (t) => {
+      if (saved && !confirm('Start a new career? This replaces your current save.')) return;
+      S = GP.newCareer(t.id); GP.save(S); viewConf = t.conf; renderHub();
+    };
+    GP.CONFS.forEach((cn, c) => {
+      grid.append(h('h3', { class: 'conf' }, cn + ' Conference'));
+      const row = h('div', { class: 'divs' });
+      GP.DIVS.forEach((dn, d) => {
+        row.append(h('div', { class: 'card' }, h('h2', null, dn),
+          ...GP.TEAMS.filter((t) => t.conf === c && t.div === d).map((t) =>
+            h('button', { class: 'team-card', onclick: () => start(t) }, badge(t), h('span', null, h('b', null, t.name), h('br'), h('small', null, t.city))))));
+      });
+      grid.append(row);
+    });
     show('title');
   }
 
@@ -54,9 +59,15 @@
       h('button', { class: 'btn ghost small', onclick: renderTitle }, 'Menu')));
 
     // next game / offseason
-    if (game) {
+    if (game && game.bye) {
+      hub.append(h('h2', null, 'Playoffs — ' + game.label), h('div', { class: 'card next' },
+        h('div', null, h('div', { class: 'vs' }, 'First-round bye'),
+          h('div', { class: 'dim' }, 'You earned a top-two seed. Rest up while the wild cards play.')),
+        h('span', { style: 'flex:1' }),
+        h('button', { class: 'btn', onclick: () => { GP.advance(S, null, null); renderHub(); } }, 'Advance')));
+    } else if (game) {
       const o = GP.team(game.oppId), or = GP.rec(S, game.oppId);
-      hub.append(h('h2', null, game.label), h('div', { class: 'card next' },
+      hub.append(h('h2', null, (S.phase === 'playoffs' ? 'Playoffs — ' : '') + game.label), h('div', { class: 'card next' },
         badge(o),
         h('div', null, h('div', { class: 'vs' }, 'vs ' + full(o)),
           h('div', { class: 'dim' }, `${or.w}-${or.l} · Offense ${or.off} · Defense ${or.def}`),
@@ -91,21 +102,28 @@
         }, cost === Infinity ? 'MAX' : `+1 (${cost})`)));
     }
 
-    // standings
-    const tb = h('tbody');
-    GP.standings(S).forEach((t, i) => {
-      const tm = GP.team(t.id);
-      tb.append(h('tr', { class: (t.id === S.teamId ? 'me ' : '') + (i === 3 ? 'cut' : '') },
-        h('td', null, String(i + 1)), h('td', null, full(tm)),
-        h('td', null, String(t.w)), h('td', null, String(t.l)),
-        h('td', null, String(t.pf)), h('td', null, String(t.pa))));
+    // standings: one table per division, with a conference switcher
+    const seeds = S.phase === 'regular' ? GP.seeds(S, viewConf) : S.playoff.seeds[viewConf];
+    const tabs = h('div', { class: 'tabs' }, ...GP.CONFS.map((cn, c) =>
+      h('button', { class: 'btn small' + (c === viewConf ? '' : ' ghost'), onclick: () => { viewConf = c; renderHub(); } }, cn)));
+    const tables = h('div', { class: 'card' }, tabs);
+    GP.DIVS.forEach((dn, d) => {
+      const tb = h('tbody');
+      for (const t of GP.divStandings(S, viewConf, d)) {
+        const tm = GP.team(t.id), seed = seeds.indexOf(t.id);
+        tb.append(h('tr', { class: t.id === S.teamId ? 'me' : '' },
+          h('td', null, seed >= 0 ? h('span', { class: 'seed' }, String(seed + 1)) : ''), h('td', null, full(tm)),
+          h('td', null, String(t.w)), h('td', null, String(t.l)),
+          h('td', null, String(t.pf)), h('td', null, String(t.pa))));
+      }
+      tables.append(h('table', null, h('thead', null, h('tr', null,
+        ...['', dn, 'W', 'L', 'PF', 'PA'].map((x) => h('th', null, x)))), tb));
     });
-    const table = h('table', null, h('thead', null, h('tr', null,
-      ...['#', 'Team', 'W', 'L', 'PF', 'PA'].map((x) => h('th', null, x)))), tb);
+    const table = tables;
 
     hub.append(h('div', { class: 'grid2' },
       h('div', null, h('h2', null, 'Roster'), roster),
-      h('div', null, h('h2', null, 'Standings — top 4 make the playoffs'), h('div', { class: 'card' }, table),
+      h('div', null, h('h2', null, 'Standings — numbered teams hold a playoff seed'), table,
         S.history.length ? h('h2', null, 'History') : null,
         S.history.length ? h('div', { class: 'card' }, ...S.history.map((x) => h('div', { class: 'dim' }, `Season ${x.season}: ${x.w}-${x.l} — ${x.note}`))) : null)));
     show('hub');

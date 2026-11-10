@@ -25,6 +25,9 @@
     { id: 'run', name: 'HB Run', type: 'run', desc: 'Hand off and steer' },
   ];
 
+  // Defensive calls and how often they come (percent).
+  const CALLS = [['man', 30], ['press', 15], ['cover2', 20], ['cover3', 20], ['blitz', 15]];
+
   const hyp = Math.hypot;
   const gauss = () => (Math.random() + Math.random() + Math.random() - 1.5) * 1.15;
   const ord = (n) => ['', '1st', '2nd', '3rd', '4th'][n];
@@ -165,7 +168,10 @@
       return `${ord(this.down)} & ${togo} · ${on}`;
     }
     toChoose() {
-      this.phase = 'choose'; this.kick = null;
+      this.phase = 'choose'; this.kick = null; this.play = null;
+      let r = Math.random() * 100, type = 'man';
+      for (const [t, w] of CALLS) { if ((r -= w) < 0) { type = t; break; } }
+      this.dcall = { type, lbBlitz: type === 'man' && Math.random() < 0.15 };
       this.setupFormation();
       const opts = PLAYS.map((p) => ({ label: p.name, sub: p.desc, fn: () => this.pickPlay(p) }));
       if (this.down === 4) {
@@ -198,18 +204,46 @@
       this.off = [...ol, this.qb, rb, w1, w2, te];
       this.rb = rb;
 
-      const db = 6.7 + (d - 60) * 0.03, lb = 6.3 + (d - 60) * 0.03, dls = 5.8 + (d - 60) * 0.02;
+      const db = 6.7 + (d - 60) * 0.03, lb = 6.6 + (d - 60) * 0.03, dls = 5.8 + (d - 60) * 0.02;
       const dl = [-2.6, 0, 2.6].map((o, i) => {
         const p = M('D', 'DL', L + 1, MID + o, dls); p.job = 'rush';
         p.shed = clamp(2.6 + rnd(0, 2.4) + (r.OL.ovr - d) * 0.05, 1.5, 7);
         ol[i].mark = p; return p;
       });
-      const lb1 = M('D', 'LB', L + 5, MID - 5, lb); lb1.job = 'man'; lb1.mark = te; lb1.react = 0.3;
-      const lb2 = M('D', 'LB', L + 5, MID + 4, lb); lb2.react = 0.3;
-      if (Math.random() < 0.2) { lb2.job = 'rush'; lb2.shed = 0.5; } else { lb2.job = 'man'; lb2.mark = rb; }
-      const c1 = M('D', 'CB', L + 6, 3.5, db); c1.job = 'man'; c1.mark = w1; c1.react = 0.7;
-      const c2 = M('D', 'CB', L + 6, FW - 3.5, db); c2.job = 'man'; c2.mark = w2; c2.react = 0.7;
-      const s = M('D', 'S', L + 13, MID, db); s.job = 'deep'; s.react = 0.6;
+      // back five line up according to the coverage call; alignment is the pre-snap tell
+      const call = this.dcall, D = (role, x, y, sp, react) => { const p = M('D', role, L + x, y, sp); p.react = react; return p; };
+      const man = (p, m) => { p.job = 'man'; p.mark = m; };
+      const deep = (p, ax, ay, y0, y1) => { p.job = 'deep'; p.anchor = [L + ax, ay]; p.lane = [y0, y1]; };
+      const zone = (p, ax, ay) => { p.job = 'zone'; p.anchor = [L + ax, ay]; };
+      const rush = (p) => { p.job = 'rush'; p.shed = 0.5; };
+      let lb1, lb2, c1, c2, s;
+      if (call.type === 'cover2') {          // corners bail to deep halves, three underneath
+        c1 = D('CB', 9, 5, db, 0.7); deep(c1, 14, 9, 0, MID);
+        c2 = D('CB', 9, FW - 5, db, 0.7); deep(c2, 14, FW - 9, MID, FW);
+        lb1 = D('LB', 5, 8, lb, 0.3); zone(lb1, 6, 7);
+        lb2 = D('LB', 5, FW - 8, lb, 0.3); zone(lb2, 6, FW - 7);
+        s = D('S', 9, MID, db, 0.5); zone(s, 8, MID);
+      } else if (call.type === 'cover3') {   // three deep, two hook zones
+        c1 = D('CB', 8, 4, db, 0.7); deep(c1, 13, 6, 0, 12);
+        c2 = D('CB', 8, FW - 4, db, 0.7); deep(c2, 13, FW - 6, 24, FW);
+        s = D('S', 14, MID, db, 0.6); deep(s, 14, MID, 12, 24);
+        lb1 = D('LB', 5, MID - 6, lb, 0.3); zone(lb1, 5.5, MID - 7);
+        lb2 = D('LB', 5, MID + 6, lb, 0.3); zone(lb2, 5.5, MID + 7);
+      } else if (call.type === 'blitz') {    // both linebackers come, nobody deep
+        lb1 = D('LB', 4, MID - 5, lb, 0.2); rush(lb1); lb1.delay = 0.4;
+        lb2 = D('LB', 4, MID + 5, lb, 0.2); rush(lb2); lb2.delay = 0.4;
+        c1 = D('CB', 5, 3.5, db, 0.7); man(c1, w1);
+        c2 = D('CB', 5, FW - 3.5, db, 0.7); man(c2, w2);
+        s = D('S', 8, MID - 5, db, 0.5); man(s, te);
+      } else {                               // man coverage with one deep safety; 'press' walks the corners up
+        const off = call.type === 'press' ? 1.6 : 6;
+        c1 = D('CB', off, 3.5, db, 0.7); man(c1, w1);
+        c2 = D('CB', off, FW - 3.5, db, 0.7); man(c2, w2);
+        lb1 = D('LB', 5, MID - 5, lb, 0.3); man(lb1, te);
+        lb2 = D('LB', 5, MID + 4, lb, 0.3);
+        if (call.lbBlitz) rush(lb2); else man(lb2, rb);
+        s = D('S', call.type === 'press' ? 15 : 13, MID, db, 0.6); deep(s, 12, MID, 0, FW);
+      }
       for (const p of dl) p.react = 0;
       this.def = [...dl, lb1, lb2, c1, c2, s];
 
@@ -243,13 +277,21 @@
       this.ball.intended = best;
     }
 
+    // Linemen lock a defender up; a receiver's block only slows him and he can still tackle.
     blockFactor(d, dt) {
+      d.held = false;
       if (d.eng >= d.shed) return 1;
+      let f = 1;
       for (const o of this.off) {
         if (!o.blocking) continue;
-        if (hyp(o.x - d.x, o.y - d.y) < 1.5) { d.eng += dt; return 0.15; }
+        const line = o.role === 'OL' || (o.role === 'TE' && this.play.type === 'run');
+        if (hyp(o.x - d.x, o.y - d.y) < (line ? 1.5 : 1.2)) {
+          if (line) { d.eng += dt; d.held = true; return 0.15; }
+          f = 0.5;
+        }
       }
-      return 1;
+      if (f < 1) d.eng += dt;
+      return f;
     }
 
     followRoute(p, dt) {
@@ -304,23 +346,31 @@
       }
 
       // defense
-      let deepX = L + 12, deepY = MID;
-      for (const p of this.off) if (p.route && p.x + 4 > deepX) { deepX = p.x + 4; deepY = (MID + p.y) / 2; }
+      const recs = this.off.filter((p) => p.route);
       for (const d of this.def) {
         if (d.stun > 0) { d.stun -= dt; continue; }
         const f = this.blockFactor(d, dt);
-        d.held = f < 1;                // a blocked defender can't make the tackle
         let tx, ty, sp = d.spd;
         if (runPhase || (!isPass && this.t > d.react)) {
           const lead = Math.min(0.8, (hyp(ref.x - d.x, ref.y - d.y) / d.spd) * 0.6);
           tx = ref.x + ref.vx * lead; ty = ref.y + ref.vy * lead;
         } else if (b.state === 'air' && this.t - b.t0 > 0.25 && hyp(d.x - b.tx, d.y - b.ty) < 9) {
           tx = b.tx; ty = b.ty;
-        } else if (d.job === 'rush') { tx = qb.x; ty = qb.y; }
+        } else if (d.job === 'rush') { tx = qb.x; ty = qb.y; if (this.t < (d.delay || 0)) sp = 0; }
         else if (d.job === 'man') {
           const m = d.mark;
           if (d.x - m.x > 2.5) { tx = m.x + 3.5; ty = m.y; sp *= 0.6; } else { tx = m.x + m.vx * 0.1; ty = m.y + m.vy * 0.1; }
-        } else { tx = Math.min(deepX, 117); ty = deepY; }
+        } else if (d.job === 'deep') {     // stay on top of the deepest route in my lane
+          let r = null;
+          for (const p of recs) if (p.y >= d.lane[0] && p.y <= d.lane[1] && (!r || p.x > r.x)) r = p;
+          tx = d.anchor[0]; ty = d.anchor[1];
+          if (r) { tx = Math.min(Math.max(tx, r.x + 3), 117); ty = (ty + r.y) / 2; }
+        } else {                           // underneath zone: sit on a spot, squeeze the nearest route
+          let r = null, rd = 7;
+          for (const p of recs) { const x = hyp(p.x - d.anchor[0], p.y - d.anchor[1]); if (x < rd) { rd = x; r = p; } }
+          tx = d.anchor[0]; ty = d.anchor[1];
+          if (r) { tx += (r.x - tx) * 0.65; ty += (r.y - ty) * 0.65; }
+        }
         go(d, tx, ty, sp * f, dt, 5);
         d.y = clamp(d.y, 0.5, FW - 0.5);
       }
@@ -361,7 +411,7 @@
         dx = k.arrowleft || k.a ? 0.3 : 1; dy = ky * 0.9;
         const l = hyp(dx, dy); dx /= l; dy /= l;
       }
-      go(p, p.x + dx * 5, p.y + dy * 5, p.spd, dt, 10);
+      go(p, p.x + dx * 5, p.y + dy * 5, p.spd * 0.97, dt, 10);   // a touch slower with the ball
     }
 
     resolvePass() {
