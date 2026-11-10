@@ -6,7 +6,7 @@
   GP.clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   GP.pick = (a) => a[Math.floor(Math.random() * a.length)];
 
-  GP.CONFS = ['Frontier', 'Meridian'];
+  GP.CONFS = ['American', 'National'];
   GP.DIVS = ['North', 'East', 'South', 'West'];
   GP.TEAMS = [
     { id: 'smy', conf: 0, div: 0, city: 'Summit', name: 'Yetis', abbr: 'SMY', c1: '#3a86ff', c2: '#e0fbfc' },

@@ -22,7 +22,7 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
   - *Two deep* — corners 9 yards off and bailing, safety walked up. Flats and the deep middle are open.
   - *Three deep* — both corners and the safety deep. Throw underneath.
   - *Blitz* — both linebackers creep up and nobody is deep. Get the ball out fast.
-- **Franchise:** 32 teams in two conferences (Frontier, Meridian), each with four divisions of four.
+- **Franchise:** 32 teams in two conferences (American, National), each with four divisions of four.
   14-game season: 6 division games, 4 against another division in your conference, 4 against a
   division in the other conference (pairings rotate each season). Six teams per conference make
   the playoffs (four division winners plus two wild cards; top two seeds get a bye), then
