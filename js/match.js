@@ -13,7 +13,7 @@
   const RUNOFF = 8;                // extra clock burned after an in-bounds play
   const CUT_TIME = 0.5;            // seconds a swipe angles the runner toward a sideline
   const TAP_WINDOW = 450;          // ms between a tap and a swipe for it to count as a juke
-  const JUKE_WINDOW = 0.3;         // seconds a juke beats tackles (scaled by RB rating)
+  const JUKE_WINDOW = 0.3;         // seconds a juke is live at 65 agility (longer for agile runners)
   const JUKE_RECOVER = 0.3;        // seconds of planting after the sidestep
   const JUKE_COOLDOWN = 0.8;       // seconds before another juke is possible
   const FALL_TIME = 0.35;          // seconds the tackle animation takes (runner falls forward)
@@ -162,9 +162,11 @@
     }
     juke(c, dir) {
       if (c.jukeCd > 0) return;                 // still recovering from the last one
-      const win = clamp(JUKE_WINDOW + ((c.ovr || 65) - 65) * 0.003, 0.2, 0.42);
+      // agility (AGI) lengthens the window and shortens the recovery
+      const agi = c.agi || 60;
+      const win = clamp(JUKE_WINDOW + (agi - 65) * 0.004, 0.16, 0.4);
       c.juke = { dir, t: win, hit: false };
-      c.jukeCd = JUKE_COOLDOWN; c.cut = null;
+      c.jukeCd = clamp(JUKE_COOLDOWN - (agi - 65) * 0.006, 0.55, 1.05); c.cut = null;
       this.stats.jukes++;
     }
     pop(text, color) { this.popup = { text, color: color || '#fff', t: 0.9 }; }
@@ -251,12 +253,13 @@
     setupFormation() {
       const L = this.los, r = this.cfg.roster, d = this.cfg.oppDef, M = (...a) => this.mk(...a);
       const wr = (o) => 6.6 + (o - 60) * 0.035;
-      this.qb = M('O', 'QB', L - 5, MID, 5.5);
+      this.qb = M('O', 'QB', L - 5, MID, 5.5); this.qb.agi = 50;
       // on a run the back sets up in the off-tackle gap, so running straight hits a lane, not a lineman
       const rb = M('O', 'RB', L - 5, MID + (this.play && this.play.type === 'run' ? 4.4 : 3), wr(r.RB.ovr) + 0.1); rb.ovr = r.RB.ovr;
-      const w1 = M('O', 'WR1', L - 0.6, 3, wr(r.WR1.ovr)); w1.ovr = r.WR1.ovr;
-      const w2 = M('O', 'WR2', L - 0.6, FW - 3, wr(r.WR2.ovr)); w2.ovr = r.WR2.ovr;
-      const te = M('O', 'TE', L - 0.6, MID - 7, 6.2 + (r.TE.ovr - 60) * 0.03); te.ovr = r.TE.ovr + 6;
+      rb.agi = r.RB.agi != null ? r.RB.agi : 65;
+      const w1 = M('O', 'WR1', L - 0.6, 3, wr(r.WR1.ovr)); w1.ovr = r.WR1.ovr; w1.agi = 66;
+      const w2 = M('O', 'WR2', L - 0.6, FW - 3, wr(r.WR2.ovr)); w2.ovr = r.WR2.ovr; w2.agi = 66;
+      const te = M('O', 'TE', L - 0.6, MID - 7, 6.2 + (r.TE.ovr - 60) * 0.03); te.ovr = r.TE.ovr + 6; te.agi = 55;
       const ol = [-2.6, 0, 2.6].map((o) => M('O', 'OL', L - 0.6, MID + o, 5));
       this.off = [...ol, this.qb, rb, w1, w2, te];
       this.rb = rb;
@@ -449,9 +452,14 @@
           this.stats.sack++; d.info.tk++;
           return this.gainResult(c.x, `SACKED by #${d.info.num} — loss of ${Math.max(0, Math.round(L - c.x))}`);
         }
-        if (c.juke && c.juke.t > 0) {
-          d.stun = 1.0; c.juke.hit = true; this.stats.broken++; this.stats.jbroken++;
-          this.pop('BROKEN TACKLE!', '#ffd84a'); continue;
+        if (c.juke && c.juke.t > 0 && !c.juke.read) {
+          // a well-timed juke is agility against the tackler: agile backs eat up poor tacklers
+          if (Math.random() < clamp(0.75 + ((c.agi || 60) - tkl) * 0.025, 0.3, 0.99)) {
+            d.stun = 1.0; c.juke.hit = true; this.stats.broken++; this.stats.jbroken++;
+            this.pop('BROKEN TACKLE!', '#ffd84a'); continue;
+          }
+          c.juke.read = true;              // he read it; the tackle resolves normally below
+          this.pop(`#${d.info.num} read the juke!`, '#ff8a5c');
         }
         const hit = this.contact(d, c);
         if (Math.random() > hit.p) {

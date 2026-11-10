@@ -20,8 +20,12 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
   to cut toward a sideline, or hold W/S or the up/down arrows.
 - **Juke:** tap, then swipe (keyboard: space, then up/down). For a third of a second the runner
   slips any tackle; time it just before contact. A juke into empty space costs speed, and there is a
-  short cooldown, so spamming it gains less than running straight. Better running backs get a
-  slightly longer window.
+  short cooldown, so spamming it gains less than running straight.
+- **Agility (AGI):** running backs have an agility rating, upgraded separately from overall. It
+  lengthens the juke window, shortens the recovery between jukes, and is matched against the
+  tackler's TKL when a juke connects: an even matchup works 75% of the time, an agile back against
+  a poor tackler almost always. Agility rises until about 25 and fades from 29. Receivers (66),
+  tight ends (55) and quarterbacks (50) juke with fixed agility.
 - **Tackling:** each opposing defender has a jersey number and a tackling rating (TKL) built from
   his team's defense (linebackers highest, corners lowest). Whether a tackle lands depends on TKL,
   the runner's rating, the angle (head-on lands about 97% of the time; from the side or behind

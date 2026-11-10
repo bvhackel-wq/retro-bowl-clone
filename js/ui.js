@@ -47,6 +47,17 @@
     show('title');
   }
 
+  // A secondary rating shown under a player's main bar, with its own upgrade button.
+  function statRow(label, val, buy) {
+    const cost = GP.upgradeCost(val);
+    return h('div', { class: 'substat' },
+      h('span', { class: 'dim' }, label),
+      h('div', { class: 'bar' }, h('i', { style: `width:${val}%;background:var(--accent)` })),
+      h('b', null, String(val)),
+      h('button', { class: 'btn small ghost', disabled: S.credits < cost, onclick: () => { if (buy()) renderHub(); } },
+        cost === Infinity ? 'MAX' : `+1 (${cost})`));
+  }
+
   function renderHub() {
     const hub = $('#hub'); hub.innerHTML = '';
     const me = GP.team(S.teamId), rec = GP.rec(S, S.teamId), game = GP.currentGame(S);
@@ -94,7 +105,8 @@
         h('div', null,
           h('div', null, p.unit ? p.label : r.name, p.unit ? null : h('span', { class: 'dim' }, `  age ${r.age}`)),
           h('div', { class: 'dim', style: 'font-size:13px' }, p.desc),
-          h('div', { class: 'bar' }, h('i', { style: `width:${r.ovr}%` }))),
+          h('div', { class: 'bar' }, h('i', { style: `width:${r.ovr}%` })),
+          r.agi != null ? statRow('Agility', r.agi, () => GP.upgrade(S, p.key, 'agi')) : null),
         h('span', { class: 'ovr' }, String(r.ovr)),
         h('button', {
           class: 'btn small', disabled: S.credits < cost,

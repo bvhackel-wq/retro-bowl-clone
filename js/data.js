@@ -46,7 +46,7 @@
 
   GP.POS = [
     { key: 'QB', label: 'Quarterback', desc: 'Throw range and accuracy' },
-    { key: 'RB', label: 'Running Back', desc: 'Speed and broken tackles' },
+    { key: 'RB', label: 'Running Back', desc: 'Speed and power · Agility: jukes' },
     { key: 'WR1', label: 'Wide Receiver', desc: 'Speed and hands' },
     { key: 'WR2', label: 'Wide Receiver', desc: 'Speed and hands' },
     { key: 'TE', label: 'Tight End', desc: 'Hands and power' },
@@ -94,6 +94,7 @@
         ovr: GP.rint(63, 72),
       };
     }
+    roster.RB.agi = GP.rint(60, 74);   // agility: juke window, recovery, and beating tacklers
     const s = {
       v: 2, teamId, season: 1, week: 0, credits: 4, roster, phase: 'regular', playoff: null, champion: null, history: [],
       teams: GP.TEAMS.map((t) => ({ id: t.id, off: GP.rint(64, 84), def: GP.rint(64, 84), w: 0, l: 0, pf: 0, pa: 0 })),
@@ -225,8 +226,12 @@
       else if (r.age >= 31) r.ovr -= GP.rint(1, 4);
       if (r.age >= 36) { // retirement: a rookie takes over
         r.name = GP.pick(FIRST) + ' ' + GP.pick(LAST); r.age = 22; r.ovr = GP.rint(60, 68); r.rookie = true;
+        if (r.agi != null) r.agi = GP.rint(60, 76);
+      } else if (r.agi != null) {          // agility peaks early and fades faster than strength
+        if (r.age <= 25) r.agi += GP.rint(0, 2); else if (r.age >= 29) r.agi -= GP.rint(1, 3);
       }
       r.ovr = GP.clamp(r.ovr, 50, 99);
+      if (r.agi != null) r.agi = GP.clamp(r.agi, 40, 99);
     }
     for (const t of s.teams) {
       t.w = t.l = t.pf = t.pa = 0;
@@ -237,15 +242,24 @@
   };
 
   GP.upgradeCost = (ovr) => (ovr >= 99 ? Infinity : ovr >= 85 ? 2 : 1);
-  GP.upgrade = function (s, key) {
-    const r = s.roster[key], c = GP.upgradeCost(r.ovr);
+  GP.upgrade = function (s, key, stat) {
+    stat = stat || 'ovr';
+    const r = s.roster[key], c = GP.upgradeCost(r[stat]);
     if (s.credits < c) return false;
-    s.credits -= c; r.ovr++; GP.syncUser(s); GP.save(s);
+    s.credits -= c; r[stat]++; GP.syncUser(s); GP.save(s);
     return true;
   };
 
   const KEY = 'pocket-gridiron-save';
   GP.save = (s) => { try { localStorage.setItem(KEY, JSON.stringify(s)); } catch (e) {} };
-  GP.load = () => { try { const s = JSON.parse(localStorage.getItem(KEY)); return s && s.v === 2 ? s : null; } catch (e) { return null; } };
+  GP.load = () => {
+    try {
+      const s = JSON.parse(localStorage.getItem(KEY));
+      if (!s || s.v !== 2) return null;
+      // saves from before agility existed: give the current back a rating near his overall
+      if (s.roster.RB.agi == null) { s.roster.RB.agi = GP.clamp(s.roster.RB.ovr + GP.rint(-6, 6), 40, 99); GP.save(s); }
+      return s;
+    } catch (e) { return null; }
+  };
   GP.wipe = () => { try { localStorage.removeItem(KEY); } catch (e) {} };
 })();

@@ -56,6 +56,9 @@ tr.me td{color:var(--accent);font-weight:800}
 .rost:last-child{border:0}
 .rost .pos{font-weight:900;color:var(--accent)}
 .rost .ovr{font-weight:900;font-size:20px;width:34px;text-align:right}
+.substat{display:grid;grid-template-columns:auto 1fr auto auto;gap:8px;align-items:center;margin-top:8px;font-size:13px}
+.substat .bar{margin:0}
+.substat .btn.small{padding:3px 9px;font-size:12px}
 .bar{height:5px;background:var(--line);border-radius:3px;margin-top:4px;overflow:hidden}
 .bar i{display:block;height:100%;background:var(--good)}
 
