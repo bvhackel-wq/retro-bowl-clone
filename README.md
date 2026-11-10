@@ -13,7 +13,12 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
 - **You run the offense.** Opponent drives are simulated from your Defense rating vs. their Offense.
 - **Pass:** after the snap, drag backwards anywhere on the field and release. The ring is where the
   ball lands, so lead the receiver. Nearby defenders can break it up or intercept.
-- **Run / after the catch:** hold on the field to steer toward your pointer, or use arrows / WASD.
+- **Run / after the catch:** the ball carrier runs straight ahead automatically. Swipe up or down
+  to cut toward a sideline, or hold W/S or the up/down arrows.
+- **Juke:** tap, then swipe (keyboard: space, then up/down). For a third of a second the runner
+  slips any tackle; time it just before contact. A juke into empty space costs speed, and there is a
+  short cooldown, so spamming it gains less than running straight. Better running backs get a
+  slightly longer window.
 - **4th down:** go for it, punt, or kick a field goal. Kicks use a timing meter (tap or space).
 - **Read the defense.** The play-call strip sits under the field so you can see the alignment
   before you choose. The defense mixes five calls:

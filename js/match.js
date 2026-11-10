@@ -11,6 +11,11 @@
   const MID = FW / 2;
   const QLEN = 120;                // seconds per quarter
   const RUNOFF = 8;                // extra clock burned after an in-bounds play
+  const CUT_TIME = 0.5;            // seconds a swipe angles the runner toward a sideline
+  const TAP_WINDOW = 450;          // ms between a tap and a swipe for it to count as a juke
+  const JUKE_WINDOW = 0.3;         // seconds a juke beats tackles (scaled by RB rating)
+  const JUKE_RECOVER = 0.3;        // seconds of planting after the sidestep
+  const JUKE_COOLDOWN = 0.8;       // seconds before another juke is possible
 
   // Route points are [yards downfield, yards toward the middle of the field] from the receiver's start.
   const PLAYS = [
@@ -58,8 +63,8 @@
 
       this.q = 1; this.clock = QLEN;
       this.score = { me: 0, opp: 0 };
-      this.stats = { att: 0, comp: 0, pyd: 0, ptd: 0, int: 0, ryd: 0, rtd: 0, sack: 0 };
-      this.keys = {}; this.pointer = null; this.aim = null; this.banner = null; this.kick = null;
+      this.stats = { att: 0, comp: 0, pyd: 0, ptd: 0, int: 0, ryd: 0, rtd: 0, sack: 0, jukes: 0, broken: 0 };
+      this.keys = {}; this.gesture = null; this.lastTap = -1e9; this.popup = null; this.aim = null; this.banner = null; this.kick = null;
       this.camX = 0; this.off = []; this.def = []; this.ball = { state: 'held' };
 
       this.onDown = (e) => this.pDown(e); this.onMove = (e) => this.pMove(e); this.onUp = (e) => this.pUp(e);
@@ -105,27 +110,54 @@
       if (this.phase === 'kick') return this.doKick();
       if (this.phase !== 'live') return;
       if (this.carrier === this.qb && this.play.type === 'pass') this.aim = { sx: p.x, sy: p.y, cx: p.x, cy: p.y };
-      else this.pointer = p;
+      else this.gesture = { x: p.x, y: p.y, t: performance.now(), done: false };
     }
     pMove(e) {
       const p = this.pos(e);
-      if (this.aim) { this.aim.cx = p.x; this.aim.cy = p.y; }
-      else if (this.pointer) this.pointer = p;
+      if (this.aim) { this.aim.cx = p.x; this.aim.cy = p.y; return; }
+      const g = this.gesture;
+      if (!g || g.done) return;
+      // a vertical swipe of 22px+ counts as soon as it happens, no need to lift the finger
+      const dy = p.y - g.y;
+      if (Math.abs(dy) > 22 && Math.abs(dy) > Math.abs(p.x - g.x) * 0.8) { g.done = true; this.swipe(Math.sign(dy)); }
     }
     pUp() {
       if (this.aim && this.phase === 'live' && this.carrier === this.qb) {
         const a = this.aim;
         if (hyp(a.sx - a.cx, a.sy - a.cy) > 14) { const t = this.aimTarget(); this.throwBall(t.x, t.y); }
       }
-      this.aim = null; this.pointer = null;
+      const g = this.gesture;
+      if (g && !g.done && performance.now() - g.t < 300) this.lastTap = performance.now();
+      this.aim = null; this.gesture = null;
     }
+    // Swipe toward a sideline: a juke if it closely follows a tap, otherwise a cut.
+    swipe(dir) {
+      const c = this.carrier;
+      if (this.phase !== 'live' || !c || c === this.qb) return;
+      const now = performance.now();
+      if (now - (this.lastTap || -1e9) < TAP_WINDOW) { this.lastTap = -1e9; this.juke(c, dir); }
+      else if (!c.juke || c.juke.t <= -JUKE_RECOVER) c.cut = { dir, t: CUT_TIME };
+    }
+    juke(c, dir) {
+      if (c.jukeCd > 0) return;                 // still recovering from the last one
+      const win = clamp(JUKE_WINDOW + ((c.ovr || 65) - 65) * 0.003, 0.2, 0.42);
+      c.juke = { dir, t: win, hit: false };
+      c.jukeCd = JUKE_COOLDOWN; c.cut = null;
+      this.stats.jukes++;
+    }
+    pop(text, color) { this.popup = { text, color: color || '#fff', t: 0.9 }; }
     key(e, down) {
       const k = e.key.toLowerCase();
       if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' '].includes(k)) e.preventDefault();
       this.keys[k] = down;
-      if (down && k === ' ' && !e.repeat) {
-        if (this.phase === 'presnap') this.snap();
-        else if (this.phase === 'kick') this.doKick();
+      if (down && !e.repeat) {
+        if (k === ' ') {
+          if (this.phase === 'presnap') this.snap();
+          else if (this.phase === 'kick') this.doKick();
+          else this.lastTap = performance.now();       // space then up/down = juke
+        } else if (k === 'arrowup' || k === 'w' || k === 'arrowdown' || k === 's') {
+          if (performance.now() - (this.lastTap || -1e9) < TAP_WINDOW) this.swipe(k === 'arrowup' || k === 'w' ? -1 : 1);
+        }
       }
     }
     aimTarget() {
@@ -186,7 +218,7 @@
     }
     snap() {
       if (this.play.type === 'run') for (const d of this.def) { d.shed *= 1.7; d.react = (d.react || 0) + 0.25; }
-      this.phase = 'live'; this.t = 0; this.caught = false; this.pointer = null; this.aim = null;
+      this.phase = 'live'; this.t = 0; this.caught = false; this.gesture = null; this.aim = null;
     }
 
     mk(team, role, x, y, spd) {
@@ -196,7 +228,8 @@
       const L = this.los, r = this.cfg.roster, d = this.cfg.oppDef, M = (...a) => this.mk(...a);
       const wr = (o) => 6.6 + (o - 60) * 0.035;
       this.qb = M('O', 'QB', L - 5, MID, 5.5);
-      const rb = M('O', 'RB', L - 5, MID + 3, wr(r.RB.ovr) + 0.1); rb.ovr = r.RB.ovr;
+      // on a run the back sets up in the off-tackle gap, so running straight hits a lane, not a lineman
+      const rb = M('O', 'RB', L - 5, MID + (this.play && this.play.type === 'run' ? 4.4 : 3), wr(r.RB.ovr) + 0.1); rb.ovr = r.RB.ovr;
       const w1 = M('O', 'WR1', L - 0.6, 3, wr(r.WR1.ovr)); w1.ovr = r.WR1.ovr;
       const w2 = M('O', 'WR2', L - 0.6, FW - 3, wr(r.WR2.ovr)); w2.ovr = r.WR2.ovr;
       const te = M('O', 'TE', L - 0.6, MID - 7, 6.2 + (r.TE.ovr - 60) * 0.03); te.ovr = r.TE.ovr + 6;
@@ -390,7 +423,11 @@
           this.stats.sack++;
           return this.gainResult(c.x, `SACKED — loss of ${Math.max(0, Math.round(L - c.x))}`);
         }
-        if (Math.random() < clamp(0.08 + ((c.ovr || 65) - 60) * 0.004, 0.05, 0.3)) { d.stun = 1.1; continue; }
+        if (c.juke && c.juke.t > 0) {
+          d.stun = 1.4; c.juke.hit = true; this.stats.broken++;
+          this.pop('BROKEN TACKLE!', '#ffd84a'); continue;
+        }
+        if (Math.random() < clamp(0.08 + ((c.ovr || 65) - 60) * 0.004, 0.05, 0.3)) { d.stun = 1.1; this.pop('Shed him!'); continue; }
         return this.finishRun(c.x, false);
       }
       if (runPhase) {
@@ -399,19 +436,24 @@
       }
     }
 
+    // The ball carrier runs straight downfield. A cut angles him toward a sideline for a moment;
+    // a juke is a hard sidestep with a short window in which he slips the next tackle.
     steerRunner(p, dt) {
-      let dx = 1, dy = 0;
       const k = this.keys;
-      if (this.pointer) {
-        dx = this.pointer.x - (p.x - this.camX) * PPY; dy = this.pointer.y - (TOP + p.y * PPY);
-        const l = hyp(dx, dy) || 1; dx /= l; dy /= l;
-        if (dx < 0.25) { dx = 0.25; dy = Math.sign(dy) * 0.97; }
+      let dy = 0, sp = p.spd * 0.97, acc = 10;       // a touch slower with the ball
+      if (p.jukeCd > 0) p.jukeCd -= dt;
+      const j = p.juke;
+      if (j && j.t > -JUKE_RECOVER) {
+        j.t -= dt;
+        if (j.t > 0) { dy = j.dir * 0.95; acc = 22; }                // the sidestep itself
+        else { dy = j.dir * 0.2; sp *= j.hit ? 0.92 : 0.7; }        // planting: slower if he juked air
+      } else if (p.cut && p.cut.t > 0) {
+        p.cut.t -= dt; dy = p.cut.dir * 0.75;
       } else {
-        const ky = (k.arrowdown || k.s ? 1 : 0) - (k.arrowup || k.w ? 1 : 0);
-        dx = k.arrowleft || k.a ? 0.3 : 1; dy = ky * 0.9;
-        const l = hyp(dx, dy); dx /= l; dy /= l;
+        dy = ((k.arrowdown || k.s ? 1 : 0) - (k.arrowup || k.w ? 1 : 0)) * 0.75;
       }
-      go(p, p.x + dx * 5, p.y + dy * 5, p.spd * 0.97, dt, 10);   // a touch slower with the ball
+      const dx = Math.sqrt(1 - dy * dy);
+      go(p, p.x + dx * 5, p.y + dy * 5, sp, dt, acc);
     }
 
     resolvePass() {
@@ -481,7 +523,7 @@
     }
     endPlay(msg, after, hold) {
       this.phase = 'dead'; this.deadT = hold || 1.5; this.banner = { text: msg, t: this.deadT };
-      this.after = after; this.aim = null; this.pointer = null;
+      this.after = after; this.aim = null; this.gesture = null;
     }
 
     // ---------- kicking ----------
@@ -552,13 +594,14 @@
       this.phase = 'final'; this.kick = null;
       const s = this.score, st = this.stats, won = s.me > s.opp;
       this.showPanel(won ? 'VICTORY' : 'DEFEAT',
-        `${this.cfg.me.abbr} ${s.me} — ${s.opp} ${this.cfg.opp.abbr}\n\nPassing ${st.comp}/${st.att}, ${st.pyd} yds, ${st.ptd} TD, ${st.int} INT\nRushing ${st.ryd} yds, ${st.rtd} TD · Sacked ${st.sack}x`,
+        `${this.cfg.me.abbr} ${s.me} — ${s.opp} ${this.cfg.opp.abbr}\n\nPassing ${st.comp}/${st.att}, ${st.pyd} yds, ${st.ptd} TD, ${st.int} INT\nRushing ${st.ryd} yds, ${st.rtd} TD · Sacked ${st.sack}x\nJukes ${st.jukes}, broken tackles ${st.broken}`,
         [{ label: 'Continue', fn: () => { this.destroy(); this.cfg.onEnd(s.me, s.opp, st); } }], true);
     }
 
     // ---------- frame update ----------
     update(dt) {
       if (this.banner && (this.banner.t -= dt) <= 0) this.banner = null;
+      if (this.popup && (this.popup.t -= dt) <= 0) this.popup = null;
       if (this.phase === 'live') this.updateLive(dt);
       else if (this.phase === 'dead') {
         if ((this.deadT -= dt) <= 0) { const f = this.after; this.after = null; f(); }
@@ -659,6 +702,14 @@
       if (this.phase === 'presnap') this.hint('TAP THE FIELD OR PRESS SPACE TO SNAP');
       else if (this.phase === 'live' && this.carrier === this.qb && this.play.type === 'pass' && !this.aim) this.hint('DRAG BACK AND RELEASE TO THROW');
       else if (this.phase === 'kick' && !this.kick.done) this.hint('TAP WHEN THE MARKER IS IN THE GREEN');
+      else if (this.phase === 'live' && this.carrier && this.carrier !== this.qb) this.hint('SWIPE UP/DOWN TO CUT · TAP THEN SWIPE TO JUKE');
+      if (this.popup && this.carrier) {
+        const c = this.carrier, a = Math.min(1, this.popup.t * 2.5);
+        g.globalAlpha = a; g.font = '900 18px ui-rounded, system-ui, sans-serif';
+        g.fillStyle = 'rgba(12,18,30,.8)'; g.fillText(this.popup.text, this.sx(c.x) + 1, this.sy(c.y) - 30 + 1);
+        g.fillStyle = this.popup.color; g.fillText(this.popup.text, this.sx(c.x), this.sy(c.y) - 30);
+        g.globalAlpha = 1;
+      }
       if (this.banner) {
         g.font = '900 30px ui-rounded, system-ui, sans-serif';
         const w = g.measureText(this.banner.text).width + 44;
@@ -678,7 +729,11 @@
       if (X < -20 || X > W + 20) return;
       const t = p.team === 'O' ? this.cfg.me : this.cfg.opp;
       g.fillStyle = 'rgba(0,0,0,.25)'; g.beginPath(); g.ellipse(X + 2, Y + 4, R, R * 0.8, 0, 0, 7); g.fill();
-      if (p === this.carrier) { g.strokeStyle = '#fff'; g.lineWidth = 2; g.beginPath(); g.arc(X, Y, R + 5, 0, 7); g.stroke(); }
+      if (p === this.carrier) {
+        const live = p.juke && p.juke.t > 0;
+        g.strokeStyle = live ? '#ffd84a' : '#fff'; g.lineWidth = live ? 4 : 2;
+        g.beginPath(); g.arc(X, Y, R + (live ? 7 : 5), 0, 7); g.stroke();
+      }
       g.globalAlpha = p.stun > 0 ? 0.45 : 1;
       g.fillStyle = p.team === 'O' ? t.c1 : '#f1f3f5';
       g.strokeStyle = p.team === 'O' ? t.c2 : t.c1; g.lineWidth = 3.5;
