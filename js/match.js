@@ -74,6 +74,10 @@
       this.scatter = Math.max(0.015, 0.085 - (this.qbs.acc - 60) * 0.0015); // accuracy
       if (GP.hasSkill(cfg.staff, 'OC', 'airraid')) this.scatter *= 0.85;   // OC skill: Air Raid
       this.energy = 100;
+      // kicker: distance sets how far he can aim, accuracy the meter's green zone and speed
+      const kst = r.K.stats || {}, kv = (k) => (kst[k] != null ? kst[k] : r.K.ovr);
+      this.ks = { leg: kv('leg'), acc: kv('acc') };
+      this.kickRange = Math.round(clamp(30 + (this.ks.leg - 40) * (30 / 59), 25, 60));
 
       this.q = 1; this.clock = QLEN;
       this.score = { me: 0, opp: 0 };
@@ -184,13 +188,14 @@
       e.preventDefault();
       const p = this.pos(e);
       if (this.phase === 'presnap') { this.hidePanel(); return this.snap(); }
-      if (this.phase === 'kick') return this.doKick();
+      if (this.phase === 'kick') return this.kickTap(p);
       if (this.phase !== 'live') return;
       if (this.passing()) this.aim = { sx: p.x, sy: p.y, cx: p.x, cy: p.y };
       else this.gesture = { x: p.x, y: p.y, t: performance.now(), done: false };
     }
     pMove(e) {
       const p = this.pos(e);
+      if (this.kaim) { this.kaim.cx = p.x; this.kaim.cy = p.y; return; }
       if (this.aim) { this.aim.cx = p.x; this.aim.cy = p.y; return; }
       const g = this.gesture;
       if (!g || g.done) return;
@@ -201,6 +206,7 @@
       else if (Math.abs(dx) > 22 && Math.abs(dx) > Math.abs(dy) * 1.2) { g.done = true; dx > 0 ? this.lunge() : this.hesitate(); }
     }
     pUp() {
+      if (this.kaim) return this.kickRelease();
       if (this.aim && this.phase === 'live' && this.passing()) {
         const a = this.aim, dx = a.cx - a.sx, dy = a.cy - a.sy;
         if (dx > 30 && dx > Math.abs(dy)) this.tuck();          // swiped toward the end zone: run it
@@ -258,7 +264,7 @@
       if (down && !e.repeat) {
         if (k === ' ') {
           if (this.phase === 'presnap') this.snap();
-          else if (this.phase === 'kick') this.doKick();
+          else if (this.phase === 'kick') { if (this.kick.stage === 'set') this.kick.stage = 'aim'; else this.doKick(); }
           else this.lastTap = performance.now();       // space then up/down = juke
         } else if (k === 'arrowright' || k === 'd') {
           if (this.passing()) this.tuck(); else this.lunge();
@@ -341,7 +347,7 @@
       if (this.down === 4) {
         const fg = Math.round(110 - this.los + 17), desperate = this.q >= 4 && this.clock < 120 && diff < 0 && diff >= -8;
         if (desperate || (togo <= 1 && this.los >= 55)) call.kick = null;
-        else if (fg <= 52) call.kick = 'fg';
+        else if (fg <= this.kickRange - 1) call.kick = 'fg';
         else if (this.los < 75) call.kick = 'punt';
       }
       return call;
@@ -361,7 +367,7 @@
       const opts = PLAYS.map((p) => ({ label: p.name, sub: p.desc, rec: !call.kick && call.play === p, fn: () => this.pickPlay(p) }));
       if (this.down === 4) {
         const dist = Math.round(110 - this.los + 17);
-        if (dist <= 57) opts.push({ label: `Field Goal`, sub: `${dist} yards`, kick: true, rec: call.kick === 'fg', fn: () => this.startKick('fg') });
+        if (dist <= this.kickRange + 8) opts.push({ label: `Field Goal`, sub: `${dist} yds · range ${this.kickRange}`, kick: true, rec: call.kick === 'fg', fn: () => this.startKick('fg') });
         opts.push({ label: 'Punt', sub: 'Flip the field', kick: true, rec: call.kick === 'punt', fn: () => this.punt() });
       }
       this.showPanel(title, '', opts);
@@ -848,26 +854,67 @@
     }
 
     // ---------- kicking ----------
+    // ---------- kicking ----------
+    // Stages: 'set' (tap to start) -> 'aim' (drag back like a pass; reach limited by kick distance)
+    // -> 'meter' (accuracy sets the green zone and marker speed) -> 'flight' -> result.
     startKick(type) {
-      const dist = type === 'pat' ? 33 : Math.round(110 - this.los + 17);
-      const tol = clamp(0.26 - (dist - 20) * 0.005 + (this.cfg.roster.K.ovr - 70) * 0.003, 0.05, 0.4);
-      this.kick = { type, dist, tol, pos: 0, dir: 1, done: false };
-      this.phase = 'kick';
+      if (type === 'pat') { this.los = 95; this.fdx = 110; }
+      const dist = Math.round(127 - this.los);                 // spot of the hold to the uprights
+      const acc = this.ks.acc, u = clamp((acc - 40) / 59, 0, 1);
+      const tol = clamp(0.02 + u * 0.08 - (dist - 20) * 0.0012, 0.02, 0.1);   // half-width of the green zone
+      this.kick = { type, dist, tol, speed: 1.1 + (1 - u) * 1.1, pos: 0, dir: 1, stage: 'set', sx: 120 - dist, sy: MID, target: null };
+      this.phase = 'kick'; this.kaim = null;
+    }
+    kickTap(p) {
+      const k = this.kick; if (!k) return;
+      if (k.stage === 'set') k.stage = 'aim';
+      else if (k.stage === 'aim') this.kaim = { sx: p.x, sy: p.y, cx: p.x, cy: p.y };
+      else if (k.stage === 'meter') this.doKick();
+    }
+    kickAimTarget() {
+      const a = this.kaim, k = this.kick;
+      let vx = ((a.sx - a.cx) / PPY) * 2.2, vy = ((a.sy - a.cy) / PPY) * 2.2;
+      const d = hyp(vx, vy);
+      if (d > this.kickRange) { vx *= this.kickRange / d; vy *= this.kickRange / d; }
+      return { x: k.sx + vx, y: k.sy + vy };
+    }
+    kickRelease() {
+      const a = this.kaim, k = this.kick;
+      if (!a || hyp(a.cx - a.sx, a.cy - a.sy) < 14 || k.stage !== 'aim') { this.kaim = null; return; }
+      k.target = this.kickAimTarget(); this.kaim = null;          // read the aim before clearing it
+      k.stage = 'meter'; k.pos = 0; k.dir = 1;
     }
     doKick() {
-      const k = this.kick; if (!k || k.done) return;
-      k.done = true;
-      const good = Math.abs(k.pos - 0.5) <= k.tol;
-      if (k.type === 'pat') {
-        if (good) this.score.me += 1;
-        this.endPlay(good ? 'Extra point is GOOD' : 'Extra point NO GOOD', () => this.checkClock(() => this.oppDrive(75, 'You kick off.')));
-      } else if (good) {
-        this.score.me += 3;
-        this.endPlay(`${k.dist}-yard field goal is GOOD`, () => this.checkClock(() => this.oppDrive(75, 'You kick off.')));
-      } else {
-        const dist = this.los - 10;
-        this.endPlay('Field goal NO GOOD', () => this.checkClock(() => this.oppDrive(dist, 'They take over after the miss.')));
+      const k = this.kick; if (!k || k.stage !== 'meter') return;
+      // inside the green: exactly where you aimed. Outside it: pushed left or right, more for a bigger miss and a longer kick.
+      const off = k.pos - 0.5, miss = Math.max(0, Math.abs(off) - k.tol);
+      const dev = Math.sign(off) * miss * k.dist * 0.9;
+      const t = k.target, dx = t.x - k.sx, reach = hyp(dx, t.y - k.sy), toPosts = 120 - k.sx;
+      let res;
+      if (dx <= 0.5) res = { good: false, why: 'short', ex: t.x, ey: t.y + dev };
+      else {
+        const yAt = k.sy + (t.y - k.sy) * (toPosts / dx) + dev, need = hyp(toPosts, yAt - k.sy);
+        if (reach < need) res = { good: false, why: 'short', ex: k.sx + dx, ey: t.y + dev * (dx / toPosts) };
+        else res = { good: Math.abs(yAt - MID) <= 3.1, why: yAt < MID ? 'wide left' : 'wide right', ex: 121.5, ey: yAt + (yAt - k.sy) * (1.5 / toPosts) };
       }
+      k.res = res; k.stage = 'flight';
+      const d = hyp(res.ex - k.sx, res.ey - k.sy);
+      this.ball = { state: 'air', sx: k.sx, sy: k.sy, tx: res.ex, ty: res.ey, u: 0, dur: 0.7 + d / 45, t0: 0, dist: d * 1.3 };
+    }
+    kickResult() {
+      const k = this.kick, r = k.res; this.ball = { state: 'held' };
+      const after = () => this.checkClock(() => this.oppDrive(75, 'You kick off.'));
+      if (k.type === 'pat') {
+        if (r.good) this.score.me += 1;
+        this.endPlay(r.good ? 'Extra point is GOOD' : `Extra point NO GOOD (${r.why})`, after);
+      } else if (r.good) {
+        this.score.me += 3;
+        this.endPlay(`${k.dist}-yard field goal is GOOD`, after);
+      } else {
+        const dist = Math.max(this.los - 10, 20);
+        this.endPlay(`Field goal NO GOOD (${r.why})`, () => this.checkClock(() => this.oppDrive(dist, 'They take over after the miss.')));
+      }
+      this.kick = null;
     }
     punt() {
       const dist = Math.min(this.los + rnd(34, 46), 90) - 10;
@@ -938,8 +985,13 @@
         if ((this.deadT -= dt) <= 0) { const f = this.after; this.after = null; f(); }
       } else if (this.phase === 'kick') {
         const k = this.kick;
-        k.pos += k.dir * dt * 1.25;
-        if (k.pos > 1) { k.pos = 1; k.dir = -1; } else if (k.pos < 0) { k.pos = 0; k.dir = 1; }
+        if (k.stage === 'meter') {
+          k.pos += k.dir * dt * k.speed;
+          if (k.pos > 1) { k.pos = 1; k.dir = -1; } else if (k.pos < 0) { k.pos = 0; k.dir = 1; }
+        } else if (k.stage === 'flight') {
+          this.ball.u += dt / this.ball.dur;
+          if (this.ball.u >= 1) this.kickResult();
+        }
       }
       // camera
       let fx = this.los;
@@ -948,7 +1000,8 @@
         if (b.state === 'air' || b.state === 'dead') fx = b.sx + (b.tx - b.sx) * Math.min(1, b.u);
         else if (this.carrier) fx = this.carrier.x;
       }
-      const target = clamp(fx - VIEW * 0.36, -3, 123 - VIEW);
+      let target = clamp(fx - VIEW * 0.36, -3, 123 - VIEW);
+      if (this.phase === 'kick') target = 123 - VIEW;          // keep the uprights in view for a kick
       this.camX += (target - this.camX) * Math.min(1, dt * 5);
       this.hud(); this.chip(); this.placePause();
     }
@@ -1061,7 +1114,8 @@
 
       if (this.phase === 'presnap') this.hint('TAP THE FIELD TO SNAP');
       else if (this.phase === 'live' && this.passing() && !this.aim) this.hint('DRAG BACK TO THROW · SWIPE TOWARD THE END ZONE TO RUN');
-      else if (this.phase === 'kick' && !this.kick.done) this.hint('TAP WHEN THE MARKER IS IN THE GREEN');
+      else if (this.phase === 'kick' && this.kick) this.hint({ set: 'TAP THE FIELD TO START THE KICK', aim: 'DRAG BACK TO AIM · RELEASE TO KICK',
+        meter: 'TAP WHEN THE MARKER IS IN THE GREEN', flight: '' }[this.kick.stage] || '');
       else if (this.phase === 'live' && this.running(this.carrier)) this.hint(`UP/DOWN: CUT · TAP+SWIPE: JUKE · FORWARD: ${this.carrier === this.qb ? 'SLIDE' : 'LUNGE'} · BACK: STOP`);
       if (this.popup && this.carrier) {
         const c = this.carrier, w = Px.width(this.popup.text);
@@ -1145,12 +1199,31 @@
       Px.dots(g, a.sx / 2, a.sy / 2, a.cx / 2, a.cy / 2, 'rgba(255,255,255,.55)', 4);
     }
     drawKick() {
-      const g = this.ag, Px = GP.Pixel, k = this.kick, bw = 210, bx = Math.round(AW / 2 - bw / 2), by = AH - 52;
-      Px.box(g, bx - 10, by - 20, bw + 20, 44, '#10182a', '#3a455c');
-      Px.text(g, k.type === 'pat' ? 'EXTRA POINT' : `${k.dist}-YARD FIELD GOAL`, AW / 2, by - 14, '#ffffff', 1, { center: true });
-      g.fillStyle = '#3a455c'; g.fillRect(bx, by, bw, 12);
-      g.fillStyle = '#4fd18b'; g.fillRect(bx + Math.round((0.5 - k.tol) * bw), by, Math.round(k.tol * 2 * bw), 12);
-      g.fillStyle = '#ffffff'; g.fillRect(bx + Math.round(k.pos * bw) - 1, by - 3, 3, 18);
+      const g = this.ag, Px = GP.Pixel, k = this.kick, X0 = this.ax(k.sx), Y0 = this.ay(k.sy);
+      const title = `${k.type === 'pat' ? 'EXTRA POINT' : k.dist + '-YARD FIELD GOAL'} · RANGE ${this.kickRange}`;
+      Px.box(g, Math.round(AW / 2 - Px.width(title) / 2) - 6, 18, Px.width(title) + 12, 12, 'rgba(16,24,42,.85)');
+      Px.text(g, title, AW / 2, 21, k.dist > this.kickRange ? '#ff8a5c' : '#ffffff', 1, { center: true });
+      // the hold spot and the uprights
+      g.fillStyle = '#ffd84a'; g.fillRect(X0 - 1, Y0 - 1, 3, 3);
+      const aimLine = (t, col) => {
+        const X1 = this.ax(t.x), Y1 = this.ay(t.y), n = Math.max(5, Math.floor(hyp(X1 - X0, Y1 - Y0) / 5)), peak = hyp(t.x - k.sx, t.y - k.sy) * YA * 0.14;
+        g.fillStyle = col;
+        for (let i = 1; i < n; i++) { const u = i / n; g.fillRect(Math.round(X0 + (X1 - X0) * u), Math.round(Y0 + (Y1 - Y0) * u - 4 * peak * u * (1 - u)), 2, 2); }
+        Px.ring(g, X1, Y1, 6, 6, '#ffd84a'); Px.ring(g, X1, Y1, 5, 5, '#ffd84a');
+      };
+      if (k.stage === 'aim') {
+        // the kicker's reach, drawn as an arc around the hold spot
+        Px.ring(g, X0, Y0, Math.round(this.kickRange * YA), Math.round(this.kickRange * YA), 'rgba(255,255,255,.35)');
+        if (this.kaim) { aimLine(this.kickAimTarget(), '#ffffff'); const a = this.kaim; Px.dots(g, a.sx / 2, a.sy / 2, a.cx / 2, a.cy / 2, 'rgba(255,255,255,.55)', 4); }
+      }
+      if (k.stage === 'meter') {
+        aimLine(k.target, 'rgba(255,255,255,.6)');
+        const bw = 210, bx = Math.round(AW / 2 - bw / 2), by = AH - 52;
+        Px.box(g, bx - 10, by - 12, bw + 20, 34, '#10182a', '#3a455c');
+        g.fillStyle = '#3a455c'; g.fillRect(bx, by, bw, 12);
+        g.fillStyle = '#4fd18b'; g.fillRect(bx + Math.round((0.5 - k.tol) * bw), by, Math.max(2, Math.round(k.tol * 2 * bw)), 12);
+        g.fillStyle = '#ffffff'; g.fillRect(bx + Math.round(k.pos * bw) - 1, by - 3, 3, 18);
+      }
     }
   }
 

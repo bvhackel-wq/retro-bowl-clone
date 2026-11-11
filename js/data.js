@@ -107,6 +107,9 @@
     ['agi', 'Agility', 'Sharper route cuts and jukes after the catch'], ['sta', 'Stamina', 'How little he slows on deep routes and long runs'],
     ['pow', 'Strength', 'Contested catches, breaking tackles, falling forward']];
   GP.STATS.WR = GP.STATS.WR1;
+  GP.STATS.K = [
+    ['leg', 'Kick distance', 'How far he can aim: 30 yards at 40, about 45 at 70, 60 at 99'],
+    ['acc', 'Kick accuracy', 'Size of the green zone on the kick meter, and how slowly the marker moves']];
   GP.STATS.OL = [
     ['pow', 'Strength', 'Holding his ground: a weak lineman gets driven back into the quarterback'],
     ['pblk', 'Pass block', 'How long he holds his man on pass plays'],
@@ -114,7 +117,7 @@
     ['spd', 'Speed', 'Getting into position; a faster rusher beats a slow lineman around the edge'],
     ['sta', 'Stamina', 'How slowly his blocking fades over a long drive']];
   GP.statsFor = (key) => GP.STATS[key] || [['ovr', 'Overall', '']];
-  GP.derived = (key) => ['QB', 'RB', 'WR', 'WR1', 'WR2', 'TE', 'OL'].includes(key);   // overall is computed from the stats
+  GP.derived = (key) => ['QB', 'RB', 'WR', 'WR1', 'WR2', 'TE', 'OL', 'K'].includes(key);   // overall is computed from the stats
 
   // The roster: up to 12 players at these positions (three linemen start). The defense is a team-wide unit.
   GP.ROSTER_MAX = 12;
@@ -134,6 +137,7 @@
         : key === 'RB' ? t.spd * 0.3 + t.pow * 0.25 + t.agi * 0.2 + t.sta * 0.15 + t.hands * 0.1
         : key === 'TE' ? t.hands * 0.3 + t.blk * 0.25 + t.pow * 0.2 + t.spd * 0.15 + t.sta * 0.1
         : key === 'OL' ? t.pblk * 0.3 + t.rblk * 0.3 + t.pow * 0.2 + t.spd * 0.1 + t.sta * 0.1
+        : key === 'K' ? (t.leg + t.acc) / 2
         : t.hands * 0.3 + t.spd * 0.3 + t.agi * 0.15 + t.sta * 0.15 + t.pow * 0.1);
     } else r.ovr = r.stats.ovr;
     if (r.stats.agi != null) r.agi = r.stats.agi;

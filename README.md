@@ -35,7 +35,12 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
   much less) and both players' speed. Tackled runners fall forward up to about 2.5 yards. Big
   head-on hits fumble about 1-2% of the time, and the defense recovers 60% of those. The box
   score lists broken tackles, yards after contact, fumbles lost and the opponent's top tacklers.
-- **4th down:** go for it, punt, or kick a field goal. Kicks use a timing meter (tap or space).
+- **4th down:** go for it, punt, or kick a field goal.
+- **Kicking:** tap the field to start the kick, drag back to aim (like a pass), and release to open the
+  timing meter. Kick distance sets how far you can aim: 30 yards at 40, about 45 at 70, 60 at 99 (a kick
+  from the 40). Kick accuracy sets the green zone (about 4% of the bar for a weak kicker, 15-20% for a
+  maxed one) and how fast the marker moves. Stopping in the green sends the ball where you aimed;
+  stopping outside it pushes the kick left or right, more for a bigger miss and a longer kick.
 - **Read the defense.** The play-call strip sits under the field so you can see the alignment
   before you choose. The defense mixes five calls:
   - *Man* — corners 6 yards off, one deep safety. Beat it with crossing routes and speed mismatches.
