@@ -264,10 +264,11 @@
     setupFormation() {
       const L = this.los, r = this.cfg.roster, d = this.cfg.oppDef, M = (...a) => this.mk(...a);
       const wr = (o) => 6.6 + (o - 60) * 0.035;
-      this.qb = M('O', 'QB', L - 5, MID, 5.5); this.qb.agi = this.qbs.agi;
+      this.qb = M('O', 'QB', L - 5, MID, 5.5); this.qb.agi = this.qbs.agi; this.qb.sta = this.qbs.sta;
       // on a run the back sets up in the off-tackle gap, so running straight hits a lane, not a lineman
-      const rb = M('O', 'RB', L - 5, MID + (this.play && this.play.type === 'run' ? 4.4 : 3), wr(r.RB.ovr) + 0.1); rb.ovr = r.RB.ovr;
-      rb.agi = r.RB.agi != null ? r.RB.agi : 65;
+      const rs = r.RB.stats || {}, rv = (k) => (rs[k] != null ? rs[k] : r.RB.ovr);
+      const rb = M('O', 'RB', L - 5, MID + (this.play && this.play.type === 'run' ? 4.4 : 3), wr(rv('spd')) + 0.1); rb.ovr = r.RB.ovr;
+      rb.agi = rv('agi'); rb.hands = rv('hands'); rb.pow = rv('pow'); rb.sta = rv('sta');
       const w1 = M('O', 'WR1', L - 0.6, 3, wr(r.WR1.ovr)); w1.ovr = r.WR1.ovr; w1.agi = 66;
       const w2 = M('O', 'WR2', L - 0.6, FW - 3, wr(r.WR2.ovr)); w2.ovr = r.WR2.ovr; w2.agi = 66;
       const te = M('O', 'TE', L - 0.6, MID - 7, 6.2 + (r.TE.ovr - 60) * 0.03); te.ovr = r.TE.ovr + 6; te.agi = 55;
@@ -494,7 +495,7 @@
       const cs = hyp(c.vx, c.vy) || 0.01, ds = hyp(d.vx, d.vy);
       const dist = hyp(d.x - c.x, d.y - c.y) || 0.01;
       const angle = (c.vx * (d.x - c.x) + c.vy * (d.y - c.y)) / (cs * dist);
-      const power = (c.ovr || 65) + (c.role === 'TE' ? 6 : c.role === 'QB' ? -6 : 0);
+      const power = c.pow != null ? c.pow : (c.ovr || 65) + (c.role === 'TE' ? 6 : c.role === 'QB' ? -6 : 0);
       let p = 0.72 + (d.info.tkl - 70) * 0.012 - (power - 65) * 0.01;
       p += angle * 0.18;                                    // head-on +0.18, from behind -0.18
       p += Math.min(ds / 7, 1) * 0.06;                      // defender arriving at speed
@@ -541,6 +542,12 @@
     steerRunner(p, dt) {
       const k = this.keys;
       let dy = 0, sp = p.spd * 0.97, acc = 10;       // a touch slower with the ball
+      // stamina: after 3s with the ball he starts to fade, slowly if he has stamina (at most 10% slower)
+      p.carryT = (p.carryT || 0) + dt;
+      const rate = Math.max(0.004, 0.05 - ((p.sta != null ? p.sta : 70) - 50) * 0.001);
+      const fade = clamp((p.carryT - 3) * rate, 0, 0.1);
+      if (fade > 0.06 && !p.tired) { p.tired = true; this.pop('Running out of gas…', '#ffb43a'); }
+      sp *= 1 - fade;
       if (p.jukeCd > 0) p.jukeCd -= dt;
       const j = p.juke;
       if (j && j.t > -JUKE_RECOVER) {
@@ -568,7 +575,7 @@
       if (oob) return this.incomplete('Out of bounds — incomplete');
       if (d && (!o || dd < od) && Math.random() < (o ? 0.22 : 0.35)) return this.intercepted(b.tx);
       if (!o) return this.incomplete(d ? 'Broken up' : 'Incomplete');
-      let pc = 0.8 + (o.ovr - 60) * 0.004 - (od / 1.9) * 0.15;
+      let pc = 0.8 + ((o.hands != null ? o.hands : o.ovr) - 60) * 0.004 - (od / 1.9) * 0.15;   // a back's catching stat
       if (d) pc -= 0.4 * (1 - dd / 1.7);
       if (Math.random() > pc) return this.incomplete(d ? 'Broken up' : 'Dropped');
       // caught

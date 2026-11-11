@@ -46,7 +46,7 @@
 
   GP.POS = [
     { key: 'QB', label: 'Quarterback', desc: 'Throw range and accuracy' },
-    { key: 'RB', label: 'Running Back', desc: 'Speed and power · Agility: jukes' },
+    { key: 'RB', label: 'Running Back', desc: 'Speed, agility, catching, power, stamina' },
     { key: 'WR1', label: 'Wide Receiver', desc: 'Speed and hands' },
     { key: 'WR2', label: 'Wide Receiver', desc: 'Speed and hands' },
     { key: 'TE', label: 'Tight End', desc: 'Hands and power' },
@@ -91,10 +91,12 @@
     QB: [['arm', 'Arm strength', 'How far and how fast he throws'], ['acc', 'Accuracy', 'How close throws land to the target'],
          ['spd', 'Speed', 'Scrambling speed'], ['agi', 'Agility', 'Juke window and recovery when scrambling'],
          ['sta', 'Stamina', 'How slowly he tires during a drive']],
-    RB: [['ovr', 'Overall', ''], ['agi', 'Agility', 'Juke window, recovery, beating tacklers']],
+    RB: [['spd', 'Speed', 'Top running speed'], ['agi', 'Agility', 'Juke window, recovery, beating tacklers'],
+         ['hands', 'Catching', 'How reliably he catches passes'], ['pow', 'Power', 'Breaking tackles, falling forward, holding on to the ball'],
+         ['sta', 'Stamina', 'How little he slows down on long runs']],
   };
   GP.statsFor = (key) => GP.STATS[key] || [['ovr', 'Overall', '']];
-  GP.derived = (key) => key === 'QB';               // overall is computed from the stats
+  GP.derived = (key) => key === 'QB' || key === 'RB';   // overall is computed from the stats
   const PHYSICAL = { spd: 1, agi: 1, sta: 1 };      // fade from 29; skills (and overall) from 31
 
   // Stars (0-5, fixed for life) set the general level of a player's caps; each stat gets its own cap
@@ -103,7 +105,9 @@
   GP.refresh = function (r, key) {
     if (GP.derived(key)) {
       const t = r.stats;
-      r.ovr = Math.round(t.arm * 0.3 + t.acc * 0.35 + t.spd * 0.1 + t.agi * 0.05 + t.sta * 0.2);
+      r.ovr = Math.round(key === 'QB'
+        ? t.arm * 0.3 + t.acc * 0.35 + t.spd * 0.1 + t.agi * 0.05 + t.sta * 0.2
+        : t.spd * 0.3 + t.pow * 0.25 + t.agi * 0.2 + t.sta * 0.15 + t.hands * 0.1);
     } else r.ovr = r.stats.ovr;
     if (r.stats.agi != null) r.agi = r.stats.agi;
     return r;
@@ -130,6 +134,22 @@
     }
     GP.refresh(r, key);
     return true;
+  }
+
+  // A position that gained stats since the save was made: fill the new ones from his old overall
+  // (each with a cap at least as high), and drop the old overall stat if it is now derived.
+  function addMissingStats(r, key) {
+    let changed = false;
+    const base = r.stats.ovr != null ? r.stats.ovr : r.ovr, baseCap = r.caps.ovr != null ? r.caps.ovr : GP.capLevel(r.stars);
+    for (const [k] of GP.statsFor(key)) {
+      if (r.stats[k] != null) continue;
+      const v = GP.clamp(base + GP.rint(-6, 6), 35, 99);
+      r.stats[k] = v; r.caps[k] = GP.clamp(Math.max(Math.round(baseCap + GP.rnd(-5, 5)), v), v, 99);
+      changed = true;
+    }
+    if (GP.derived(key) && r.stats.ovr != null) { delete r.stats.ovr; delete r.caps.ovr; changed = true; }
+    if (changed) GP.refresh(r, key);
+    return changed;
   }
 
   GP.newCareer = function (teamId) {
@@ -302,6 +322,7 @@
       // saves from before stars and per-stat caps
       let changed = false;
       for (const p of GP.POS) changed = migratePlayer(s.roster[p.key], p.key) || changed;
+      for (const p of GP.POS) changed = addMissingStats(s.roster[p.key], p.key) || changed;
       if (changed) { GP.syncUser(s); GP.save(s); }
       return s;
     } catch (e) { return null; }

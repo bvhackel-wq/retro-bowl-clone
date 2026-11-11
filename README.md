@@ -21,8 +21,7 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
 - **Juke:** tap, then swipe (keyboard: space, then up/down). For a third of a second the runner
   slips any tackle; time it just before contact. A juke into empty space costs speed, and there is a
   short cooldown, so spamming it gains less than running straight.
-- **Agility (AGI):** running backs have an agility rating, upgraded separately from overall. It
-  lengthens the juke window, shortens the recovery between jukes, and is matched against the
+- **Agility (AGI):** a running back's agility lengthens the juke window, shortens the recovery between jukes, and is matched against the
   tackler's TKL when a juke connects: an even matchup works 75% of the time, an agile back against
   a poor tackler almost always. Agility rises until about 25 and fades from 29. Receivers (66),
   tight ends (55) and quarterbacks (50) juke with fixed agility.
@@ -48,6 +47,10 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
   speed (scramble pace), agility (juking on scrambles) and stamina. His overall is computed from
   these. Every snap drains his energy, faster with low stamina: a tired QB throws shorter and less
   accurately and scrambles slower. The bar over his head shows it; he is fresh each new drive.
+- **Running back stats:** speed (top speed), agility (jukes), catching (passes thrown to him),
+  power (breaking tackles, falling forward, ball security) and stamina. After about three seconds
+  with the ball he starts to slow, up to 10% on a long run; high stamina barely fades. His overall
+  is computed from these.
 - **Franchise:** 32 teams in two conferences (American, National), each with four divisions of four.
   14-game season: 6 division games, 4 against another division in your conference, 4 against a
   division in the other conference (pairings rotate each season). Six teams per conference make
