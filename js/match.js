@@ -73,15 +73,15 @@
   // what each play gains against each coverage, relative to that coverage's average (measured in testing);
   // the offensive coordinator uses it to read the defense
   let OC_FIT = {
-    cover0: { slants: 1, verts: -2, post: -2, curls: 1, run: 2, outs: 3, stick: 4, dagger: -2, comeback: -3, dive: 0, toss_r: 4, toss_l: 1, rb_screen: 0, wr_screen: -1, pa_post: -2, pa_cross: -2, pa_shot: -3 },
-    cover1: { slants: 0, verts: 4, post: 1, curls: -1, run: -1, outs: -3, stick: 2, dagger: 0, comeback: -2, dive: -1, toss_r: 1, toss_l: 0, rb_screen: -1, wr_screen: -2, pa_post: 0, pa_cross: -1, pa_shot: 3 },
-    cover1p: { slants: 0, verts: 3, post: 1, curls: -1, run: 0, outs: -3, stick: 2, dagger: 0, comeback: -2, dive: -1, toss_r: 0, toss_l: 0, rb_screen: -1, wr_screen: -2, pa_post: 0, pa_cross: -1, pa_shot: 3 },
-    cover2: { slants: 1, verts: 2, post: -1, curls: 2, run: -1, outs: -1, stick: 1, dagger: 2, comeback: 2, dive: -1, toss_r: -1, toss_l: -1, rb_screen: -2, wr_screen: -4, pa_post: 2, pa_cross: 0, pa_shot: 2 },
-    cover3: { slants: -1, verts: 1, post: 2, curls: 1, run: -1, outs: -3, stick: 1, dagger: 2, comeback: 1, dive: -1, toss_r: -1, toss_l: -1, rb_screen: -2, wr_screen: -2, pa_post: 1, pa_cross: 0, pa_shot: 2 },
-    cover4: { slants: -1, verts: 1, post: 1, curls: 1, run: -1, outs: -2, stick: 1, dagger: 1, comeback: 2, dive: -1, toss_r: -1, toss_l: -1, rb_screen: -1, wr_screen: -1, pa_post: 2, pa_cross: 0, pa_shot: 2 },
-    '2man': { slants: -1, verts: 2, post: 1, curls: 0, run: 0, outs: -2, stick: 2, dagger: 2, comeback: -2, dive: 0, toss_r: 0, toss_l: 0, rb_screen: -1, wr_screen: -2, pa_post: 0, pa_cross: 0, pa_shot: 3 },
-    firezone: { slants: -1, verts: 2, post: 2, curls: 1, run: -1, outs: -3, stick: 1, dagger: 2, comeback: 1, dive: -2, toss_r: -1, toss_l: -2, rb_screen: -1, wr_screen: -1, pa_post: 1, pa_cross: 0, pa_shot: 1 },
-    prevent: { slants: 0, verts: 1, post: 1, curls: 1, run: -1, outs: -2, stick: 1, dagger: 1, comeback: 1, dive: -1, toss_r: -1, toss_l: -1, rb_screen: -1, wr_screen: -1, pa_post: 1, pa_cross: 0, pa_shot: 1 },
+    cover0: { slants: 1, verts: -1, post: -1, curls: 2, run: 0, outs: 0, stick: 4, dagger: -2, comeback: -2, dive: 0, toss_r: 0, toss_l: 1, rb_screen: 1, wr_screen: 0, pa_post: -2, pa_cross: -1, pa_shot: -2 },
+    cover1: { slants: 1, verts: 4, post: 1, curls: 0, run: -2, outs: -2, stick: 3, dagger: 1, comeback: -2, dive: -2, toss_r: -1, toss_l: -1, rb_screen: -1, wr_screen: -2, pa_post: 1, pa_cross: 0, pa_shot: 4 },
+    cover1p: { slants: 1, verts: 4, post: 1, curls: -1, run: -2, outs: -2, stick: 3, dagger: 0, comeback: -2, dive: -2, toss_r: -1, toss_l: -1, rb_screen: -1, wr_screen: -1, pa_post: 0, pa_cross: 0, pa_shot: 4 },
+    cover2: { slants: 1, verts: 2, post: -1, curls: 2, run: -1, outs: 0, stick: 2, dagger: 2, comeback: 2, dive: -1, toss_r: -1, toss_l: -1, rb_screen: -3, wr_screen: -4, pa_post: 3, pa_cross: -1, pa_shot: 1 },
+    cover3: { slants: -1, verts: 2, post: 2, curls: 1, run: -1, outs: -3, stick: 1, dagger: 2, comeback: 2, dive: -1, toss_r: -2, toss_l: -2, rb_screen: -2, wr_screen: -1, pa_post: 2, pa_cross: 0, pa_shot: 2 },
+    cover4: { slants: -1, verts: 1, post: 1, curls: 1, run: -1, outs: -2, stick: 1, dagger: 1, comeback: 2, dive: -1, toss_r: -1, toss_l: -1, rb_screen: -1, wr_screen: -1, pa_post: 1, pa_cross: 0, pa_shot: 2 },
+    '2man': { slants: -1, verts: 2, post: 1, curls: 0, run: 0, outs: -2, stick: 2, dagger: 1, comeback: -2, dive: 1, toss_r: 0, toss_l: -1, rb_screen: -1, wr_screen: -2, pa_post: 0, pa_cross: 0, pa_shot: 3 },
+    firezone: { slants: -1, verts: 1, post: 2, curls: 1, run: -1, outs: -3, stick: 1, dagger: 2, comeback: 2, dive: -2, toss_r: -2, toss_l: -2, rb_screen: -2, wr_screen: -1, pa_post: 1, pa_cross: 0, pa_shot: 2 },
+    prevent: { slants: 0, verts: 1, post: 1, curls: 1, run: -1, outs: -2, stick: 1, dagger: 1, comeback: 1, dive: -1, toss_r: -1, toss_l: -1, rb_screen: -1, wr_screen: 0, pa_post: 1, pa_cross: 0, pa_shot: 1 },
   };
   const COVER_ALIAS = { man: 'cover1', press: 'cover1p', blitz: 'cover0' };   // older names
   const coverKey = (t) => COVER_ALIAS[t] || t;
@@ -458,14 +458,15 @@
     snap() {
       // on runs the second level reacts a beat late; linemen's hold times are already set by run blocking
       // deep defenders guard against the pass first, so they read the run late
-      // defensive backs in man watch their receiver, not the backfield, so they find the run late too
+      // defensive backs in man watch their receiver, not the backfield, so they find the run late too;
+      // linebackers in man play pass first and are a step slow to fill
       if (this.play.type === 'run') for (const d of this.def) {
         if (d.role !== 'DL') d.shed *= 1.7;
         // safeties: with one high, he's the run-support player and comes fast (the rotated-down safety of a real
         // one-high shell); with two high, both read pass first and come late, which is why you run against them
         const twoHigh = TWO_HIGH[this.dcall.type];
         d.react = (d.react || 0) + 0.25 + (d.role === 'S' && d.job === 'deep' ? (twoHigh ? 1.1 : 0.1) : d.job === 'deep' ? 0.6 : d.job === 'zone' && d.anchor && d.anchor[0] - this.los >= 8 ? 0.3
-          : d.job === 'man' && d.role !== 'LB' && d.mark && d.mark.role !== 'RB' ? 0.45 : 0);
+          : d.job === 'man' && d.role !== 'LB' && d.mark && d.mark.role !== 'RB' ? 0.45 : d.job === 'man' ? 0.35 : 0);
       }
       // a man defender whose man stays in to block drops into the hole over the middle (where slants are caught)
       for (const d of this.def) if (d.job === 'man' && d.mark && d.mark.route && d.mark.route.block) {
@@ -514,19 +515,22 @@
         c.s2 = dl1;
         if (!reuse) { dl1.x = L + 11; dl1.y = MID + 5; }
       } else if (reuse && reuse.s2) { rush(dl1, 0.3); }                       // a "safety" who was a lineman comes on a blitz
+      // man defenders line up over their man (the tight end moves to the run side on runs)
+      const teSide = te.y < MID ? -1 : 1, rbSide = rb.y < MID ? -1 : 1;
       if (type === 'cover0') {         // pressure, man on every receiver, nobody deep
-        c.lb1 = D('lb1', 'LB', 4, MID - 5, lb, 0.2); rush(c.lb1, 0.4);
-        c.lb2 = D('lb2', 'LB', 4, MID + 4, lb, 0.2); man(c.lb2, rb);          // every eligible receiver has a man
+        // the blitzing linebacker comes off the tight end's edge and keeps the runner inside (contain)
+        c.lb1 = D('lb1', 'LB', 4, MID + teSide * 5, lb, 0.2); rush(c.lb1, 0.4); c.lb1.contain = teSide;
+        c.lb2 = D('lb2', 'LB', 4, MID + rbSide * 4, lb, 0.2); man(c.lb2, rb);  // every eligible receiver has a man
         c.c1 = D('c1', 'CB', 5, 3.5, db, 0.7); man(c.c1, w1, 1);
         c.c2 = D('c2', 'CB', 5, FW - 3.5, db, 0.7); man(c.c2, w2, 1);
-        c.s = D('s', 'S', 8, MID - 5, db, 0.5); man(c.s, te);
+        c.s = D('s', 'S', 7, te.y - teSide * 1, db, 0.5); man(c.s, te);
       } else if (type === 'cover1' || type === 'cover1p') {   // man free: one deep safety; press walks the corners up
         const off = type === 'cover1p' ? 1.6 : 6;
         const lev = type === 'cover1p' ? 1 : -1;
         c.c1 = D('c1', 'CB', off, 3.5, db, 0.7); man(c.c1, w1, lev);
         c.c2 = D('c2', 'CB', off, FW - 3.5, db, 0.7); man(c.c2, w2, lev);
-        c.lb1 = D('lb1', 'LB', 5, MID - 5, lb, 0.3); man(c.lb1, te);
-        c.lb2 = D('lb2', 'LB', 5, MID + 4, lb, 0.3); if (ctx.lbBlitz) rush(c.lb2, 0.2); else man(c.lb2, rb);
+        c.lb1 = D('lb1', 'LB', 5, te.y - teSide * 1.5, lb, 0.3); man(c.lb1, te);
+        c.lb2 = D('lb2', 'LB', 5, MID + rbSide * 4, lb, 0.3); if (ctx.lbBlitz) rush(c.lb2, 0.2); else man(c.lb2, rb);
         c.s = D('s', 'S', type === 'cover1p' ? 15 : 13, MID, db, 0.6); deep(c.s, 12, MID, 0, FW);
       } else if (type === 'cover2') {  // two safeties split the deep halves; the corners squat in the flats
         c.c1 = D('c1', 'CB', 4, 4, db, 0.7); zone(c.c1, 4, 4);
@@ -553,8 +557,8 @@
       } else if (type === '2man') {    // two deep halves, man underneath
         c.c1 = D('c1', 'CB', 3, 3.5, db, 0.7); man(c.c1, w1);
         c.c2 = D('c2', 'CB', 3, FW - 3.5, db, 0.7); man(c.c2, w2);
-        c.lb1 = D('lb1', 'LB', 5, MID - 5, lb, 0.3); man(c.lb1, te);
-        c.lb2 = D('lb2', 'LB', 5, MID + 4, lb, 0.3); man(c.lb2, rb);
+        c.lb1 = D('lb1', 'LB', 5, te.y - teSide * 1.5, lb, 0.3); man(c.lb1, te);
+        c.lb2 = D('lb2', 'LB', 5, MID + rbSide * 4, lb, 0.3); man(c.lb2, rb);
         c.s = D('s', 'S', 14, 10, db, 0.6); deep(c.s, 15, 10, 0, MID);
         deep(c.s2, 15, FW - 10, MID, FW);
         if (!reuse) { c.s2.x = L + 14; c.s2.y = FW - 10; }
@@ -758,6 +762,8 @@
       for (const o of this.off) {
         if (!o.blocking) continue;
         const line = o.role === 'OL' || (o.role === 'TE' && this.play.type === 'run');
+        // a lineman (or a run-blocking tight end) holds only the man he's blocking, not everyone near him
+        if (line && o.otarget !== d && o.btarget !== d && o.mark !== d) continue;
         if (hyp(o.x - d.x, o.y - d.y) < (line ? 1.5 : 1.2)) {
           if (line && o.role === 'OL') {
             const pass = this.play.type === 'pass';
@@ -831,6 +837,18 @@
       // (the line handles the defensive linemen; everyone else climbs to linebackers and safeties)
       const ok = (d) => d.stun <= 0 && d.eng < d.shed && (lineman || (d.role !== 'DL' && d.x > ref.x - 1));
       if (!lineman && p.btarget && ok(p.btarget)) return p.btarget;
+      // inside runs: the tight end blocks the man covering him (he lines up over him)
+      if (p.role === 'TE' && this.play.type === 'run' && !this.play.sweep && !p.btarget) {
+        const mine = this.def.find((d) => d.job === 'man' && d.mark === p && ok(d));
+        if (mine) { p.btarget = mine; return mine; }
+      }
+      // outside runs: the tight end kicks out the widest defender near the line on the run side (the edge man)
+      if (p.role === 'TE' && this.play.sweep && !p.btarget) {
+        const side = this.rb.sweep || 1; let edge = null;
+        for (const d of this.def) if (d.role !== 'DL' && d.x < this.los + 6 && ok(d) && Math.abs(d.y - p.y) < 6
+          && !(d.job === 'man' && d.mark && d.mark.role.startsWith('WR')) && (!edge || (d.y - edge.y) * side > 0)) edge = d;
+        if (edge && (edge.y - MID) * side > 0) { p.btarget = edge; return edge; }
+      }
       let best = null, bs = 1e9;
       // a lineman takes a man nobody else on the line has; with a spare lineman (a two-high shell has one fewer
       // down lineman), the spare climbs to a linebacker instead of doubling
@@ -885,6 +903,8 @@
           const lead = d.bust === 'run' ? Math.min(2, (hyp(ref.x - d.x, ref.y - d.y) / d.spd) * 1.6)   // busted: overruns it
             : Math.min(0.8, (hyp(ref.x - d.x, ref.y - d.y) / d.spd) * 0.6);
           tx = ref.x + ref.vx * lead; ty = ref.y + ref.vy * lead;
+          // contain: closing in, he stays outside the runner on his side so the runner can't get the edge; then he tackles
+          if (d.contain && (ref.y - MID) * d.contain > 0 && hyp(ref.x - d.x, ref.y - d.y) > 2.2) ty = d.contain > 0 ? Math.max(ty, ref.y + 1.2) : Math.min(ty, ref.y - 1.2);
         } else if (b.state === 'air' && this.ballReact(d, b)) {
           tx = b.tx; ty = b.ty;
         } else if (d.job === 'rush') { tx = qb.x; ty = qb.y; if (this.t < (d.delay || 0)) sp = 0; }

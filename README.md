@@ -67,6 +67,12 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
   plays from a 5-star defense under a 5-star coordinator, 1 every 2 from 0 stars under 0 stars. Every
   team's defensive coordinator has 0-5 stars, shown on the next-game card. A big catch a bust caused
   pops up as "Busted coverage!".
+- **Blocking is one-on-one.** A lineman holds only the man he's blocking, so the defense's numbers matter:
+  against a one-high man call (Cover 0, Cover 1, press) one defender near the line goes unblocked, and you
+  beat him with a juke or by throwing. Man defenders line up over their man, so the tight end's defender
+  follows him to the run side. In Cover 0 the blitzing linebacker comes off the tight end's edge and keeps
+  the runner inside; on outside runs the tight end kicks out the edge defender, and on inside runs he blocks
+  the man covering him. Cover 0 is a real all-out blitz: quick throws beat it, slow ones get sacked.
 - **Read the defense.** The opposing coordinator calls a coverage every snap from a nine-call playbook:
   Cover 0 (all-out blitz, nobody deep), Cover 1 and Cover 1 Press (man with one deep safety), Cover 2,
   Cover 3, Cover 4 (quarters), 2-Man (two deep, man under), Fire Zone (linebacker blitz, three deep, a
