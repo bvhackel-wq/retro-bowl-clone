@@ -147,7 +147,9 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
   defenders read a thrown ball sooner and from farther away the better they cover. Easy also throws
   straighter, tires less, gets more time and a bigger catch window; Hard makes defenders read throws faster.
   Choose the difficulty on the title screen; change it any time from the team page.
-- **Franchise:** 32 teams in two conferences (American, National), each with four divisions of four.
+- **Franchise:** 32 teams in two conferences (American, National), each with four divisions of four,
+  laid out like the NFL: the American Conference is the AFC and the National the NFC, every team plays in
+  its NFL counterpart's city and division, in that team's colors, with an original nickname.
   14-game season: 6 division games, 4 against another division in your conference, 4 against a
   division in the other conference (pairings rotate each season). Six teams per conference make
   the playoffs (four division winners plus two wild cards; top two seeds get a bye), then
