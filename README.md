@@ -47,8 +47,15 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
   the other team the ball at the spot. The kicker takes his steps and swings through on every kick.
 - **Punting:** the same three steps from 13 yards behind the line. Aim where it should land (reach 30
   yards at 40 kick distance up to about 60 at 99). A clean punt lands where you aimed; a shank falls
-  short and veers. Into the end zone is a touchback, over the sideline is spotted where it went out,
-  otherwise there's a short return (fair catch inside their 10).
+  short and veers. The punt meter's green zone is wider than a field goal's. Into the end zone is a
+  touchback, over the sideline is spotted where it went out. Otherwise the play runs out: your gunners
+  (held up a moment by jammers) and line cover downfield while the punter hangs back as the safety, the
+  return team drops into a wall, and the returner settles under it. If the coverage is close he calls a
+  fair catch; if not he returns it, picking a lane away from the coverage, with his blockers taking on
+  your cover men and missed tackles possible. Inside his 10, or if he can't get there, he lets it go:
+  the ball hops and rolls, with the odd bad hop sideways or back, until your coverage downs it, it dies,
+  rolls out of bounds or bounces into the end zone for a touchback. Hang time is set so the coverage
+  usually arrives close to the catch; a long line drive can outkick it.
 - **Playbook:** 18 plays in six types. Quick pass (Slants, Curls, Quick Outs, Stick), Deep pass
   (Verticals, Post & Cross, Dagger, Comebacks), Inside run (HB Off Tackle, HB Dive, HB Power: the backside guard pulls behind the line and leads
   through the hole onto the free linebacker, the answer to man coverage's extra man in the box), Outside run (Toss
