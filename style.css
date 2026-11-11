@@ -116,3 +116,11 @@ button.link:hover{color:var(--bad)}
 .prospect .ovr{font-weight:900;font-size:17px;text-align:right;min-width:58px}
 .draftlog{padding:4px 0;font-size:14px;color:var(--dim);border-bottom:1px solid var(--line)}
 .draftlog.me{color:var(--accent);font-weight:700}
+
+.tradecard{margin-top:10px;padding:10px 16px}
+.titem{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:7px 4px;border-bottom:1px solid var(--line);cursor:pointer;border-radius:6px}
+.titem.on{background:rgba(255,180,58,.12)}
+.titem input{width:18px;height:18px;accent-color:var(--accent)}
+.teampick{font:inherit;font-size:17px;font-weight:800;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:6px 8px;margin-top:4px;max-width:100%}
+.meterbox{min-width:220px}
+.bar.meter{height:8px;margin-top:6px}

@@ -228,6 +228,7 @@
   };
   GP.rec = (s, id) => s.teams.find((t) => t.id === id);
   const byRecord = (a, b) => b.w - a.w || (b.pf - b.pa) - (a.pf - a.pa);
+  GP.standings = (s) => s.teams.slice().sort(byRecord);   // whole league, best first
   GP.divStandings = (s, conf, div) =>
     s.teams.filter((t) => { const m = GP.team(t.id); return m.conf === conf && m.div === div; }).sort(byRecord);
   // Six seeds per conference: four division winners, then two wild cards.
@@ -301,6 +302,79 @@
     s.history.push({ season: s.season, w: me.w, l: me.l, note });
     GP.startDraft(s);
   }
+
+  // ---------- trades ----------
+  // Open in the offseason and during the regular season up to the deadline (after week 9 of 14).
+  // Each team offers three players on its trade block each season, plus its picks in the next draft.
+  GP.TRADE_DEADLINE = 9;
+  GP.tradeStatus = function (s) {
+    if (s.phase === 'offseason') return { open: true, note: 'Offseason — trades are open' };
+    if (s.phase === 'regular' && s.week < GP.TRADE_DEADLINE) {
+      const left = GP.TRADE_DEADLINE - s.week;
+      return { open: true, note: `Trade deadline after week ${GP.TRADE_DEADLINE} (${left} week${left === 1 ? '' : 's'} left)` };
+    }
+    return { open: false, note: s.phase === 'playoffs' ? 'Trades reopen after the season' : 'The trade deadline has passed' };
+  };
+  // the draft whose picks can be traded right now
+  GP.pickSeason = (s) => (s.phase === 'offseason' ? s.season + 1 : s.season);
+  GP.teamBlock = function (s, teamId) {
+    s.blocks = s.blocks || {};
+    if (!s.blocks[teamId]) {
+      const t = GP.rec(s, teamId), level = GP.clamp(Math.round(((t.off + t.def) / 2 - 58) / 6), 0, 5);
+      s.blocks[teamId] = [0, 1, 2].map(() => newPlayer(s, GP.pick(['QB', 'RB', 'WR', 'WR', 'TE', 'K']),
+        GP.clamp(level + GP.rint(-1, 1), 0, 5), GP.rint(23, 31)));
+      GP.save(s);
+    }
+    return s.blocks[teamId];
+  };
+  // picks a team owns in the tradeable draft: [{key, round, from}]
+  GP.ownedPicks = function (s, owner) {
+    const season = GP.pickSeason(s), out = [];
+    for (let round = 1; round <= GP.DRAFT_ROUNDS; round++)
+      for (const t of GP.TEAMS) if (GP.pickOwner(s, season, round, t.id) === owner) out.push({ key: pickKey(season, round, t.id), round, from: t.id });
+    return out;
+  };
+  // what things are worth, in one common currency
+  const POS_WEIGHT = { QB: 1.3, RB: 1, WR: 1, TE: 0.9, K: 0.5 };   // quarterbacks matter most, kickers least
+  GP.playerValue = (p) => (Math.max(0, p.ovr - 45) ** 1.6 * 0.5 + p.stars * 6 + (p.age <= 25 ? 6 : p.age >= 31 ? -8 : 0)) * (POS_WEIGHT[p.pos] || 1);
+  GP.pickValue = function (s, key) {
+    const [, round, team] = key.split('-'), order = GP.standings(s).reverse().map((t) => t.id);   // worst first
+    // early in the season every pick is valued as mid-round; the standings count more as games are played
+    const games = s.teams[0].w + s.teams[0].l, w = s.phase === 'offseason' ? 1 : Math.min(1, games / 8);
+    const frac = 0.5 * (1 - w) + (order.indexOf(team) / (order.length - 1)) * w;
+    return [130, 60, 28][+round - 1] * (1.25 - 0.5 * frac);
+  };
+  // offer: { partner, give: {players: [ids], picks: [keys]}, get: {players: [ids], picks: [keys]} }
+  GP.evaluateTrade = function (s, o) {
+    const block = GP.teamBlock(s, o.partner);
+    const give = o.give.players.map((id) => GP.playerValue(s.players.find((p) => p.id === id))).reduce((a, b) => a + b, 0)
+      + o.give.picks.reduce((a, k) => a + GP.pickValue(s, k), 0);
+    const get = o.get.players.map((id) => GP.playerValue(block.find((p) => p.id === id))).reduce((a, b) => a + b, 0)
+      + o.get.picks.reduce((a, k) => a + GP.pickValue(s, k), 0);
+    const rosterAfter = s.players.length - o.give.players.length + o.get.players.length;
+    let reason = null;
+    if (!GP.tradeStatus(s).open) reason = GP.tradeStatus(s).note;
+    else if (!o.give.players.length && !o.give.picks.length) reason = 'Offer something';
+    else if (!o.get.players.length && !o.get.picks.length) reason = 'Ask for something';
+    else if (rosterAfter > GP.ROSTER_MAX) reason = `That would put you at ${rosterAfter} players (max ${GP.ROSTER_MAX})`;
+    else if (give < get * 1.1) reason = 'They want more in return';   // they only deal if they come out a little ahead
+    return { give, get, ok: !reason, reason, need: get * 1.1 };
+  };
+  GP.executeTrade = function (s, o) {
+    if (!GP.evaluateTrade(s, o).ok) return false;
+    const block = GP.teamBlock(s, o.partner), name = GP.team(o.partner).abbr, lines = [];
+    const out = s.players.filter((p) => o.give.players.includes(p.id)), inn = block.filter((p) => o.get.players.includes(p.id));
+    s.players = s.players.filter((p) => !o.give.players.includes(p.id)).concat(inn);
+    s.blocks[o.partner] = block.filter((p) => !o.get.players.includes(p.id)).concat(out);
+    s.pickOwners = s.pickOwners || {};
+    for (const k of o.give.picks) s.pickOwners[k] = o.partner;
+    for (const k of o.get.picks) s.pickOwners[k] = s.teamId;
+    const label = (k) => { const [season, round, team] = k.split('-'); return `${GP.team(team).abbr} round ${round} pick (season ${season} draft)`; };
+    lines.push(`Trade with ${name}: you sent ${out.map((p) => p.name).concat(o.give.picks.map(label)).join(', ') || 'nothing'}; you got ${inn.map((p) => p.name).concat(o.get.picks.map(label)).join(', ')}.`);
+    s.news = (s.news || []).concat(lines);
+    GP.syncUser(s); GP.save(s);
+    return true;
+  };
 
   // ---------- the draft ----------
   // Three rounds between seasons; worst record picks first, the champion last. Prospects show only a
@@ -431,6 +505,7 @@
       return true;
     });
     s.fillers = {};                          // new reserves each season
+    s.blocks = {};                           // and new trade blocks
     for (const t of s.teams) {
       t.w = t.l = t.pf = t.pa = 0;
       if (t.id !== s.teamId) { t.off = GP.clamp(t.off + GP.rint(-3, 3), 60, 92); t.def = GP.clamp(t.def + GP.rint(-3, 3), 60, 92); }

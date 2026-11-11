@@ -3,6 +3,7 @@
   const GP = window.GP;
   const $ = (s) => document.querySelector(s);
   let S = null, viewConf = 0, draftPos = 'ALL';
+  let offer = null;   // trade being built: { partner, give: {players, picks}, get: {players, picks} }
 
   function show(id) {
     document.querySelectorAll('.screen').forEach((e) => e.classList.toggle('on', e.id === id));
@@ -138,6 +139,12 @@
           } }, 'Start next season'))));
     }
 
+    const ts = GP.tradeStatus(S);
+    hub.append(h('div', { class: 'card next tradecard' },
+      h('div', null, h('b', null, 'Trades'), h('div', { class: 'dim' }, ts.note)),
+      h('span', { style: 'flex:1' }),
+      h('button', { class: 'btn ghost small', disabled: !ts.open, onclick: () => renderTrade() }, 'Make a trade')));
+
     // roster: starters (a reserve wherever a spot is empty), bench, then the two units
     const lineup = GP.lineup(S), starterIds = new Set();
     const roster = h('div', { class: 'card' });
@@ -177,6 +184,50 @@
       h('div', null, h('h2', null, 'Standings — numbered teams hold a playoff seed'), table,
         S.history.length ? h('h2', null, 'History') : null,
         S.history.length ? h('div', { class: 'card' }, ...S.history.map((x) => h('div', { class: 'dim' }, `Season ${x.season}: ${x.w}-${x.l} — ${x.note}`))) : null)));
+    show('hub');
+  }
+
+  // ---------- trades ----------
+  function renderTrade(partner) {
+    const others = GP.TEAMS.filter((t) => t.id !== S.teamId);
+    if (!offer || (partner && offer.partner !== partner)) offer = { partner: partner || (offer && offer.partner) || others[0].id, give: { players: [], picks: [] }, get: { players: [], picks: [] } };
+    const hub = $('#hub'); hub.innerHTML = '';
+    const pt = GP.team(offer.partner), block = GP.teamBlock(S, offer.partner);
+    const toggle = (arr, v) => { const i = arr.indexOf(v); i >= 0 ? arr.splice(i, 1) : arr.push(v); renderTrade(); };
+    const pickLabel = (pk) => `${GP.team(pk.from).abbr} round ${pk.round}`;
+    const item = (checked, onclick, main, sub, value) => h('label', { class: 'titem' + (checked ? ' on' : '') },
+      h('input', { type: 'checkbox', checked, onchange: onclick }),
+      h('div', null, h('div', null, main), h('div', { class: 'dim', style: 'font-size:13px' }, sub)),
+      h('span', { class: 'dim' }, value));
+    const playerItem = (p, arr) => item(arr.includes(p.id), () => toggle(arr, p.id),
+      [h('b', null, p.pos + ' '), p.name, h('span', { class: 'stars' }, ' ' + starText(p.stars))], `age ${p.age} · overall ${p.ovr}`, '');
+    const pickItem = (pk, arr) => item(arr.includes(pk.key), () => toggle(arr, pk.key), pickLabel(pk), `Season ${GP.pickSeason(S)} draft`, '');
+
+    const ev = GP.evaluateTrade(S, offer);
+    const pct = ev.need > 0 ? Math.min(100, (ev.give / ev.need) * 100) : 0;
+    const select = h('select', { class: 'teampick', onchange: (e) => renderTrade(e.target.value) },
+      ...others.map((t) => h('option', { value: t.id, selected: t.id === offer.partner }, `${t.city} ${t.name}`)));
+
+    hub.append(h('div', { class: 'hub-head' },
+      h('h1', null, 'Make a trade'), h('span', { class: 'sp' }),
+      h('span', { class: 'pill' }, `Roster ${S.players.length}/${GP.ROSTER_MAX}`),
+      h('button', { class: 'btn ghost small', onclick: () => { offer = null; renderHub(); } }, 'Back to team')));
+    hub.append(h('div', { class: 'card next' }, h('div', null, h('div', { class: 'dim' }, 'Trading with'), select),
+      h('span', { style: 'flex:1' }),
+      h('div', { class: 'meterbox' },
+        h('div', { class: 'dim' }, ev.ok ? `${pt.name} would accept` : ev.reason),
+        h('div', { class: 'bar meter' }, h('i', { style: `width:${pct}%;background:${ev.ok ? 'var(--good)' : 'var(--accent)'}` }))),
+      h('button', { class: 'btn', disabled: !ev.ok, onclick: () => {
+        if (GP.executeTrade(S, offer)) { offer = null; renderHub(); }
+      } }, 'Propose trade')));
+
+    const mineCol = h('div', { class: 'card' },
+      h('h3', { class: 'rhead' }, 'Your players'), ...S.players.map((p) => playerItem(p, offer.give.players)),
+      h('h3', { class: 'rhead' }, 'Your picks'), ...GP.ownedPicks(S, S.teamId).map((pk) => pickItem(pk, offer.give.picks)));
+    const theirCol = h('div', { class: 'card' },
+      h('h3', { class: 'rhead' }, `${pt.abbr} trade block`), ...block.map((p) => playerItem(p, offer.get.players)),
+      h('h3', { class: 'rhead' }, `${pt.abbr} picks`), ...GP.ownedPicks(S, offer.partner).map((pk) => pickItem(pk, offer.get.picks)));
+    hub.append(h('div', { class: 'grid2' }, h('div', null, h('h2', null, 'You give'), mineCol), h('div', null, h('h2', null, 'You get'), theirCol)));
     show('hub');
   }
 
