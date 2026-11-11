@@ -85,6 +85,12 @@
     stand: [...HEAD, '..JJJJJJ..', '.SJJJJJJS.', '.SJJNNJJS.', '..JJJJJJ..', '..PPPPPP..', '..PP..PP..', '..PP..PP..', '..LL..LL..', '..LL..LL..', '..BB..BBB.'],
     run1: [...HEAD, '..JJJJJJ..', '..JJJJJJSS', 'SSJJNNJJ..', '..JJJJJJ..', '..PPPPPP..', '.PPP..PPP.', 'PP......PP', 'LL......LL', 'BB......BB', '..........'],
     run2: [...HEAD, '..JJJJJJ..', 'SSJJJJJJ..', '..JJNNJJSS', '..JJJJJJ..', '..PPPPPP..', '...PPPP...', '...PPPP...', '...LLLL...', '..LLL.L...', '..BBB.BB..'],
+    // kicker at the moment of the kick: plant foot down, kicking leg swung up and out
+    kick: ['...HHHH.....', '..HHHHHH....', '..HhhHFFM...', '..HHHHFFM...', '..JJJJJJ....', 'SSJJJJJJ....', '..JJNNJJSS..',
+           '..JJJJJJ....', '..PPPPPPP...', '..PP..PPPP..', '..PP....PLL.', '..LL.....LBB', '..LL........', '..BBB.......'],
+    // holder, down on one knee with his hands out for the ball
+    kneel: ['...HHHH...', '..HHHHHH..', '..HhhHFFM.', '..HHHHFFM.', '..JJJJJJ..', '.SJJJJJJSS', '..JJNNJJ..', '..JJJJJJ..',
+            '..PPPPPP..', '..PPPPPPP.', '.LL....PP.', '.BB....BB.'],
     // feet-first slide (quarterbacks): leaning back on one hand, legs straight out toward the end zone
     slide: ['..HHHH........', '.HHhhHH.......', '.HHHHFFM......', '.HHHHFFM......', '..JJJJJ.......', '.JJJNNJS......',
             'SJJJJJJPPPPPLB', 'S.JJJJPPPPPPLB', '..............'],

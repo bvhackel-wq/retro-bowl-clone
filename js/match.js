@@ -264,7 +264,7 @@
       if (down && !e.repeat) {
         if (k === ' ') {
           if (this.phase === 'presnap') this.snap();
-          else if (this.phase === 'kick') { if (this.kick.stage === 'set') this.kick.stage = 'aim'; else this.doKick(); }
+          else if (this.phase === 'kick') { if (this.kick.stage === 'set') { this.kick.stage = 'aim'; this.kick.started = true; } else this.doKick(); }
           else this.lastTap = performance.now();       // space then up/down = juke
         } else if (k === 'arrowright' || k === 'd') {
           if (this.passing()) this.tuck(); else this.lunge();
@@ -862,12 +862,60 @@
       const dist = Math.round(127 - this.los);                 // spot of the hold to the uprights
       const acc = this.ks.acc, u = clamp((acc - 40) / 59, 0, 1);
       const tol = clamp(0.02 + u * 0.08 - (dist - 20) * 0.0012, 0.02, 0.1);   // half-width of the green zone
-      this.kick = { type, dist, tol, speed: 1.1 + (1 - u) * 1.1, pos: 0, dir: 1, stage: 'set', sx: 120 - dist, sy: MID, target: null };
-      this.phase = 'kick'; this.kaim = null;
+      this.kick = { type, dist, tol, speed: 1.1 + (1 - u) * 1.1, pos: 0, dir: 1, stage: 'set', sx: 120 - dist, sy: MID, target: null, rt: 0, started: false };
+      this.phase = 'kick'; this.kaim = null; this.carrier = null; this.ball = { state: 'held' };
+      this.setupKickFormation();
+    }
+    // The kicking unit: seven blockers on the line, the holder kneeling at the spot, the kicker behind him;
+    // seven rushers, each across from a blocker, and two returners deep.
+    setupKickFormation() {
+      const k = this.kick, L = this.los, r = this.cfg.roster, d = this.cfg.oppDef, M = (...a) => this.mk(...a);
+      const blk = (key, stat) => { const p = r[key]; return p && p.stats && p.stats[stat] != null ? p.stats[stat] : 55; };
+      // the edges of a kick unit are filled by backs and receivers: half as good as the line, half a flat 55
+      const olAvg = (blk('OL1', 'pblk') + blk('OL2', 'pblk') + blk('OL3', 'pblk')) / 3, edge = (olAvg + 55) / 2;
+      const line = [['WR1', -3.9, edge], ['RB', -2.6, edge], ['OL1', -1.3, blk('OL1', 'pblk')], ['OL2', 0, blk('OL2', 'pblk')],
+                    ['OL3', 1.3, blk('OL3', 'pblk')], ['TE', 2.6, (blk('TE', 'blk') + olAvg) / 2], ['WR2', 3.9, edge]];
+      this.off = []; this.def = [];
+      line.forEach(([role, y, b], i) => {
+        const o = M('O', role.replace(/\d/, ''), L - 0.6, MID + y, 5); o.skin = (i * 7 + 2) % 3; this.off.push(o);
+        const ru = M('D', i === 0 || i === 6 ? 'CB' : i === 3 ? 'DL' : 'LB', L + 0.9, MID + y * 1.15, 2.6 * rnd(0.85, 1.15) + (d - 75) * 0.02);
+        ru.skin = (i * 5 + 1) % 3; ru.face = 1;
+        // how long his man holds him: the blocker's pass-block (or blocking) stat against the defense
+        ru.shed = clamp(1.4 + (b - d) * 0.05, 0.4, 4) * rnd(0.55, 1.6); ru.blocker = o; ru.info = { num: 0, pos: ru.role, tkl: 70 };
+        this.def.push(ru);
+      });
+      for (const y of [MID - 6, MID + 6]) { const p = M('D', 'S', Math.min(L + 25, 118), y, 5); p.face = 1; p.idle = true; this.def.push(p); }
+      this.holder = M('O', 'QB', k.sx + 0.3, k.sy - 0.7, 5); this.holder.pose = 'kneel'; this.holder.skin = 2;
+      this.kicker = M('O', 'K', k.sx - 2.6, k.sy + 1.1, 5); this.kicker.skin = 0;
+      this.off.push(this.holder, this.kicker);
+      this.qb = this.holder; this.downed = null;
+    }
+    // After the snap the line holds its men, then they break free and charge the spot.
+    kickRush(dt) {
+      const k = this.kick, spot = { x: k.sx + 0.8, y: k.sy };
+      k.rt += dt;
+      let nearest = 99;
+      for (const ru of this.def) {
+        if (ru.idle) continue;
+        if (k.rt < ru.shed) {
+          go(ru, ru.x - 1, ru.y, 0.55, dt, 6);                        // pushing the pile
+          ru.blocker.x = ru.x - 0.9; ru.blocker.y += (ru.y - ru.blocker.y) * Math.min(1, dt * 4); ru.blocker.vx = ru.vx;
+        } else go(ru, spot.x, spot.y, ru.spd, dt, 10);                // free and charging
+        nearest = Math.min(nearest, hyp(ru.x - spot.x, ru.y - spot.y));
+      }
+      k.nearest = nearest;
+      // a rusher who gets to the ball before it's kicked blocks it
+      if (nearest < 0.5 && k.stage !== 'flight' && k.stage !== 'blocked') this.kickBlocked();
+    }
+    kickBlocked() {
+      const k = this.kick; k.stage = 'blocked'; k.res = { blocked: true };
+      this.pop('BLOCKED!', '#ff6b6b');
+      const ex = k.sx + rnd(-4, 2), ey = k.sy + rnd(-4, 4);
+      this.ball = { state: 'air', sx: k.sx, sy: k.sy, tx: ex, ty: ey, u: 0, dur: 0.6, t0: 0, dist: 3 };
     }
     kickTap(p) {
       const k = this.kick; if (!k) return;
-      if (k.stage === 'set') k.stage = 'aim';
+      if (k.stage === 'set') { k.stage = 'aim'; k.started = true; }
       else if (k.stage === 'aim') this.kaim = { sx: p.x, sy: p.y, cx: p.x, cy: p.y };
       else if (k.stage === 'meter') this.doKick();
     }
@@ -897,13 +945,25 @@
         if (reach < need) res = { good: false, why: 'short', ex: k.sx + dx, ey: t.y + dev * (dx / toPosts) };
         else res = { good: Math.abs(yAt - MID) <= 3.1, why: yAt < MID ? 'wide left' : 'wide right', ex: 121.5, ey: yAt + (yAt - k.sy) * (1.5 / toPosts) };
       }
-      k.res = res; k.stage = 'flight';
+      k.res = res; k.stage = 'approach'; k.ap = 0.3;               // the kicker's steps to the ball
+    }
+    // the moment of contact: a rusher close to the ball may get a hand on it
+    kickContact() {
+      const k = this.kick, res = k.res;
+      if (k.started && k.nearest < 2 && Math.random() < ((2 - k.nearest) / 2) * 0.85) return this.kickBlocked();
+      k.stage = 'flight'; this.kicker.pose = 'kick'; this.kicker.poseT = 0.5;
       const d = hyp(res.ex - k.sx, res.ey - k.sy);
       this.ball = { state: 'air', sx: k.sx, sy: k.sy, tx: res.ex, ty: res.ey, u: 0, dur: 0.7 + d / 45, t0: 0, dist: d * 1.3 };
     }
     kickResult() {
       const k = this.kick, r = k.res; this.ball = { state: 'held' };
       const after = () => this.checkClock(() => this.oppDrive(75, 'You kick off.'));
+      if (r.blocked) {
+        this.kick = null;
+        if (k.type === 'pat') return this.endPlay('Extra point BLOCKED', after);
+        const dist = clamp(k.sx - 10, 5, 95);                     // they take over at the spot
+        return this.endPlay('Field goal BLOCKED', () => this.checkClock(() => this.oppDrive(dist, 'They recovered the blocked kick.')));
+      }
       if (k.type === 'pat') {
         if (r.good) this.score.me += 1;
         this.endPlay(r.good ? 'Extra point is GOOD' : `Extra point NO GOOD (${r.why})`, after);
@@ -985,10 +1045,15 @@
         if ((this.deadT -= dt) <= 0) { const f = this.after; this.after = null; f(); }
       } else if (this.phase === 'kick') {
         const k = this.kick;
+        if (k.started && k.stage !== 'flight' && k.stage !== 'blocked') this.kickRush(dt);
+        if (this.kicker.poseT > 0 && (this.kicker.poseT -= dt) <= 0) this.kicker.pose = null;
         if (k.stage === 'meter') {
           k.pos += k.dir * dt * k.speed;
           if (k.pos > 1) { k.pos = 1; k.dir = -1; } else if (k.pos < 0) { k.pos = 0; k.dir = 1; }
-        } else if (k.stage === 'flight') {
+        } else if (k.stage === 'approach') {
+          go(this.kicker, k.sx - 0.4, k.sy + 0.3, 7, dt, 30);
+          if ((k.ap -= dt) <= 0) this.kickContact();
+        } else if (k.stage === 'flight' || k.stage === 'blocked') {
           this.ball.u += dt / this.ball.dur;
           if (this.ball.u >= 1) this.kickResult();
         }
@@ -1147,9 +1212,9 @@
       if (X < -12 || X > AW + 12) return;
       if (Math.abs(p.vx) > 0.6) p.face = p.vx > 0 ? 0 : 1; else if (p.face == null) p.face = p.team === 'O' ? 0 : 1;
       const down = p.stun > 0 || p === this.downed || !!p.lunge;
-      const moving = (this.phase === 'live' || this.phase === 'tackling') && hyp(p.vx, p.vy) > 0.8;
+      const moving = (this.phase === 'live' || this.phase === 'tackling' || this.phase === 'kick') && hyp(p.vx, p.vy) > 0.8;
       const sliding = p.lunge && p.lunge.slide || (p === this.downed && p.slid);
-      const pose = sliding ? 'slide' : down ? 'down' : moving ? (Math.floor(this.animT * 9 + (p.skin || 0)) % 2 ? 'run1' : 'run2') : 'stand';
+      const pose = p.pose || (sliding ? 'slide' : down ? 'down' : moving ? (Math.floor(this.animT * 9 + (p.skin || 0)) % 2 ? 'run1' : 'run2') : 'stand');
       const img = this.kits[p.team][p.skin || 0][pose][p.face];
       g.fillStyle = 'rgba(0,0,0,.28)'; g.fillRect(X - 4, Y + 1, 9, 2); g.fillRect(X - 3, Y + 3, 7, 1);
       if (p === this.carrier && !down) {
@@ -1158,7 +1223,8 @@
         Px.ring(g, X, Y + 1, 9, 4, live ? '#ffd84a' : '#ffffff');
         if (live) Px.ring(g, X, Y + 1, 10, 5, '#ffd84a');
       }
-      if (sliding) g.drawImage(img, X - 8, Y - 9); else if (down) g.drawImage(img, X - 8, Y - 8); else g.drawImage(img, X - 6, Y - 13);
+      if (p.pose) g.drawImage(img, X - Math.floor(img.width / 2), Y - img.height + 3);
+      else if (sliding) g.drawImage(img, X - 8, Y - 9); else if (down) g.drawImage(img, X - 8, Y - 8); else g.drawImage(img, X - 6, Y - 13);
       if (p === this.carrier && !down && this.ball.state === 'held') {
         const bx = X + (p.face ? -6 : 3);
         g.fillStyle = '#10182a'; g.fillRect(bx - 1, Y - 7, 5, 4);
@@ -1175,6 +1241,11 @@
     }
     drawBall() {
       const g = this.ag, b = this.ball;
+      if (this.phase === 'kick' && this.kick && b.state === 'held') {   // on the spot under the holder's hand
+        const X = this.ax(this.kick.sx), Y = this.ay(this.kick.sy);
+        g.fillStyle = '#10182a'; g.fillRect(X - 1, Y - 4, 3, 5); g.fillStyle = '#8a4b22'; g.fillRect(X, Y - 3, 1, 3);
+        return;
+      }
       if (b.state !== 'air' && b.state !== 'dead') return;      // a held ball is drawn with its carrier
       const u = Math.min(1, b.u), x = b.sx + (b.tx - b.sx) * u, y = b.sy + (b.ty - b.sy) * u;
       const z = b.state === 'air' ? Math.sin(Math.PI * u) * b.dist * 0.22 : 0;

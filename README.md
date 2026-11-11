@@ -41,6 +41,10 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
   from the 40). Kick accuracy sets the green zone (about 4% of the bar for a weak kicker, 15-20% for a
   maxed one) and how fast the marker moves. Stopping in the green sends the ball where you aimed;
   stopping outside it pushes the kick left or right, more for a bigger miss and a longer kick.
+  Tapping to start is the snap: seven rushers fight the kick unit's blockers (your line's pass block
+  sets how long they hold), then charge the ball. Kick quickly: a rusher near the ball when the kicker
+  connects may block it, and one who reaches it first blocks it outright. A blocked field goal gives
+  the other team the ball at the spot. The kicker takes his steps and swings through on every kick.
 - **Read the defense.** The play-call strip sits under the field so you can see the alignment
   before you choose. The defense mixes five calls:
   - *Man* — corners 6 yards off, one deep safety. Beat it with crossing routes and speed mismatches.
