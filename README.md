@@ -61,8 +61,8 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
   half a second at 50, over two seconds at 90, varying block to block). A poor blocker loses his man
   and hurts the run game; above about 70 the unblocked safety becomes the limit. His overall is
   computed from these. Agility stays fixed at 55 for now.
-- **Roster:** up to 12 players (quarterbacks, backs, receivers, tight ends, kickers); the offensive
-  line and defense are team-wide units. Each game starts your best player at each spot. If nobody on
+- **Roster:** up to 12 players (quarterbacks, backs, receivers, tight ends, offensive linemen,
+  kickers); the defense is a team-wide unit. Nine start each game, including three linemen. Each game starts your best player at each spot. If nobody on
   the roster plays a starting spot, a nameless 0-1★ reserve with stats of 40-55 is fielded, and he
   can't be upgraded. Players who retire (at 36) leave their spot open; you can also release players.
   New careers start one back, receiver or tight end short.
@@ -74,6 +74,9 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
   has three players on its trade block each season, plus its picks in the next draft. Players are
   valued by overall, stars, age and position; picks by round and how high they are likely to fall.
   Other teams accept only if they come out about 10% ahead. A trade can't take you over 12 players.
+- **Offensive line stats:** strength (holding ground against the pass rush), pass block (how long he
+  holds his man on passes), run block (how long he holds on runs), speed (a faster rusher gets around
+  a slow lineman sooner) and stamina (blocking fades up to 25% over a long drive; fresh each drive).
 - **Franchise:** 32 teams in two conferences (American, National), each with four divisions of four.
   14-game season: 6 division games, 4 against another division in your conference, 4 against a
   division in the other conference (pairings rotate each season). Six teams per conference make

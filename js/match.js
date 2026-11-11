@@ -273,7 +273,7 @@
     // Stamina: every snap drains the QB's energy (faster with low stamina); he's fresh each drive.
     fatigue() { return (100 - this.energy) / 100; }
     startDrive(x) {
-      this.energy = 100;
+      this.energy = 100; this.olEnergy = [100, 100, 100];
       this.los = clamp(x, 11, 105); this.down = 1; this.fdx = Math.min(this.los + 10, 110);
       this.toChoose();
     }
@@ -301,9 +301,12 @@
       this.play = p; this.setupFormation(); this.phase = 'presnap';
     }
     snap() {
-      if (this.play.type === 'run') for (const d of this.def) { d.shed *= 1.7; d.react = (d.react || 0) + 0.25; }
+      // on runs the second level reacts a beat late; linemen's hold times are already set by run blocking
+      if (this.play.type === 'run') for (const d of this.def) { if (d.role !== 'DL') d.shed *= 1.7; d.react = (d.react || 0) + 0.25; }
       this.phase = 'live'; this.t = 0; this.caught = false; this.scramble = false; this.gesture = null; this.aim = null;
       this.energy = Math.max(0, this.energy - (3 + (100 - this.qbs.sta) * 0.07));
+      // the line tires too, each man by his own stamina
+      for (const p of this.off) if (p.role === 'OL') this.olEnergy[p.slot] = Math.max(0, this.olEnergy[p.slot] - (3 + (100 - p.sta) * 0.06));
     }
 
     mk(team, role, x, y, spd) {
@@ -329,14 +332,25 @@
       const te = M('O', 'TE', L - 0.6, MID + (this.play && this.play.type === 'run' ? 6.6 : -7), 6.2 + (tv('spd') - 60) * 0.03);
       Object.assign(te, { ovr: r.TE.ovr, hands: tv('hands') + (ts.hands != null ? 0 : 6), pow: tv('pow') + (ts.pow != null ? 0 : 6),
                           blk: tv('blk'), sta: tv('sta'), agi: 55 });
-      const ol = [-2.6, 0, 2.6].map((o) => M('O', 'OL', L - 0.6, MID + o, 5));
+      // three linemen, each with his own stats; tired linemen block up to 25% worse
+      const isRun = this.play && this.play.type === 'run';
+      const ol = [-2.6, 0, 2.6].map((o, i) => {
+        const lr = r['OL' + (i + 1)] || r.OL || { ovr: 65 }, st = lr.stats || {}, v = (k) => (st[k] != null ? st[k] : lr.ovr);
+        const p = M('O', 'OL', L - 0.6, MID + o, 4.4 + (v('spd') - 50) * 0.025);
+        const fat = (100 - (this.olEnergy ? this.olEnergy[i] : 100)) / 100;
+        Object.assign(p, { slot: i, pow: v('pow'), sta: v('sta'), blk: (isRun ? v('rblk') : v('pblk')) * (1 - fat * 0.25) });
+        return p;
+      });
       this.off = [...ol, this.qb, rb, w1, w2, te];
       this.rb = rb;
 
       const db = 6.7 + (d - 60) * 0.03, lb = 6.6 + (d - 60) * 0.03, dls = 5.8 + (d - 60) * 0.02;
       const dl = [-2.6, 0, 2.6].map((o, i) => {
-        const p = M('D', 'DL', L + 1, MID + o, dls); p.job = 'rush';
-        p.shed = clamp(2.6 + rnd(0, 2.4) + (r.OL.ovr - d) * 0.05, 1.5, 7);
+        const p = M('D', 'DL', L + 1, MID + o, dls); p.job = 'rush'; p.pow = d + rnd(-6, 6);
+        // how long the lineman across from him holds him. Passes: his pass-block stat. Runs are decided in
+        // about 1.5s, so there run block (with a quarter strength) sets a hold of ~1-3s that varies block to block.
+        if (isRun) p.shed = clamp(2.2 + ((ol[i].blk * 0.75 + ol[i].pow * 0.25) - d) * 0.06, 0.4, 4) * rnd(0.5, 1.5);
+        else p.shed = clamp(2.6 + rnd(0, 2.4) + (ol[i].blk - d) * 0.05, 1.5, 7);
         ol[i].mark = p; return p;
       });
       // back five line up according to the coverage call; alignment is the pre-snap tell
@@ -418,6 +432,16 @@
         if (!o.blocking) continue;
         const line = o.role === 'OL' || (o.role === 'TE' && this.play.type === 'run');
         if (hyp(o.x - d.x, o.y - d.y) < (line ? 1.5 : 1.2)) {
+          if (line && o.role === 'OL') {
+            const pass = this.play.type === 'pass';
+            // speed: on pass plays a quicker rusher works around a slower lineman sooner
+            const rate = pass ? clamp(1 + (d.spd - o.spd - 1.2) * 0.4, 0.7, 1.6) : 1;
+            d.eng += dt * rate; d.held = true;
+            // strength: a stronger defender drives a lineman back toward the quarterback (on runs, strength
+            // also counts for a quarter of how long the block holds; see setupFormation)
+            const diff = (d.pow || 70) - (o.pow || 70);
+            return 0.15 * clamp(1 + diff * 0.025, 0.25, 2);
+          }
           if (line) {
             // a tight end's blocking stat sets how long he holds the man he engages, on average about
             // 0.5s at 50, 1.4s at 70, 2.3s at 90, varying from block to block (40%-160% of that).

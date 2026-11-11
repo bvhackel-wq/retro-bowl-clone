@@ -275,7 +275,7 @@
       mine ? h('button', { class: 'btn ghost', onclick: () => { GP.draftPass(S); renderDraft(); } }, 'Pass this pick') : null,
       h('div', { class: 'dim' }, myLeft.length ? 'Your picks: ' + myLeft.map((p) => `#${p.no}`).join(', ') : 'No picks left')));
 
-    const tabs = h('div', { class: 'tabs' }, ...['ALL', 'QB', 'RB', 'WR', 'TE', 'K'].map((t) =>
+    const tabs = h('div', { class: 'tabs' }, ...['ALL', 'QB', 'RB', 'WR', 'TE', 'OL', 'K'].map((t) =>
       h('button', { class: 'btn small' + (t === draftPos ? '' : ' ghost'), onclick: () => { draftPos = t; renderDraft(); } }, t)));
     const list = h('div', { class: 'card' }, tabs);
     const est = (p) => (p.scouted ? p.stars * 10 + p.ovr / 10 : (p.est.stars[0] + p.est.stars[1]) * 5 + p.est.ovr[0] / 10);
