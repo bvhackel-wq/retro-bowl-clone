@@ -1728,9 +1728,10 @@
       g.fillStyle = 'rgba(0,0,0,.28)'; g.fillRect(X - 4, Y + 1, 9, 2); g.fillRect(X - 3, Y + 3, 7, 1);
       if (p === this.carrier && !down) {
         // ring at the ball carrier's feet; yellow and doubled while a juke is live
-        const live = p.juke && p.juke.t > 0;
-        Px.ring(g, X, Y + 1, 9, 4, live ? '#ffd84a' : '#ffffff');
-        if (live) Px.ring(g, X, Y + 1, 10, 5, '#ffd84a');
+        // solid white with a dark edge so it reads on any grass; yellow and doubled while a juke is live
+        const live = p.juke && p.juke.t > 0, col = live ? '#ffd84a' : '#ffffff';
+        Px.ring(g, X, Y + 2, 9, 4, 'rgba(16,24,42,.55)'); Px.ring(g, X, Y + 1, 9, 4, col); Px.ring(g, X, Y + 1, 8, 3, col);
+        if (live) Px.ring(g, X, Y + 1, 11, 5, '#ffd84a');
       }
       if (p.pose) g.drawImage(img, X - Math.floor(img.width / 2), Y - img.height + 3);
       else if (sliding) g.drawImage(img, X - 8, Y - 9); else if (down) g.drawImage(img, X - 8, Y - 8); else g.drawImage(img, X - 6, Y - 13);

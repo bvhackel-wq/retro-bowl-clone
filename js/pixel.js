@@ -74,7 +74,7 @@
   };
   P.ring = function (g, cx, cy, rx, ry, color) {
     g.fillStyle = color;
-    const n = Math.ceil((rx + ry) * 3.2);
+    const n = Math.ceil((rx + ry) * 6);       // dense enough to draw an unbroken outline
     for (let i = 0; i < n; i++) { const a = (i / n) * Math.PI * 2; g.fillRect(Math.round(cx + Math.cos(a) * rx), Math.round(cy + Math.sin(a) * ry), 1, 1); }
   };
 
