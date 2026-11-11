@@ -77,7 +77,6 @@ body.playing #app{max-width:none;padding:0;height:100%}
   touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
 #match.on #hud{flex:none}
 #match button{touch-action:manipulation}
-#fs-btn{padding:4px 8px;font-size:16px;line-height:1}
 #rotate{display:none}
 @media (orientation:portrait) and (max-width:700px){
   body.playing:not(.rotate-ok) #rotate{display:flex;position:absolute;inset:0;z-index:5;background:rgba(16,24,39,.96);
@@ -94,13 +93,16 @@ body.playing #app{max-width:none;padding:0;height:100%}
 #hud .mid span{color:var(--dim);font-size:14px}
 #hud-down{color:var(--accent)!important;font-weight:700}
 #match{--strip:100px}
-#stage{position:relative;margin:0 auto;width:100%;max-width:calc((100vh - var(--hud, 70px) - var(--strip)) * 16 / 9);padding-bottom:var(--strip)}
-@supports (height:100dvh){
-  #stage{max-width:calc((100dvh - var(--hud, 70px) - var(--strip) - env(safe-area-inset-top) - env(safe-area-inset-bottom)) * 16 / 9)}
-}
-#field{image-rendering:crisp-edges;image-rendering:pixelated;display:block;width:100%;aspect-ratio:16/9;border-radius:10px;touch-action:none;user-select:none;-webkit-user-select:none}
-#panel{position:absolute;left:0;right:0;bottom:0;height:calc(var(--strip) - 4px);padding:6px 0;overflow:hidden}
-#panel.modal{top:0;height:auto;bottom:var(--strip);background:rgba(12,18,30,.9);padding:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:10px;text-align:center}
+/* the board (field canvas + floating play strip) is sized by Match.resize to fill the stage */
+#stage{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;overflow:hidden}
+#board{position:relative}
+#match #hud{display:none}   /* score and clock are drawn on the field */
+#field{image-rendering:crisp-edges;image-rendering:pixelated;display:block;width:100%;height:100%;touch-action:none;user-select:none;-webkit-user-select:none}
+/* the play strip floats over the bottom of the field while you choose */
+#panel{position:absolute;left:0;right:0;bottom:0;padding:6px 8px calc(6px + env(safe-area-inset-bottom) * 0);background:linear-gradient(transparent,rgba(10,14,24,.85) 35%);overflow:hidden}
+#panel:not(.modal) h3{display:none}
+#fs-btn{position:absolute;right:6px;bottom:6px;z-index:2;background:rgba(10,14,24,.6);color:#fff;border-radius:6px;padding:3px 7px;font-size:15px;line-height:1}
+#panel.modal{top:0;height:auto;bottom:0;background:rgba(12,18,30,.9);padding:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:10px;text-align:center}
 #panel h3{font-size:15px;margin-bottom:8px}
 #panel.modal h3{font-size:clamp(20px,4vw,32px)}
 #panel p{margin:4px 0 12px;color:var(--dim);white-space:pre-line}
@@ -114,8 +116,6 @@ body.playing #app{max-width:none;padding:0;height:100%}
 #panel .opt.kick{background:#2a2440}
 @media(max-width:640px){#panel .opt{min-width:0;padding:6px 9px;font-size:13px}#panel .opt small{display:none}}
 @media(max-height:480px){
-  #match{--strip:44px;--hud:30px}
-  #hud{height:30px;box-sizing:border-box} #hud .mid b{font-size:16px} #hud .mid span{font-size:12px} #hud .side{gap:6px}
   #panel .opts{gap:5px}
   #panel:not(.modal) h3,#panel .opt small{display:none}
   #panel .opt{padding:8px 7px;font-size:12px;min-width:0}

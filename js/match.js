@@ -3,14 +3,16 @@
   const GP = window.GP;
   const { rnd, clamp } = GP;
 
-  const W = 960, H = 540;          // logical canvas size
+  // logical canvas size: the height is fixed; the width follows the screen's shape (see Match.resize)
+  let W = 960; const H = 540;
   const FW = 36;                   // field width in yards
   const PPY = 13;                  // pixels per yard
   const TOP = (H - FW * PPY) / 2;
-  const VIEW = W / PPY;            // yards visible horizontally
+  let VIEW = W / PPY;              // yards visible horizontally
   const MID = FW / 2;
   // pixel-art canvas: half the logical size, so one art pixel is 2 logical pixels
-  const AW = W / 2, AH = H / 2, YA = PPY / 2, TOPA = TOP / 2, PAD = 4;
+  let AW = W / 2; const AH = H / 2, YA = PPY / 2, TOPA = TOP / 2, PAD = 4;
+  const setArtWidth = (aw) => { AW = aw; W = aw * 2; VIEW = W / PPY; };
   const QLEN = 120;                // seconds per quarter
   const RUNOFF = 8;                // extra clock burned after an in-bounds play
   const CUT_TIME = 0.5;            // seconds a swipe angles the runner toward a sideline
@@ -94,6 +96,10 @@
       window.addEventListener('keydown', this.onKey);
       window.addEventListener('keyup', this.onKeyUp);
 
+      this.onResize = () => this.resize();
+      window.addEventListener('resize', this.onResize);
+      window.addEventListener('orientationchange', this.onResize);
+      this.resize();
       this.startDrive(35);
       this.last = performance.now();
       this.frame = (now) => {
@@ -113,6 +119,8 @@
       window.removeEventListener('pointercancel', this.onUp);
       window.removeEventListener('keydown', this.onKey);
       window.removeEventListener('keyup', this.onKeyUp);
+      window.removeEventListener('resize', this.onResize);
+      window.removeEventListener('orientationchange', this.onResize);
       this.hidePanel();
     }
 
@@ -791,7 +799,7 @@
     ay(y) { return TOPA + Math.round(y * YA); }
     initArt() {
       const me = this.cfg.me, opp = this.cfg.opp;
-      this.art = document.createElement('canvas'); this.art.width = AW; this.art.height = AH;
+      this.art = this.art || document.createElement('canvas'); this.art.width = AW; this.art.height = AH;
       this.ag = this.art.getContext('2d');
       this.fieldImg = GP.Pixel.field(me, opp, YA, TOPA, FW, PAD);
       // home kit: team-colour helmet and jersey, pants in the second colour. Away kit: white jersey, coloured pants.
@@ -799,6 +807,40 @@
         O: GP.Pixel.sprites({ helmet: me.c1, decal: me.c2, jersey: me.c1, number: me.c2, pants: me.c2, sock: me.c1 }),
         D: GP.Pixel.sprites({ helmet: opp.c1, decal: opp.c2, jersey: '#f4f6f8', number: opp.c1, pants: opp.c1, sock: '#f4f6f8' }),
       };
+    }
+
+    // Fit the board (canvas + play strip) to the screen: as wide a view as the screen's shape allows.
+    resize() {
+      const st = document.getElementById('stage'), board = document.getElementById('board');
+      const r = st && st.getBoundingClientRect();
+      if (!r || !r.width || !r.height) return;
+      const aspect = clamp(r.width / r.height, 1.5, 2.3);
+      let w = r.width, h = w / aspect;
+      if (h > r.height) { h = r.height; w = h * aspect; }
+      board.style.width = Math.floor(w) + 'px'; board.style.height = Math.floor(h) + 'px';
+      const aw = Math.round(AH * aspect);
+      if (aw !== AW || this.cv.width !== aw * 4) {
+        setArtWidth(aw); this.cv.width = AW * 4; this.cv.height = AH * 4;
+        if (this.art) this.art.width = AW;
+      }
+    }
+    // Score, quarter, clock and down & distance, drawn across the top stands.
+    drawScoreboard(g) {
+      const Px = GP.Pixel, me = this.cfg.me, opp = this.cfg.opp, c = this.clock;
+      g.fillStyle = 'rgba(10,14,24,.92)'; g.fillRect(0, 0, AW, 13);
+      g.fillStyle = '#ffb43a'; g.fillRect(0, 13, AW, 1);
+      const side = (t, pts, x, right) => {
+        const label = `${t.abbr} ${pts}`, w = Px.width(label) + 8, x0 = right ? x - w : x;
+        g.fillStyle = t.c1; g.fillRect(x0, 2, w, 10); g.fillStyle = t.c2; g.fillRect(x0, 11, w, 1);
+        Px.text(g, label, x0 + 4, 3, '#ffffff', 1, { shadow: '#10182a' });
+      };
+      side(me, this.score.me, 4, false); side(opp, this.score.opp, AW - 4, true);
+      const clock = c === Infinity ? '-:--' : Math.floor(Math.ceil(c) / 60) + ':' + String(Math.ceil(c) % 60).padStart(2, '0');
+      const q = this.q === 5 ? 'OT' : 'Q' + this.q;
+      const down = this.phase === 'opp' || this.phase === 'final' ? '' : '   ' + this.downText().replace(' · ', '  ');
+      const mid = `${q} ${clock}${down}`;
+      Px.text(g, `${q} ${clock}`, AW / 2 - Px.width(mid) / 2, 3, '#ffffff', 1);
+      if (down) Px.text(g, down, AW / 2 - Px.width(mid) / 2 + Px.width(`${q} ${clock}`) + 1, 3, '#ffd84a', 1);
     }
 
     draw() {
@@ -849,18 +891,19 @@
       }
       if (this.banner) {
         const t = this.banner.text, sc = Px.width(t, 2) > AW - 24 ? 1 : 2, w = Px.width(t, sc) + 14, h = 7 * sc + 10;
-        Px.box(g, Math.round(AW / 2 - w / 2), 26, w, h, '#10182a', '#ffb43a');
-        Px.text(g, t, AW / 2, 31, '#ffb43a', sc, { center: true });
+        Px.box(g, Math.round(AW / 2 - w / 2), 30, w, h, '#10182a', '#ffb43a');
+        Px.text(g, t, AW / 2, 35, '#ffb43a', sc, { center: true });
       }
 
+      this.drawScoreboard(g);
       const m = this.g;
       m.setTransform(1, 0, 0, 1, 0, 0); m.imageSmoothingEnabled = false;
       m.drawImage(this.art, 0, 0, this.cv.width, this.cv.height);
     }
     hint(t) {
       const g = this.ag, Px = GP.Pixel, w = Px.width(t) + 10;
-      Px.box(g, Math.round(AW / 2 - w / 2), 3, w, 13, 'rgba(16,24,42,.85)');
-      Px.text(g, t, AW / 2, 6, '#ffffff', 1, { center: true });
+      Px.box(g, Math.round(AW / 2 - w / 2), AH - 15, w, 13, 'rgba(16,24,42,.85)');
+      Px.text(g, t, AW / 2, AH - 12, '#ffffff', 1, { center: true });
     }
     drawPlayer(p) {
       const g = this.ag, Px = GP.Pixel, X = this.ax(p.x), Y = this.ay(p.y);
@@ -918,7 +961,7 @@
       Px.dots(g, a.sx / 2, a.sy / 2, a.cx / 2, a.cy / 2, 'rgba(255,255,255,.55)', 4);
     }
     drawKick() {
-      const g = this.ag, Px = GP.Pixel, k = this.kick, bw = 210, bx = Math.round(AW / 2 - bw / 2), by = AH - 44;
+      const g = this.ag, Px = GP.Pixel, k = this.kick, bw = 210, bx = Math.round(AW / 2 - bw / 2), by = AH - 52;
       Px.box(g, bx - 10, by - 20, bw + 20, 44, '#10182a', '#3a455c');
       Px.text(g, k.type === 'pat' ? 'EXTRA POINT' : `${k.dist}-YARD FIELD GOAL`, AW / 2, by - 14, '#ffffff', 1, { center: true });
       g.fillStyle = '#3a455c'; g.fillRect(bx, by, bw, 12);
