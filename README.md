@@ -35,7 +35,8 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
   much less) and both players' speed. Tackled runners fall forward up to about 2.5 yards. Big
   head-on hits fumble about 1-2% of the time, and the defense recovers 60% of those. The box
   score lists broken tackles, yards after contact, fumbles lost and the opponent's top tacklers.
-- **4th down:** go for it, punt, or kick a field goal.
+- **4th down:** go for it, punt, or kick a field goal. Past midfield, Change also offers a field goal on
+  any down (marked "a long shot" beyond your kicker's range).
 - **Kicking:** tap the field to start the kick, drag back to aim (like a pass), and release to open the
   timing meter. Kick distance sets how far you can aim: 30 yards at 40, about 45 at 70, 60 at 99 (a kick
   from the 40). Kick accuracy sets the meter's zones and how fast the marker moves: green (7% of the bar

@@ -434,11 +434,12 @@
       // play types; the coordinator fills in the play
       const opts = PLAY_TYPES.map(([cat, label, desc]) => ({ label, sub: this.play && this.play.cat === cat ? `Now: ${this.play.name} · tap for another` : desc,
         rec: !call.kick && call.play.cat === cat, fn: () => this.pickType(cat) }));
-      if (this.down === 4) {
-        const dist = Math.round(110 - this.los + 17);
-        if (dist <= this.kickRange + 8) opts.push({ label: `Field Goal`, sub: `${dist} yds · range ${this.kickRange}`, kick: true, rec: call.kick === 'fg', fn: () => this.startKick('fg') });
-        opts.push({ label: 'Punt', sub: 'Flip the field', kick: true, rec: call.kick === 'punt', fn: () => this.punt() });
+      // a field goal on any down once you're past midfield; a punt on 4th down
+      if (this.los > 60) {
+        const dist = Math.round(110 - this.los + 17), far = dist > this.kickRange;
+        opts.push({ label: 'Field Goal', sub: `${dist} yds · range ${this.kickRange}${far ? ' · a long shot' : ''}`, kick: true, rec: call.kick === 'fg', fn: () => this.startKick('fg') });
       }
+      if (this.down === 4) opts.push({ label: 'Punt', sub: 'Flip the field', kick: true, rec: call.kick === 'punt', fn: () => this.punt() });
       this.showPanel(title, '', opts);
     }
 
