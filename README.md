@@ -49,8 +49,9 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
   yards at 40 kick distance up to about 60 at 99). A clean punt lands where you aimed; a shank falls
   short and veers. Into the end zone is a touchback, over the sideline is spotted where it went out,
   otherwise there's a short return (fair catch inside their 10).
-- **Playbook:** 17 plays in six types. Quick pass (Slants, Curls, Quick Outs, Stick), Deep pass
-  (Verticals, Post & Cross, Dagger, Comebacks), Inside run (HB Off Tackle, HB Dive), Outside run (Toss
+- **Playbook:** 18 plays in six types. Quick pass (Slants, Curls, Quick Outs, Stick), Deep pass
+  (Verticals, Post & Cross, Dagger, Comebacks), Inside run (HB Off Tackle, HB Dive, HB Power: the backside guard pulls behind the line and leads
+  through the hole onto the free linebacker, the answer to man coverage's extra man in the box), Outside run (Toss
   Right/Left: to the edge, then up), Screen (RB Screen: the line releases to lead-block; WR Screen:
   receiver steps back behind blockers) and Play action (PA Post, PA Crossers, PA Deep Shot: linebackers
   and safeties bite on the fake, less if they cover well, more the more you've run that game). The

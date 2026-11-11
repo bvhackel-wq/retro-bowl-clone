@@ -46,6 +46,7 @@
     { id: 'comeback', name: 'Comebacks', type: 'pass', cat: 'deep', desc: 'Push to 16, turn back to the sideline',
       routes: { WR1: { pts: [[16, 0], [13, -2.5]], stop: true }, WR2: { pts: [[16, 0], [13, -2.5]], stop: true }, TE: { pts: [[8, 0], [10, 6]] }, RB: { pts: [[3, -6]], stop: true } } },
     { id: 'dive', name: 'HB Dive', type: 'run', cat: 'inside', side: 1, rbY: 1.3, desc: 'Straight up the middle' },
+    { id: 'power', name: 'HB Power', type: 'run', cat: 'inside', side: 1, rbY: 3.4, rbX: 6.5, pull: true, desc: 'Backside guard pulls and leads' },
     { id: 'toss_r', name: 'Toss Right', type: 'run', cat: 'outside', side: 1, rbY: 3, sweep: true, desc: 'Pitch, run for the sideline, turn up' },
     { id: 'toss_l', name: 'Toss Left', type: 'run', cat: 'outside', side: -1, rbY: 3, sweep: true, desc: 'The same to the other side' },
     { id: 'rb_screen', name: 'RB Screen', type: 'pass', cat: 'screen', screen: 'rb', desc: 'Let the rush in, dump it to the back',
@@ -73,15 +74,15 @@
   // what each play gains against each coverage, relative to that coverage's average (measured in testing);
   // the offensive coordinator uses it to read the defense
   let OC_FIT = {
-    cover0: { slants: 1, verts: -1, post: -1, curls: 2, run: 0, outs: 0, stick: 4, dagger: -2, comeback: -2, dive: 0, toss_r: 0, toss_l: 1, rb_screen: 1, wr_screen: 0, pa_post: -2, pa_cross: -1, pa_shot: -2 },
-    cover1: { slants: 1, verts: 4, post: 1, curls: 0, run: -2, outs: -2, stick: 3, dagger: 1, comeback: -2, dive: -2, toss_r: -1, toss_l: -1, rb_screen: -1, wr_screen: -2, pa_post: 1, pa_cross: 0, pa_shot: 4 },
-    cover1p: { slants: 1, verts: 4, post: 1, curls: -1, run: -2, outs: -2, stick: 3, dagger: 0, comeback: -2, dive: -2, toss_r: -1, toss_l: -1, rb_screen: -1, wr_screen: -1, pa_post: 0, pa_cross: 0, pa_shot: 4 },
-    cover2: { slants: 1, verts: 2, post: -1, curls: 2, run: -1, outs: 0, stick: 2, dagger: 2, comeback: 2, dive: -1, toss_r: -1, toss_l: -1, rb_screen: -3, wr_screen: -4, pa_post: 3, pa_cross: -1, pa_shot: 1 },
-    cover3: { slants: -1, verts: 2, post: 2, curls: 1, run: -1, outs: -3, stick: 1, dagger: 2, comeback: 2, dive: -1, toss_r: -2, toss_l: -2, rb_screen: -2, wr_screen: -1, pa_post: 2, pa_cross: 0, pa_shot: 2 },
-    cover4: { slants: -1, verts: 1, post: 1, curls: 1, run: -1, outs: -2, stick: 1, dagger: 1, comeback: 2, dive: -1, toss_r: -1, toss_l: -1, rb_screen: -1, wr_screen: -1, pa_post: 1, pa_cross: 0, pa_shot: 2 },
-    '2man': { slants: -1, verts: 2, post: 1, curls: 0, run: 0, outs: -2, stick: 2, dagger: 1, comeback: -2, dive: 1, toss_r: 0, toss_l: -1, rb_screen: -1, wr_screen: -2, pa_post: 0, pa_cross: 0, pa_shot: 3 },
-    firezone: { slants: -1, verts: 1, post: 2, curls: 1, run: -1, outs: -3, stick: 1, dagger: 2, comeback: 2, dive: -2, toss_r: -2, toss_l: -2, rb_screen: -2, wr_screen: -1, pa_post: 1, pa_cross: 0, pa_shot: 2 },
-    prevent: { slants: 0, verts: 1, post: 1, curls: 1, run: -1, outs: -2, stick: 1, dagger: 1, comeback: 1, dive: -1, toss_r: -1, toss_l: -1, rb_screen: -1, wr_screen: 0, pa_post: 1, pa_cross: 0, pa_shot: 1 },
+    cover0: { slants: 1, verts: -1, post: -1, curls: 2, run: 0, outs: 0, stick: 4, dagger: -2, comeback: -2, dive: 0, power: 1, toss_r: 0, toss_l: 0, rb_screen: 1, wr_screen: 0, pa_post: -1, pa_cross: -1, pa_shot: -2 },
+    cover1: { slants: 1, verts: 4, post: 1, curls: -1, run: -2, outs: -2, stick: 3, dagger: 1, comeback: -2, dive: -2, power: 0, toss_r: -1, toss_l: -1, rb_screen: -1, wr_screen: -2, pa_post: 1, pa_cross: -1, pa_shot: 4 },
+    cover1p: { slants: 0, verts: 4, post: 1, curls: -1, run: -2, outs: -2, stick: 3, dagger: 1, comeback: -2, dive: -2, power: 0, toss_r: -1, toss_l: -1, rb_screen: -1, wr_screen: -2, pa_post: 0, pa_cross: 0, pa_shot: 4 },
+    cover2: { slants: 1, verts: 2, post: -2, curls: 2, run: -1, outs: 0, stick: 2, dagger: 2, comeback: 2, dive: -1, power: -1, toss_r: -1, toss_l: -1, rb_screen: -2, wr_screen: -4, pa_post: 2, pa_cross: 0, pa_shot: 2 },
+    cover3: { slants: -1, verts: 2, post: 2, curls: 1, run: -1, outs: -3, stick: 1, dagger: 2, comeback: 2, dive: -1, power: -1, toss_r: -2, toss_l: -2, rb_screen: -2, wr_screen: -1, pa_post: 2, pa_cross: 0, pa_shot: 2 },
+    cover4: { slants: -1, verts: 1, post: 2, curls: 1, run: -1, outs: -2, stick: 1, dagger: 1, comeback: 2, dive: -1, power: -1, toss_r: -1, toss_l: -1, rb_screen: -1, wr_screen: -1, pa_post: 1, pa_cross: 0, pa_shot: 1 },
+    '2man': { slants: -1, verts: 3, post: 1, curls: 0, run: 0, outs: -2, stick: 2, dagger: 1, comeback: -2, dive: 1, power: 0, toss_r: 0, toss_l: -1, rb_screen: -1, wr_screen: -2, pa_post: 1, pa_cross: -1, pa_shot: 2 },
+    firezone: { slants: -1, verts: 2, post: 2, curls: 1, run: -1, outs: -3, stick: 1, dagger: 2, comeback: 2, dive: -2, power: -1, toss_r: -1, toss_l: -1, rb_screen: -1, wr_screen: -1, pa_post: 2, pa_cross: 0, pa_shot: 2 },
+    prevent: { slants: 0, verts: 1, post: 1, curls: 1, run: -1, outs: -2, stick: 1, dagger: 1, comeback: 1, dive: -1, power: -1, toss_r: -1, toss_l: -1, rb_screen: -1, wr_screen: 0, pa_post: 1, pa_cross: 0, pa_shot: 1 },
   };
   const COVER_ALIAS = { man: 'cover1', press: 'cover1p', blitz: 'cover0' };   // older names
   const coverKey = (t) => COVER_ALIAS[t] || t;
@@ -620,7 +621,7 @@
       // on a run the back sets up in the off-tackle gap, so running straight hits a lane, not a lineman
       const rs = r.RB.stats || {}, rv = (k) => (rs[k] != null ? rs[k] : r.RB.ovr);
       const pl = this.play, runSide = pl && pl.type === 'run' ? pl.side || 1 : 1;
-      const rb = M('O', 'RB', L - 5, MID + (pl && pl.type === 'run' ? runSide * (pl.rbY || 4.4) : 3), wr(rv('spd')) + 0.1); rb.ovr = r.RB.ovr;
+      const rb = M('O', 'RB', L - (pl && pl.rbX || 5), MID + (pl && pl.type === 'run' ? runSide * (pl.rbY || 4.4) : 3), wr(rv('spd')) + 0.1); rb.ovr = r.RB.ovr;
       rb.sweep = pl && pl.sweep ? runSide : 0;          // outside runs head for the sideline first
       rb.agi = rv('agi'); rb.hands = rv('hands'); rb.pow = rv('pow'); rb.sta = rv('sta'); rb.sStat = rv('spd');
       const recv = (key, y) => {
@@ -642,6 +643,7 @@
         const p = M('O', 'OL', L - 0.6, MID + o, 4.4 + (v('spd') - 50) * 0.025);
         const fat = (100 - (this.olEnergy ? this.olEnergy[i] : 100)) / 100;
         Object.assign(p, { slot: i, pow: v('pow'), sta: v('sta'), blk: (isRun ? v('rblk') : v('pblk')) * (1 - fat * 0.25) });
+        if (pl && pl.pull && o * runSide < 0) p.pull = runSide;     // Power: the backside lineman pulls
         return p;
       });
       this.off = [...ol, this.qb, rb, w1, w2, te];
@@ -879,6 +881,26 @@
           continue;
         }
         // RB screen: the line holds briefly, then releases to lead-block in the flat
+        // Power: the pulling lineman runs behind the line to the hole, then turns up and blocks the first
+        // free defender there (usually the linebacker who'd otherwise be unblocked); his own man is left
+        // alone on the backside, where he has to chase the play
+        if (p.pull && !isPass) {
+          const hole = [L + 1, MID + p.pull * 4];
+          if (this.t < 0.4) { p.blocking = true; go(p, L - 1.2, MID + p.pull * 3, p.spd * 1.3, dt, 10); continue; }
+          if (!p.otarget || p.otarget.stun > 0 || p.otarget.eng >= p.otarget.shed) {
+            let best = null, bs = 1e9;
+            for (const d of this.def) {
+              if (d.role === 'DL' || d.stun > 0 || d.eng >= d.shed || this.off.some((o) => o !== p && (o.otarget === d || (o.role === 'TE' && o.btarget === d)))) continue;
+              const x = hyp(d.x - hole[0], d.y - hole[1]); if (x < bs && x < 9) { bs = x; best = d; }
+            }
+            p.otarget = best;
+          }
+          const d = p.otarget; p.blocking = true;
+          if (!d) { go(p, hole[0] + 2, hole[1], p.spd, dt, 8); continue; }
+          const tr = ref, dd = hyp(tr.x - d.x, tr.y - d.y) || 1;
+          go(p, d.x + ((tr.x - d.x) / dd) * 0.9, d.y + ((tr.y - d.y) / dd) * 0.9, p.spd * 1.25, dt, 8);
+          continue;
+        }
         if (p.role === 'OL' && isPass && this.play.screen === 'rb' && !runPhase && this.t > 0.75) { go(p, L + 1.5, MID + 7, p.spd, dt, 8); continue; }
         const mustBlock = runPhase || !isPass || (p.route && p.route.block);
         if (p.role === 'OL' || mustBlock) {
