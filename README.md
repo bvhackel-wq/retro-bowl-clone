@@ -23,8 +23,8 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
   short cooldown, so spamming it gains less than running straight.
 - **Agility (AGI):** a running back's agility lengthens the juke window, shortens the recovery between jukes, and is matched against the
   tackler's TKL when a juke connects: an even matchup works 75% of the time, an agile back against
-  a poor tackler almost always. Quarterbacks use their own agility stat when scrambling. Receivers
-  (66) and tight ends (55) juke with fixed agility for now.
+  a poor tackler almost always. Quarterbacks use their own agility stat when scrambling. Receivers use their
+  own agility stat; tight ends (55) juke with fixed agility for now.
 - **Tackling:** each opposing defender has a jersey number and a tackling rating (TKL) built from
   his team's defense (linebackers highest, corners lowest). Whether a tackle lands depends on TKL,
   the runner's rating, the angle (head-on lands about 97% of the time; from the side or behind
@@ -51,6 +51,11 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
   power (breaking tackles, falling forward, ball security) and stamina. After about three seconds
   with the ball he starts to slow, up to 10% on a long run; high stamina barely fades. His overall
   is computed from these.
+- **Wide receiver stats:** catching (catch chance), speed (routes and open field), agility (when he
+  breaks on a route, the defender in man coverage on him is wrong-footed for a moment; also his juke
+  after the catch), stamina (he slows after about two seconds of running, so it shows on deep routes)
+  and strength (winning contested catches, breaking tackles, falling forward). His overall is
+  computed from these.
 - **Franchise:** 32 teams in two conferences (American, National), each with four divisions of four.
   14-game season: 6 division games, 4 against another division in your conference, 4 against a
   division in the other conference (pairings rotate each season). Six teams per conference make

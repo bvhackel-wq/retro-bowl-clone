@@ -269,8 +269,13 @@
       const rs = r.RB.stats || {}, rv = (k) => (rs[k] != null ? rs[k] : r.RB.ovr);
       const rb = M('O', 'RB', L - 5, MID + (this.play && this.play.type === 'run' ? 4.4 : 3), wr(rv('spd')) + 0.1); rb.ovr = r.RB.ovr;
       rb.agi = rv('agi'); rb.hands = rv('hands'); rb.pow = rv('pow'); rb.sta = rv('sta');
-      const w1 = M('O', 'WR1', L - 0.6, 3, wr(r.WR1.ovr)); w1.ovr = r.WR1.ovr; w1.agi = 66;
-      const w2 = M('O', 'WR2', L - 0.6, FW - 3, wr(r.WR2.ovr)); w2.ovr = r.WR2.ovr; w2.agi = 66;
+      const recv = (key, y) => {
+        const st = r[key].stats || {}, v = (k) => (st[k] != null ? st[k] : r[key].ovr);
+        const p = M('O', key, L - 0.6, y, wr(v('spd')));
+        Object.assign(p, { ovr: r[key].ovr, hands: v('hands'), agi: v('agi'), sta: v('sta'), pow: v('pow') });
+        return p;
+      };
+      const w1 = recv('WR1', 3), w2 = recv('WR2', FW - 3);
       const te = M('O', 'TE', L - 0.6, MID - 7, 6.2 + (r.TE.ovr - 60) * 0.03); te.ovr = r.TE.ovr + 6; te.agi = 55;
       const ol = [-2.6, 0, 2.6].map((o) => M('O', 'OL', L - 0.6, MID + o, 5));
       this.off = [...ol, this.qb, rb, w1, w2, te];
@@ -367,16 +372,32 @@
       return f;
     }
 
+    // How sharply a receiver changes direction on his route: agile receivers separate on cuts.
+    cutAcc(p) { return p.agi != null && p.role !== 'RB' ? clamp(14 + (p.agi - 70) * 0.15, 9, 18) : 14; }
+    // Stamina: after 3s of running (route time counts for receivers) a player starts to slow,
+    // slowly if he has stamina, at most 10%. Returns the speed multiplier.
+    runFade(p, dt) {
+      p.runT = (p.runT || 0) + dt;
+      const rate = Math.max(0.004, 0.05 - ((p.sta != null ? p.sta : 70) - 50) * 0.001);
+      const start = p.role === 'WR1' || p.role === 'WR2' ? 2 : 3;   // receivers run all play long
+      return 1 - clamp((p.runT - start) * rate, 0, 0.1);
+    }
     followRoute(p, dt) {
       const r = p.route;
       if (p.wp < r.pts.length) {
         const [tx, ty] = r.pts[p.wp];
         const d = hyp(tx - p.x, ty - p.y);
-        if (d < 0.5) { p.wp++; return; }
+        if (d < 0.5) {
+          p.wp++;
+          // breaking on his route: an agile receiver wrong-foots the defender in man coverage on him
+          const lag = clamp((p.agi != null && p.role !== 'RB' ? p.agi - 50 : 0) * 0.012, 0, 0.5);
+          if (lag > 0) for (const dd of this.def) if (dd.job === 'man' && dd.mark === p) dd.lag = lag;
+          return;
+        }
         p.dir = [(tx - p.x) / d, (ty - p.y) / d];
-        go(p, tx, ty, p.spd, dt, 14);
+        go(p, tx, ty, p.spd * this.runFade(p, dt), dt, this.cutAcc(p));
       } else if (r.stop) go(p, p.x, p.y, 0, dt, 10);
-      else go(p, p.x + p.dir[0] * 5, p.y + p.dir[1] * 5, p.spd, dt, 14);
+      else go(p, p.x + p.dir[0] * 5, p.y + p.dir[1] * 5, p.spd * this.runFade(p, dt), dt, this.cutAcc(p));
       p.x = Math.min(p.x, 118.5); p.y = clamp(p.y, 1, FW - 1);
     }
 
@@ -414,7 +435,7 @@
           const tr = mustBlock ? ref : qb;
           const dd = hyp(tr.x - d.x, tr.y - d.y) || 1;
           go(p, d.x + ((tr.x - d.x) / dd) * 0.9, d.y + ((tr.y - d.y) / dd) * 0.9, p.spd * (p.role === 'OL' ? 1 : 0.9), dt, 8);
-        } else if (b.state === 'air' && p === b.intended) go(p, b.tx, b.ty, p.spd, dt, 14);
+        } else if (b.state === 'air' && p === b.intended) go(p, b.tx, b.ty, p.spd * this.runFade(p, dt), dt, this.cutAcc(p));
         else if (p.route) this.followRoute(p, dt);
       }
 
@@ -444,6 +465,7 @@
           tx = d.anchor[0]; ty = d.anchor[1];
           if (r) { tx += (r.x - tx) * 0.65; ty += (r.y - ty) * 0.65; }
         }
+        if (d.lag > 0) { d.lag -= dt; sp *= 0.35; }
         go(d, tx, ty, sp * f, dt, 5);
         d.y = clamp(d.y, 0.5, FW - 0.5);
       }
@@ -496,7 +518,7 @@
       const dist = hyp(d.x - c.x, d.y - c.y) || 0.01;
       const angle = (c.vx * (d.x - c.x) + c.vy * (d.y - c.y)) / (cs * dist);
       const power = c.pow != null ? c.pow : (c.ovr || 65) + (c.role === 'TE' ? 6 : c.role === 'QB' ? -6 : 0);
-      let p = 0.72 + (d.info.tkl - 70) * 0.012 - (power - 65) * 0.01;
+      let p = 0.72 + (d.info.tkl - 70) * 0.012 - (power - 65) * 0.006;
       p += angle * 0.18;                                    // head-on +0.18, from behind -0.18
       p += Math.min(ds / 7, 1) * 0.06;                      // defender arriving at speed
       if (angle < 0.3) p -= Math.min(cs / 7, 1) * 0.07;     // a fast runner pulls away from side/rear grabs
@@ -542,12 +564,9 @@
     steerRunner(p, dt) {
       const k = this.keys;
       let dy = 0, sp = p.spd * 0.97, acc = 10;       // a touch slower with the ball
-      // stamina: after 3s with the ball he starts to fade, slowly if he has stamina (at most 10% slower)
-      p.carryT = (p.carryT || 0) + dt;
-      const rate = Math.max(0.004, 0.05 - ((p.sta != null ? p.sta : 70) - 50) * 0.001);
-      const fade = clamp((p.carryT - 3) * rate, 0, 0.1);
-      if (fade > 0.06 && !p.tired) { p.tired = true; this.pop('Running out of gas…', '#ffb43a'); }
-      sp *= 1 - fade;
+      const f = this.runFade(p, dt);
+      if (f < 0.94 && !p.tired) { p.tired = true; this.pop('Running out of gas…', '#ffb43a'); }
+      sp *= f;
       if (p.jukeCd > 0) p.jukeCd -= dt;
       const j = p.juke;
       if (j && j.t > -JUKE_RECOVER) {
@@ -576,7 +595,8 @@
       if (d && (!o || dd < od) && Math.random() < (o ? 0.22 : 0.35)) return this.intercepted(b.tx);
       if (!o) return this.incomplete(d ? 'Broken up' : 'Incomplete');
       let pc = 0.8 + ((o.hands != null ? o.hands : o.ovr) - 60) * 0.004 - (od / 1.9) * 0.15;   // a back's catching stat
-      if (d) pc -= 0.4 * (1 - dd / 1.7);
+      // a defender on him makes it a contested catch; strength helps him win it
+      if (d) pc -= 0.4 * (1 - dd / 1.7) * (o.pow != null ? clamp(1 - (o.pow - 65) * 0.008, 0.75, 1.2) : 1);
       if (Math.random() > pc) return this.incomplete(d ? 'Broken up' : 'Dropped');
       // caught
       this.stats.comp++; this.caught = true; this.carrier = o; b.state = 'held';
