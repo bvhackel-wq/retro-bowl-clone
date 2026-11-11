@@ -2,7 +2,7 @@
 (function () {
   const GP = window.GP;
   const $ = (s) => document.querySelector(s);
-  let S = null, viewConf = 0;
+  let S = null, viewConf = 0, draftPos = 'ALL';
 
   function show(id) {
     document.querySelectorAll('.screen').forEach((e) => e.classList.toggle('on', e.id === id));
@@ -93,6 +93,7 @@
   }
 
   function renderHub() {
+    if (S.phase === 'offseason' && !S.draft) GP.startDraft(S);     // saves made before the draft existed
     const hub = $('#hub'); hub.innerHTML = '';
     const me = GP.team(S.teamId), rec = GP.rec(S, S.teamId), game = GP.currentGame(S);
 
@@ -129,7 +130,12 @@
           h('div', { class: 'dim' }, `Your season: ${rec.w}-${rec.l} · ${S.seasonNote}`),
           h('div', { class: 'dim' }, 'Young players develop and veterans decline over the offseason.')),
         h('span', { style: 'flex:1' }),
-        h('button', { class: 'btn', onclick: () => { GP.newSeason(S); renderHub(); } }, 'Start next season')));
+        h('div', { class: 'stack' },
+          h('button', { class: 'btn', onclick: renderDraft }, S.draft && !S.draft.done ? 'Go to the draft' : 'Review the draft'),
+          h('button', { class: 'btn ghost', onclick: () => {
+            if (S.draft && !S.draft.done && GP.myPicks(S).length && !confirm('Skip the rest of the draft? Your remaining picks are passed.')) return;
+            GP.newSeason(S); renderHub();
+          } }, 'Start next season'))));
     }
 
     // roster: starters (a reserve wherever a spot is empty), bench, then the two units
@@ -171,6 +177,54 @@
       h('div', null, h('h2', null, 'Standings — numbered teams hold a playoff seed'), table,
         S.history.length ? h('h2', null, 'History') : null,
         S.history.length ? h('div', { class: 'card' }, ...S.history.map((x) => h('div', { class: 'dim' }, `Season ${x.season}: ${x.w}-${x.l} — ${x.note}`))) : null)));
+    show('hub');
+  }
+
+  // ---------- draft ----------
+  const starRange = ([lo, hi]) => (lo === hi ? starText(lo) : `${'★'.repeat(lo)}${'✩'.repeat(hi - lo)}${'☆'.repeat(5 - hi)}`);
+  function renderDraft() {
+    const d = S.draft, hub = $('#hub'); hub.innerHTML = '';
+    GP.draftAdvance(S);                               // other teams pick up to your turn
+    const cur = GP.draftCurrent(S), mine = cur && cur.owner === S.teamId, full = S.players.length >= GP.ROSTER_MAX;
+    const myLeft = GP.myPicks(S);
+    hub.append(h('div', { class: 'hub-head' },
+      h('h1', null, `Season ${d.season} Draft`), h('span', { class: 'sp' }),
+      h('span', { class: 'pill' }, `Roster ${S.players.length}/${GP.ROSTER_MAX}`),
+      h('span', { class: 'pill' }, 'Coaching points ', h('b', null, String(S.credits))),
+      h('button', { class: 'btn ghost small', onclick: renderHub }, 'Back to team')));
+
+    let status;
+    if (d.done) status = h('div', null, h('div', { class: 'vs' }, 'The draft is over'), h('div', { class: 'dim' }, 'Start the next season from your team page.'));
+    else if (mine) status = h('div', null, h('div', { class: 'vs' }, `You're on the clock — pick #${cur.no} (round ${cur.round})`),
+      h('div', { class: 'dim' }, full ? 'Your roster is full (12). Release a player from your team page, or pass this pick.' : 'Scout prospects to see their real stars and stats, then draft one.'));
+    hub.append(h('div', { class: 'card next' }, status, h('span', { style: 'flex:1' }),
+      mine ? h('button', { class: 'btn ghost', onclick: () => { GP.draftPass(S); renderDraft(); } }, 'Pass this pick') : null,
+      h('div', { class: 'dim' }, myLeft.length ? 'Your picks: ' + myLeft.map((p) => `#${p.no}`).join(', ') : 'No picks left')));
+
+    const tabs = h('div', { class: 'tabs' }, ...['ALL', 'QB', 'RB', 'WR', 'TE', 'K'].map((t) =>
+      h('button', { class: 'btn small' + (t === draftPos ? '' : ' ghost'), onclick: () => { draftPos = t; renderDraft(); } }, t)));
+    const list = h('div', { class: 'card' }, tabs);
+    const est = (p) => (p.scouted ? p.stars * 10 + p.ovr / 10 : (p.est.stars[0] + p.est.stars[1]) * 5 + p.est.ovr[0] / 10);
+    const pool = d.pool.filter((p) => draftPos === 'ALL' || p.pos === draftPos).sort((a, b) => est(b) - est(a)).slice(0, 40);
+    for (const p of pool) {
+      const stats = p.scouted ? GP.statsFor(p.pos).map(([k, label]) => `${label} ${p.stats[k]}/${p.caps[k]}`).join(' · ') : 'Not scouted';
+      list.append(h('div', { class: 'prospect' },
+        h('span', { class: 'pos' }, p.pos),
+        h('div', null,
+          h('div', null, p.name, h('span', { class: 'dim' }, `  age ${p.age}`),
+            h('span', { class: 'stars', title: p.scouted ? `${p.stars} stars` : 'Estimated range — scout him to know' }, ' ' + (p.scouted ? starText(p.stars) : starRange(p.est.stars)))),
+          h('div', { class: 'dim', style: 'font-size:13px' }, stats)),
+        h('span', { class: 'ovr', title: p.scouted ? 'Overall' : 'Estimated overall range' }, p.scouted ? String(p.ovr) : `${p.est.ovr[0]}–${p.est.ovr[1]}`),
+        h('div', { class: 'stack' },
+          p.scouted ? null : h('button', { class: 'btn small ghost', disabled: S.credits < GP.SCOUT_COST || d.done,
+            onclick: () => { if (GP.scout(S, p.id)) renderDraft(); } }, `Scout (${GP.SCOUT_COST})`),
+          h('button', { class: 'btn small', disabled: !mine || full, onclick: () => { if (GP.draftPick(S, p.id)) renderDraft(); } }, 'Draft'))));
+    }
+    const log = h('div', { class: 'card' }, ...d.log.slice(-12).reverse().map((e) => h('div', { class: 'draftlog' + (e.owner === S.teamId ? ' me' : '') },
+      `#${e.no} ${GP.team(e.owner).abbr}: ` + (e.pass ? 'passed' : `${e.name}, ${e.pos} ${starText(e.stars)}`))));
+    hub.append(h('div', { class: 'grid2' },
+      h('div', null, h('h2', null, 'Prospects'), list),
+      h('div', null, h('h2', null, 'Latest picks'), d.log.length ? log : h('div', { class: 'card dim' }, 'No picks yet.'))));
     show('hub');
   }
 

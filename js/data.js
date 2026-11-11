@@ -54,8 +54,10 @@
     { key: 'DEF', label: 'Defense', desc: 'Stops simulated enemy drives', unit: true },
     { key: 'K', label: 'Kicker', desc: 'Wider sweet spot on kicks' },
   ];
-  const FIRST = ['Dax', 'Milo', 'Otis', 'Rafe', 'Jett', 'Cole', 'Nico', 'Theo', 'Bram', 'Zeke', 'Arlo', 'Quinn', 'Remy', 'Sol', 'Tate', 'Vance', 'Wes', 'Idris', 'Kai', 'Luca'];
-  const LAST = ['Okafor', 'Brandt', 'Salazar', 'Whitlock', 'Nakamura', 'Draper', 'Molina', 'Castellan', 'Pruitt', 'Vasquez', 'Hollis', 'Arden', 'Mbeki', 'Lindqvist', 'Rourke', 'Tanaka', 'Fairbanks', 'Osei', 'Kowalski', 'Delacroix'];
+  const FIRST = ['Dax', 'Milo', 'Otis', 'Rafe', 'Jett', 'Cole', 'Nico', 'Theo', 'Bram', 'Zeke', 'Arlo', 'Quinn', 'Remy', 'Sol', 'Tate', 'Vance', 'Wes', 'Idris', 'Kai', 'Luca',
+    'Ezra', 'Jalen', 'Rory', 'Malik', 'Hugo', 'Desmond', 'Tobias', 'Emeka', 'Silas', 'Marcus', 'Joaquin', 'Darius', 'Felix', 'Omar', 'Beau', 'Kofi', 'Reggie', 'Anders', 'Tyrell', 'Cyrus'];
+  const LAST = ['Okafor', 'Brandt', 'Salazar', 'Whitlock', 'Nakamura', 'Draper', 'Molina', 'Castellan', 'Pruitt', 'Vasquez', 'Hollis', 'Arden', 'Mbeki', 'Lindqvist', 'Rourke', 'Tanaka', 'Fairbanks', 'Osei', 'Kowalski', 'Delacroix',
+    'Abernathy', 'Quist', 'Ferreira', 'Holloway', 'Adeyemi', 'Sorensen', 'Bellweather', 'Nkemelu', 'Ravel', 'Thibodeaux', 'Marchetti', 'Okonkwo', 'Strand', 'Villanueva', 'Pemberton', 'Iwu', 'Galloway', 'Haugen', 'Dumont', 'Achterberg'];
 
   const shuffle = (a) => a.slice().sort(() => Math.random() - 0.5);
   const RR4 = [[[0, 1], [2, 3]], [[0, 2], [1, 3]], [[0, 3], [1, 2]]];
@@ -297,7 +299,86 @@
     s.champion = champion; s.phase = 'offseason'; s.seasonNote = note;
     const me = GP.rec(s, s.teamId);
     s.history.push({ season: s.season, w: me.w, l: me.l, note });
+    GP.startDraft(s);
   }
+
+  // ---------- the draft ----------
+  // Three rounds between seasons; worst record picks first, the champion last. Prospects show only a
+  // fuzzy star range and overall range until you scout them (1 coaching point each).
+  GP.DRAFT_ROUNDS = 3;
+  GP.SCOUT_COST = 1;
+  const pickKey = (season, round, team) => `${season}-${round}-${team}`;
+  GP.pickKey = pickKey;
+  GP.pickOwner = (s, season, round, team) => (s.pickOwners && s.pickOwners[pickKey(season, round, team)]) || team;
+  const weighted = (pairs) => { let r = Math.random() * pairs.reduce((a, p) => a + p[1], 0); for (const [v, w] of pairs) if ((r -= w) < 0) return v; return pairs[0][0]; };
+  function genProspect(s) {
+    const pos = weighted([['QB', 12], ['RB', 20], ['WR', 32], ['TE', 18], ['K', 8]]);
+    const stars = weighted([[0, 10], [1, 20], [2, 30], [3, 22], [4, 12], [5, 6]]);
+    const r = newPlayer(s, pos, stars, GP.rint(21, 23));
+    // what your scouts can tell without a closer look
+    let lo = GP.clamp(stars - GP.rint(0, 1), 0, 5), hi = GP.clamp(stars + GP.rint(0, 1), 0, 5);
+    if (lo === hi) { if (Math.random() < 0.5 && lo > 0) lo--; else if (hi < 5) hi++; else lo--; }
+    const c = r.ovr + GP.rint(-4, 4);
+    r.est = { stars: [lo, hi], ovr: [c - 5, c + 5] };
+    r.scouted = false;
+    return r;
+  }
+  // how other teams rate a prospect: true quality seen through their own imperfect scouting
+  const aiValue = (p) => p.stars * 9 + p.ovr * 0.6 + GP.rnd(-6, 6);
+  GP.startDraft = function (s) {
+    const order = s.teams.slice().sort((a, b) => a.w - b.w || (a.pf - a.pa) - (b.pf - b.pa)).map((t) => t.id);
+    if (s.champion) { order.splice(order.indexOf(s.champion), 1); order.push(s.champion); }
+    const picks = [];
+    for (let round = 1; round <= GP.DRAFT_ROUNDS; round++)
+      for (const team of order) picks.push({ no: picks.length + 1, round, team, owner: GP.pickOwner(s, s.season, round, team) });
+    const pool = [];
+    for (let i = 0; i < picks.length + 14; i++) pool.push(genProspect(s));
+    s.draft = { season: s.season, picks, at: 0, pool, log: [], done: false };
+    GP.save(s);
+  };
+  GP.draftCurrent = (s) => (s.draft && !s.draft.done ? s.draft.picks[s.draft.at] : null);
+  GP.myPicks = (s) => (s.draft ? s.draft.picks.filter((p, i) => i >= s.draft.at && p.owner === s.teamId) : []);
+  function draftTake(s, prospect) {
+    const d = s.draft, pick = d.picks[d.at];
+    d.pool = d.pool.filter((p) => p !== prospect);
+    d.log.push({ no: pick.no, round: pick.round, owner: pick.owner, name: prospect.name, pos: prospect.pos, stars: prospect.stars });
+    if (pick.owner === s.teamId) {
+      delete prospect.est; prospect.scouted = true; prospect.rookie = true;
+      s.players.push(prospect);
+      s.news = (s.news || []).concat(`You drafted ${prospect.name} (${prospect.pos}, ${prospect.stars}★) with pick #${pick.no}.`);
+    }
+    d.at++;
+    if (d.at >= d.picks.length) d.done = true;
+  }
+  // other teams pick until it's your turn (or the draft ends)
+  GP.draftAdvance = function (s) {
+    const d = s.draft;
+    while (d && !d.done && d.picks[d.at].owner !== s.teamId) {
+      let best = null, bv = -1e9;
+      for (const p of d.pool) { const v = aiValue(p); if (v > bv) { bv = v; best = p; } }
+      draftTake(s, best);
+    }
+    GP.save(s);
+  };
+  GP.draftPick = function (s, id) {
+    const cur = GP.draftCurrent(s), p = s.draft && s.draft.pool.find((x) => x.id === id);
+    if (!cur || cur.owner !== s.teamId || !p || s.players.length >= GP.ROSTER_MAX) return false;
+    draftTake(s, p); GP.syncUser(s); GP.draftAdvance(s);
+    return true;
+  };
+  GP.draftPass = function (s) {
+    const d = s.draft, cur = GP.draftCurrent(s);
+    if (!cur || cur.owner !== s.teamId) return;
+    d.log.push({ no: cur.no, round: cur.round, owner: cur.owner, pass: true });
+    d.at++; if (d.at >= d.picks.length) d.done = true;
+    GP.draftAdvance(s);
+  };
+  GP.scout = function (s, id) {
+    const p = s.draft && s.draft.pool.find((x) => x.id === id);
+    if (!p || p.scouted || s.credits < GP.SCOUT_COST) return false;
+    s.credits -= GP.SCOUT_COST; p.scouted = true; GP.save(s);
+    return true;
+  };
 
   // Apply the user's result (pass nulls on a playoff bye) and simulate everything else that week.
   GP.advance = function (s, myPts, oppPts) {
@@ -331,8 +412,12 @@
   };
 
   GP.newSeason = function (s) {
+    if (s.draft && !s.draft.done) { while (!s.draft.done) { if (GP.draftCurrent(s).owner === s.teamId) GP.draftPass(s); else GP.draftAdvance(s); } }
+    const drafted = (s.news || []).filter((n) => n.startsWith('You drafted'));
+    s.draft = null;
+    if (s.pickOwners) for (const k in s.pickOwners) if (+k.split('-')[0] <= s.season) delete s.pickOwners[k];
     s.season++; s.week = 0; s.phase = 'regular'; s.playoff = null; s.champion = null;
-    s.news = [];
+    s.news = drafted;
     s.players = s.players.filter((r) => {
       r.age++;
       if (r.age >= 36) { s.news.push(`${r.name} (${r.pos}) retired.`); return false; }   // his spot opens up
