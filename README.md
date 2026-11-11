@@ -38,13 +38,17 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
 - **4th down:** go for it, punt, or kick a field goal.
 - **Kicking:** tap the field to start the kick, drag back to aim (like a pass), and release to open the
   timing meter. Kick distance sets how far you can aim: 30 yards at 40, about 45 at 70, 60 at 99 (a kick
-  from the 40). Kick accuracy sets the green zone (about 4% of the bar for a weak kicker, 15-20% for a
-  maxed one) and how fast the marker moves. Stopping in the green sends the ball where you aimed;
-  stopping outside it pushes the kick left or right, more for a bigger miss and a longer kick.
+  from the 40). Kick accuracy sets the meter's zones and how fast the marker moves: green (7% of the bar
+  for a weak kicker up to about 16% for a maxed one on a 42-yarder) goes where you aimed; the yellow
+  around it does so about half the time; outside it the kick is pushed wide.
   Tapping to start is the snap: seven rushers fight the kick unit's blockers (your line's pass block
   sets how long they hold), then charge the ball. Kick quickly: a rusher near the ball when the kicker
   connects may block it, and one who reaches it first blocks it outright. A blocked field goal gives
   the other team the ball at the spot. The kicker takes his steps and swings through on every kick.
+- **Punting:** the same three steps from 13 yards behind the line. Aim where it should land (reach 30
+  yards at 40 kick distance up to about 60 at 99). A clean punt lands where you aimed; a shank falls
+  short and veers. Into the end zone is a touchback, over the sideline is spotted where it went out,
+  otherwise there's a short return (fair catch inside their 10).
 - **Read the defense.** The play-call strip sits under the field so you can see the alignment
   before you choose. The defense mixes five calls:
   - *Man* — corners 6 yards off, one deep safety. Beat it with crossing routes and speed mismatches.

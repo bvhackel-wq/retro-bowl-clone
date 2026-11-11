@@ -906,10 +906,16 @@
     // -> 'meter' (accuracy sets the green zone and marker speed) -> 'flight' -> result.
     startKick(type) {
       if (type === 'pat') { this.los = 95; this.fdx = 110; }
-      const dist = Math.round(127 - this.los);                 // spot of the hold to the uprights
+      const punt = type === 'punt';
+      // field goals: from the hold spot to the uprights. Punts: from 13 yards behind the line, judged at about 40 yards.
+      const dist = punt ? 40 : Math.round(127 - this.los);
       const acc = this.ks.acc, u = clamp((acc - 40) / 59, 0, 1);
-      const tol = clamp(0.02 + u * 0.08 - (dist - 20) * 0.0012, 0.02, 0.1);   // half-width of the green zone
-      this.kick = { type, dist, tol, speed: 1.1 + (1 - u) * 1.1, pos: 0, dir: 1, stage: 'set', sx: 120 - dist, sy: MID, target: null, rt: 0, started: false };
+      const tol = clamp(0.035 + u * 0.07 - (dist - 20) * 0.0012, 0.035, 0.1);   // half-width of the green zone
+      const yel = tol + Math.max(0.035, tol * 0.9);                               // and of the yellow around it
+      const sx = punt ? Math.max(this.los - 13, 2) : 120 - dist;
+      // punt reach: 30 yards at 40 kick distance, 45 at 70, about 60 at 99
+      const range = punt ? Math.round(clamp(30 + (this.ks.leg - 40) * 0.5, 25, 60)) : this.kickRange;
+      this.kick = { type, dist, tol, yel, range, speed: 1.1 + (1 - u) * 1.1, pos: 0, dir: 1, stage: 'set', sx, sy: MID, target: null, rt: 0, started: false };
       this.phase = 'kick'; this.kaim = null; this.carrier = null; this.ball = { state: 'held' };
       this.setupKickFormation();
     }
@@ -932,10 +938,15 @@
         this.def.push(ru);
       });
       for (const y of [MID - 6, MID + 6]) { const p = M('D', 'S', Math.min(L + 25, 118), y, 5); p.face = 1; p.idle = true; this.def.push(p); }
-      this.holder = M('O', 'QB', k.sx + 0.3, k.sy - 0.7, 5); this.holder.pose = 'kneel'; this.holder.skin = 2;
-      this.kicker = M('O', 'K', k.sx - 2.6, k.sy + 1.1, 5); this.kicker.skin = 0;
-      this.off.push(this.holder, this.kicker);
-      this.qb = this.holder; this.downed = null;
+      if (k.type === 'punt') {
+        this.kicker = M('O', 'K', k.sx - 0.8, k.sy + 0.3, 5); this.kicker.skin = 0; this.holder = null;
+        this.off.push(this.kicker); this.qb = this.kicker;
+      } else {
+        this.holder = M('O', 'QB', k.sx + 0.3, k.sy - 0.7, 5); this.holder.pose = 'kneel'; this.holder.skin = 2;
+        this.kicker = M('O', 'K', k.sx - 2.6, k.sy + 1.1, 5); this.kicker.skin = 0;
+        this.off.push(this.holder, this.kicker); this.qb = this.holder;
+      }
+      this.downed = null;
     }
     // After the snap the line holds its men, then they break free and charge the spot.
     kickRush(dt) {
@@ -970,7 +981,7 @@
       const a = this.kaim, k = this.kick;
       let vx = ((a.sx - a.cx) / PPY) * 2.2, vy = ((a.sy - a.cy) / PPY) * 2.2;
       const d = hyp(vx, vy);
-      if (d > this.kickRange) { vx *= this.kickRange / d; vy *= this.kickRange / d; }
+      if (d > k.range) { vx *= k.range / d; vy *= k.range / d; }
       return { x: k.sx + vx, y: k.sy + vy };
     }
     kickRelease() {
@@ -981,9 +992,14 @@
     }
     doKick() {
       const k = this.kick; if (!k || k.stage !== 'meter') return;
-      // inside the green: exactly where you aimed. Outside it: pushed left or right, more for a bigger miss and a longer kick.
-      const off = k.pos - 0.5, miss = Math.max(0, Math.abs(off) - k.tol);
-      const dev = Math.sign(off) * miss * k.dist * 0.9;
+      // Green: exactly where you aimed. Yellow: a chance (75% at the green's edge down to 25% at its outer
+      // edge) of the same; otherwise, and outside the yellow, the kick is pushed wide.
+      const off = k.pos - 0.5, a = Math.abs(off);
+      let clean = a <= k.tol;
+      if (!clean && a <= k.yel) clean = Math.random() < 0.75 - 0.5 * ((a - k.tol) / (k.yel - k.tol));
+      k.zone = a <= k.tol ? 'green' : a <= k.yel ? 'yellow' : 'red';
+      if (k.type === 'punt') return this.puntResult(clean, Math.sign(off) || 1);
+      const dev = clean ? 0 : Math.sign(off) * (3.5 + Math.max(0, a - k.tol) * k.dist * 0.9);
       const t = k.target, dx = t.x - k.sx, reach = hyp(dx, t.y - k.sy), toPosts = 120 - k.sx;
       let res;
       if (dx <= 0.5) res = { good: false, why: 'short', ex: t.x, ey: t.y + dev };
@@ -1000,14 +1016,42 @@
       if (k.started && k.nearest < 2 && Math.random() < ((2 - k.nearest) / 2) * 0.85) return this.kickBlocked();
       k.stage = 'flight'; this.kicker.pose = 'kick'; this.kicker.poseT = 0.5;
       const d = hyp(res.ex - k.sx, res.ey - k.sy);
-      this.ball = { state: 'air', sx: k.sx, sy: k.sy, tx: res.ex, ty: res.ey, u: 0, dur: 0.7 + d / 45, t0: 0, dist: d * 1.3 };
+      this.ball = { state: 'air', sx: k.sx, sy: k.sy, tx: res.ex, ty: res.ey, u: 0, dur: (res.punt ? 1.1 : 0.7) + d / 45, t0: 0, dist: d * (res.punt ? 1.7 : 1.3) };
+    }
+    // A clean punt lands where you aimed; a shank falls short (45-70% of the way) and veers sideways.
+    puntResult(clean, side) {
+      const k = this.kick, t = k.target;
+      let ex = t.x, ey = t.y;
+      if (!clean) { const f = rnd(0.45, 0.7); ex = k.sx + (t.x - k.sx) * f; ey = k.sy + (t.y - k.sy) * f + side * rnd(2, 7); }
+      k.res = { punt: true, clean, ex, ey }; k.stage = 'approach'; k.ap = 0.2;
+    }
+    puntLanding() {
+      const k = this.kick, r = k.res, net = (x) => Math.round(Math.min(x, 110) - this.los);
+      // a spot named the way a broadcast would: "their 12", "midfield", "your 47"
+      const spot = (x) => { const yd = Math.round(x - 10); return yd === 50 ? 'midfield' : yd > 50 ? `their ${100 - yd}` : `your ${yd}`; };
+      let msg, startX;   // startX: the field position (our 0-120 scale) where they take over
+      if (r.ex >= 110) { msg = 'Punt into the end zone — touchback'; startX = 100; }
+      else if (r.ey < 0 || r.ey > FW) {
+        startX = clamp(r.ex, 11, 109);
+        msg = `Punt out of bounds at ${spot(startX)}`;
+      } else {
+        const fair = r.ex >= 100, ret = fair ? 0 : Math.round(rnd(0, 11));
+        startX = clamp(r.ex - ret, 11, 109);
+        msg = fair ? `Punt — fair catch at ${spot(startX)}` : `Punt — returned ${ret} to ${spot(startX)}`;
+      }
+      if (!r.clean) msg = 'Shanked! ' + msg;
+      this.kick = null; this.ball = { state: 'held' };
+      const dist = Math.round(startX - 10);
+      this.endPlay(msg, () => this.checkClock(() => this.oppDrive(dist, `Your punt went ${net(r.ex >= 110 ? 110 : r.ex)} yards.`)), 2);
     }
     kickResult() {
       const k = this.kick, r = k.res; this.ball = { state: 'held' };
       const after = () => this.checkClock(() => this.oppDrive(75, 'You kick off.'));
+      if (r.punt && !r.blocked) return this.puntLanding();
       if (r.blocked) {
         this.kick = null;
         if (k.type === 'pat') return this.endPlay('Extra point BLOCKED', after);
+        if (k.type === 'punt') return this.endPlay('Punt BLOCKED', () => this.checkClock(() => this.oppDrive(clamp(k.sx - 10, 5, 95), 'They recovered the blocked punt.')));
         const dist = clamp(k.sx - 10, 5, 95);                     // they take over at the spot
         return this.endPlay('Field goal BLOCKED', () => this.checkClock(() => this.oppDrive(dist, 'They recovered the blocked kick.')));
       }
@@ -1023,11 +1067,7 @@
       }
       this.kick = null;
     }
-    punt() {
-      const dist = Math.min(this.los + rnd(34, 46), 90) - 10;
-      this.phase = 'dead';
-      this.endPlay('Punt', () => this.checkClock(() => this.oppDrive(dist, 'They field the punt.')));
-    }
+    punt() { this.startKick('punt'); }
 
     // ---------- opponent possession (simulated) ----------
     oppDrive(dist, lead) {
@@ -1098,7 +1138,8 @@
           k.pos += k.dir * dt * k.speed;
           if (k.pos > 1) { k.pos = 1; k.dir = -1; } else if (k.pos < 0) { k.pos = 0; k.dir = 1; }
         } else if (k.stage === 'approach') {
-          go(this.kicker, k.sx - 0.4, k.sy + 0.3, 7, dt, 30);
+          if (k.type !== 'punt') go(this.kicker, k.sx - 0.4, k.sy + 0.3, 7, dt, 30);
+          else go(this.kicker, k.sx, k.sy, 3, dt, 30);                 // a punter's two steps forward
           if ((k.ap -= dt) <= 0) this.kickContact();
         } else if (k.stage === 'flight' || k.stage === 'blocked') {
           this.ball.u += dt / this.ball.dur;
@@ -1113,7 +1154,12 @@
         else if (this.carrier) fx = this.carrier.x;
       }
       let target = clamp(fx - VIEW * 0.36, -3, 123 - VIEW);
-      if (this.phase === 'kick') target = 123 - VIEW;          // keep the uprights in view for a kick
+      if (this.phase === 'kick' && this.kick) {
+        const k = this.kick;
+        if (k.type !== 'punt') target = 123 - VIEW;                 // keep the uprights in view for a kick
+        else if (k.stage === 'flight' || k.stage === 'blocked') target = clamp(this.ball.sx + (this.ball.tx - this.ball.sx) * Math.min(1, this.ball.u) - VIEW * 0.5, -3, 123 - VIEW);
+        else target = clamp(k.sx - 8, -3, 123 - VIEW);
+      }
       this.camX += (target - this.camX) * Math.min(1, dt * 5);
       this.hud(); this.chip(); this.placePause();
     }
@@ -1318,9 +1364,9 @@
     }
     drawKick() {
       const g = this.ag, Px = GP.Pixel, k = this.kick, X0 = this.ax(k.sx), Y0 = this.ay(k.sy);
-      const title = `${k.type === 'pat' ? 'EXTRA POINT' : k.dist + '-YARD FIELD GOAL'} · RANGE ${this.kickRange}`;
+      const title = k.type === 'punt' ? `PUNT · RANGE ${k.range}` : `${k.type === 'pat' ? 'EXTRA POINT' : k.dist + '-YARD FIELD GOAL'} · RANGE ${this.kickRange}`;
       Px.box(g, Math.round(AW / 2 - Px.width(title) / 2) - 6, 18, Px.width(title) + 12, 12, 'rgba(16,24,42,.85)');
-      Px.text(g, title, AW / 2, 21, k.dist > this.kickRange ? '#ff8a5c' : '#ffffff', 1, { center: true });
+      Px.text(g, title, AW / 2, 21, k.type !== 'punt' && k.dist > this.kickRange ? '#ff8a5c' : '#ffffff', 1, { center: true });
       // the hold spot and the uprights
       g.fillStyle = '#ffd84a'; g.fillRect(X0 - 1, Y0 - 1, 3, 3);
       const aimLine = (t, col) => {
@@ -1331,7 +1377,7 @@
       };
       if (k.stage === 'aim') {
         // the kicker's reach, drawn as an arc around the hold spot
-        Px.ring(g, X0, Y0, Math.round(this.kickRange * YA), Math.round(this.kickRange * YA), 'rgba(255,255,255,.35)');
+        Px.ring(g, X0, Y0, Math.round(k.range * YA), Math.round(k.range * YA), 'rgba(255,255,255,.35)');
         if (this.kaim) { aimLine(this.kickAimTarget(), '#ffffff'); const a = this.kaim; Px.dots(g, a.sx / 2, a.sy / 2, a.cx / 2, a.cy / 2, 'rgba(255,255,255,.55)', 4); }
       }
       if (k.stage === 'meter') {
@@ -1339,6 +1385,7 @@
         const bw = 210, bx = Math.round(AW / 2 - bw / 2), by = AH - 52;
         Px.box(g, bx - 10, by - 12, bw + 20, 34, '#10182a', '#3a455c');
         g.fillStyle = '#3a455c'; g.fillRect(bx, by, bw, 12);
+        g.fillStyle = '#ffd84a'; g.fillRect(bx + Math.round((0.5 - k.yel) * bw), by, Math.round(k.yel * 2 * bw), 12);   // yellow: a chance
         g.fillStyle = '#4fd18b'; g.fillRect(bx + Math.round((0.5 - k.tol) * bw), by, Math.max(2, Math.round(k.tol * 2 * bw)), 12);
         g.fillStyle = '#ffffff'; g.fillRect(bx + Math.round(k.pos * bw) - 1, by - 3, 3, 18);
       }
