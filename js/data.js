@@ -220,10 +220,11 @@
     return changed;
   }
 
-  GP.newCareer = function (teamId) {
+  GP.DIFFICULTY = { easy: 'Easy', normal: 'Normal', hard: 'Hard' };
+  GP.newCareer = function (teamId, difficulty) {
     const s = {
       v: 3, teamId, season: 1, week: 0, credits: 4, phase: 'regular', playoff: null, champion: null, history: [],
-      players: [], nextId: 1, fillers: {}, news: [],
+      players: [], nextId: 1, fillers: {}, news: [], difficulty: difficulty || 'normal',
       staff: { OC: genCoach('OC', 1), DC: genCoach('DC', 1) },
       units: { DEF: genPlayer('DEF', GP.pick([2, 2, 3, 3, 3]), null, true) },
       teams: GP.TEAMS.map((t) => ({ id: t.id, off: GP.rint(64, 84), def: GP.rint(64, 84), w: 0, l: 0, pf: 0, pa: 0 })),

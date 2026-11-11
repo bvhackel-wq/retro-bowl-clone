@@ -97,6 +97,13 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
   the defense's look; more stars means he reads the coverage more often (about 25% at 0-1★, 50% at 3★,
   90% at 5★). You can change his call with the button over the field. On 4th down he only recommends.
   The defensive coordinator's stars and skills improve your simulated defense.
+- **Passing help and difficulty:** a throw released near a receiver is nudged toward the right lead
+  (partly on Normal, more for accurate quarterbacks; fully on Easy; not on Hard). Each opposing defender
+  has speed and coverage ratings: receivers and defensive backs share a speed scale, a receiver's route
+  break wrong-foots his man-coverage defender by his agility against the defender's coverage, and
+  defenders read a thrown ball sooner and from farther away the better they cover. Easy also throws
+  straighter, tires less, gets more time and a bigger catch window; Hard makes defenders read throws faster.
+  Choose the difficulty on the title screen; change it any time from the team page.
 - **Franchise:** 32 teams in two conferences (American, National), each with four divisions of four.
   14-game season: 6 division games, 4 against another division in your conference, 4 against a
   division in the other conference (pairings rotate each season). Six teams per conference make

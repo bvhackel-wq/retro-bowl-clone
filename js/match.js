@@ -73,6 +73,10 @@
       this.ballSpeed = 26 + this.qbs.arm * 0.09;                            // arm: how fast (yards/second)
       this.scatter = Math.max(0.015, 0.085 - (this.qbs.acc - 60) * 0.0015); // accuracy
       if (GP.hasSkill(cfg.staff, 'OC', 'airraid')) this.scatter *= 0.85;   // OC skill: Air Raid
+      // difficulty: Easy throws straighter, tires less, gets more time and a bigger catch window; Hard the reverse
+      this.dif = { easy: { scatter: 0.7, tire: 0.5, rush: 1.3, window: 0.4, pick: 0.6 }, normal: { scatter: 1, tire: 1, rush: 1, window: 0, pick: 1 },
+                   hard: { scatter: 1.15, tire: 1, rush: 1, window: 0, pick: 1.2 } }[cfg.difficulty || 'normal'];
+      this.scatter *= this.dif.scatter;
       this.energy = 100;
       // kicker: distance sets how far he can aim, accuracy the meter's green zone and speed
       const kst = r.K.stats || {}, kv = (k) => (kst[k] != null ? kst[k] : r.K.ovr);
@@ -87,7 +91,10 @@
       this.dRoster = {};
       for (const [slot, pos, off] of DSLOTS) {
         let n; do { n = GP.rint(...nums[pos]); } while (used.has(n)); used.add(n);
-        this.dRoster[slot] = { slot, pos, num: n, tkl: clamp(Math.round(cfg.oppDef + off + rnd(-5, 5)), 45, 99), tk: 0 };
+        // speed and coverage by position: corners fastest and best in coverage, then safeties, then linebackers
+        const so = { DL: [-10, -15], LB: [-4, -6], CB: [4, 4], S: [1, 2] }[pos];
+        this.dRoster[slot] = { slot, pos, num: n, tkl: clamp(Math.round(cfg.oppDef + off + rnd(-5, 5)), 45, 99), tk: 0,
+          spd: clamp(Math.round(cfg.oppDef + so[0] + rnd(-6, 6)), 40, 99), cov: clamp(Math.round(cfg.oppDef + so[1] + rnd(-6, 6)), 40, 99) };
       }
       this.keys = {}; this.gesture = null; this.lastTap = -1e9; this.popup = null; this.aim = null; this.banner = null; this.kick = null;
       this.camX = 0; this.off = []; this.def = []; this.ball = { state: 'held' };
@@ -210,7 +217,7 @@
       if (this.aim && this.phase === 'live' && this.passing()) {
         const a = this.aim, dx = a.cx - a.sx, dy = a.cy - a.sy;
         if (dx > 30 && dx > Math.abs(dy)) this.tuck();          // swiped toward the end zone: run it
-        else if (hyp(dx, dy) > 14) { const t = this.aimTarget(); this.throwBall(t.x, t.y); }
+        else if (hyp(dx, dy) > 14) { const t = this.leadAssist(this.aimTarget()); this.throwBall(t.x, t.y); }
       }
       const g = this.gesture;
       if (g && !g.done && performance.now() - g.t < 300) this.lastTap = performance.now();
@@ -224,7 +231,12 @@
       if (c.lunge) return;
       c.stop = null;                                  // any move ends a stop
       if (now - (this.lastTap || -1e9) < TAP_WINDOW) { this.lastTap = -1e9; this.juke(c, dir); }
-      else if (!c.juke || c.juke.t <= -JUKE_RECOVER) c.cut = { dir, t: CUT_TIME };
+      else if (!c.juke || c.juke.t <= -JUKE_RECOVER) {
+        c.cut = { dir, t: CUT_TIME };
+        // a sudden cut can leave close pursuers a step behind, depending on how well they track (coverage)
+        for (const d of this.def) if (hyp(d.x - c.x, d.y - c.y) < 5 && d.info)
+          d.lag = Math.max(d.lag || 0, clamp(0.1 + ((c.agi || 60) - d.info.cov) * 0.01, 0, 0.35));
+      }
     }
     // Lunge: dive forward about two yards and go down where he lands. Tacklers can't stop the dive itself.
     // Distance comes from his best athletic stat (speed, power or agility): runners dive head first,
@@ -440,7 +452,7 @@
         // about 1.5s, so there run block (with a quarter strength) sets a hold of ~1-3s that varies block to block.
         if (isRun) p.shed = clamp(2.2 + ((ol[i].blk * 0.75 + ol[i].pow * 0.25) - d) * 0.06, 0.4, 4) * rnd(0.5, 1.5)
           * (GP.hasSkill(this.cfg.staff, 'OC', 'ground') ? 1.2 : 1);                              // OC skill: Ground Game
-        else p.shed = clamp(2.6 + rnd(0, 2.4) + (ol[i].blk - d) * 0.05, 1.5, 7);
+        else p.shed = clamp(2.6 + rnd(0, 2.4) + (ol[i].blk - d) * 0.05, 1.5, 7) * (this.dif ? this.dif.rush : 1);
         ol[i].mark = p; return p;
       });
       // back five line up according to the coverage call; alignment is the pre-snap tell
@@ -479,7 +491,11 @@
       }
       for (const p of dl) p.react = 0;
       this.def = [...dl, lb1, lb2, c1, c2, s];
-      this.def.forEach((p, i) => { p.info = this.dRoster[DSLOTS[i][0]]; p.skin = (i * 5 + 1) % 3; });
+      this.def.forEach((p, i) => {
+        p.info = this.dRoster[DSLOTS[i][0]]; p.skin = (i * 5 + 1) % 3;
+        // defensive backs and linebackers run on the same speed scale as receivers, so speed matchups are real
+        if (p.role !== 'DL') p.spd = (6.6 + (p.info.spd - 60) * 0.035) * (p.role === 'LB' ? 0.98 : 1);
+      });
       this.off.forEach((p, i) => { p.skin = (i * 7 + 2) % 3; });
       this.downed = null;
 
@@ -498,9 +514,37 @@
     // ---------- live play ----------
     tick(dt) { if (this.clock !== Infinity) this.clock = Math.max(0, this.clock - dt); }
 
+    // Lead assist: nudge a throw released near a receiver toward the right lead for where he'll be when the
+    // ball arrives. Normal: partial, stronger for more accurate quarterbacks. Easy: full. Hard: none.
+    leadAssist(t) {
+      const diff = this.cfg.difficulty || 'normal';
+      const s = diff === 'hard' ? 0 : diff === 'easy' ? 0.9 : clamp(0.35 + (this.qbs.acc - 60) * 0.012, 0.25, 0.8);
+      if (!s) return t;
+      const qb = this.qb; let best = null, bd = 5;
+      for (const p of this.off) {
+        if (!['WR1', 'WR2', 'TE', 'RB'].includes(p.role)) continue;
+        let lx = p.x, ly = p.y;
+        for (let i = 0; i < 3; i++) { const T = 0.3 + hyp(lx - qb.x, ly - qb.y) / this.ballSpeed; lx = p.x + p.vx * T; ly = p.y + p.vy * T; }
+        const miss = hyp(lx - t.x, ly - t.y);
+        if (miss < bd) { bd = miss; best = { x: lx, y: ly }; }
+      }
+      if (!best) return t;
+      let x = t.x + (best.x - t.x) * s, y = t.y + (best.y - t.y) * s;
+      const d = hyp(x - qb.x, y - qb.y), max = this.maxRange * (1 - this.fatigue() * 0.3);
+      if (d > max) { x = qb.x + (x - qb.x) * max / d; y = qb.y + (y - qb.y) * max / d; }
+      return { x, y };
+    }
+    // A defender breaks on a thrown ball once he reads it: a strong cover man reacts sooner and from farther
+    // away (about 0.25s and 8.5 yds at 90 coverage, 0.55s and 7 yds at 60). Easy slows the read; Hard speeds it up.
+    ballReact(d, b) {
+      const cov = d.info ? d.info.cov : 70, diff = this.cfg.difficulty || 'normal';
+      const react = 0.25 + (90 - cov) * 0.01 + (diff === 'easy' ? 0.25 : diff === 'hard' ? -0.1 : 0);
+      const reach = (4 + cov * 0.05) * (diff === 'easy' ? 0.75 : diff === 'hard' ? 1.15 : 1);
+      return this.t - b.t0 > react && hyp(d.x - b.tx, d.y - b.ty) < reach;
+    }
     throwBall(tx, ty) {
       const qb = this.qb;
-      const d = hyp(tx - qb.x, ty - qb.y), sd = d * this.scatter * (1 + this.fatigue() * 0.9);  // tired: less accurate
+      const d = hyp(tx - qb.x, ty - qb.y), sd = d * this.scatter * (1 + this.fatigue() * 0.9 * this.dif.tire);  // tired: less accurate
       tx += gauss() * sd; ty += gauss() * sd;
       this.ball = { state: 'air', sx: qb.x, sy: qb.y, tx, ty, u: 0, dur: 0.3 + d / this.ballSpeed, t0: this.t, dist: d };
       this.carrier = null; this.stats.att++;
@@ -565,9 +609,10 @@
         const d = hyp(tx - p.x, ty - p.y);
         if (d < 0.5) {
           p.wp++;
-          // breaking on his route: an agile receiver wrong-foots the defender in man coverage on him
-          const lag = clamp((p.agi != null && p.role !== 'RB' ? p.agi - 50 : 0) * 0.012, 0, 0.5);
-          if (lag > 0) for (const dd of this.def) if (dd.job === 'man' && dd.mark === p) dd.lag = lag;
+          // breaking on his route: his agility against his man-coverage defender's coverage decides how long
+          // the defender loses track of him (nothing against a great cover man, up to about half a second)
+          if (p.agi != null && p.role !== 'RB')
+            for (const dd of this.def) if (dd.job === 'man' && dd.mark === p) dd.lag = clamp(0.25 + (p.agi - dd.info.cov) * 0.015, 0, 0.55);
           return;
         }
         p.dir = [(tx - p.x) / d, (ty - p.y) / d];
@@ -631,7 +676,7 @@
         if (runPhase || (!isPass && this.t > d.react)) {
           const lead = Math.min(0.8, (hyp(ref.x - d.x, ref.y - d.y) / d.spd) * 0.6);
           tx = ref.x + ref.vx * lead; ty = ref.y + ref.vy * lead;
-        } else if (b.state === 'air' && this.t - b.t0 > 0.25 && hyp(d.x - b.tx, d.y - b.ty) < 9) {
+        } else if (b.state === 'air' && this.ballReact(d, b)) {
           tx = b.tx; ty = b.ty;
         } else if (d.job === 'rush') { tx = qb.x; ty = qb.y; if (this.t < (d.delay || 0)) sp = 0; }
         else if (d.job === 'man') {
@@ -782,18 +827,20 @@
     resolvePass() {
       const b = this.ball; b.state = 'dead';
       const oob = b.ty < 0 || b.ty > FW || b.tx > 120 || b.tx < 0;
-      let o = null, od = 1.9, d = null, dd = 1.7;
+      let o = null, od = 1.9 + this.dif.window, d = null, dd = 1.7;
       for (const p of this.off) {
         if (p.role === 'OL' || p.role === 'QB') continue;
         const x = hyp(p.x - b.tx, p.y - b.ty); if (x < od) { od = x; o = p; }
       }
       for (const p of this.def) { const x = hyp(p.x - b.tx, p.y - b.ty); if (x < dd) { dd = x; d = p; } }
       if (oob) return this.incomplete('Out of bounds — incomplete');
-      if (d && (!o || dd < od) && Math.random() < (o ? 0.22 : 0.35)) return this.intercepted(b.tx);
+      // how much a nearby defender disrupts the catch depends on his coverage
+      const dcov = d && d.info ? d.info.cov : 70, dskill = clamp(0.6 + (dcov - 60) * 0.015, 0.4, 1.2) * ((this.cfg.difficulty || 'normal') === 'hard' ? 1.15 : 1);
+      if (d && (!o || dd < od) && Math.random() < (o ? 0.22 : 0.35) * this.dif.pick * dskill) return this.intercepted(b.tx);
       if (!o) return this.incomplete(d ? 'Broken up' : 'Incomplete');
       let pc = 0.8 + ((o.hands != null ? o.hands : o.ovr) - 60) * 0.004 - (od / 1.9) * 0.15;   // a back's catching stat
       // a defender on him makes it a contested catch; strength helps him win it
-      if (d) pc -= 0.4 * (1 - dd / 1.7) * (o.pow != null ? clamp(1 - (o.pow - 65) * 0.008, 0.75, 1.2) : 1);
+      if (d) pc -= 0.4 * dskill * (this.dif.pick < 1 ? 0.75 : 1) * (1 - dd / 1.7) * (o.pow != null ? clamp(1 - (o.pow - 65) * 0.008, 0.75, 1.2) : 1);
       if (Math.random() > pc) return this.incomplete(d ? 'Broken up' : 'Dropped');
       // caught
       this.stats.comp++; this.caught = true; this.carrier = o; b.state = 'held';

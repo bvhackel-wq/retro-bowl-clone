@@ -2,7 +2,7 @@
 (function () {
   const GP = window.GP;
   const $ = (s) => document.querySelector(s);
-  let S = null, viewConf = 0, draftPos = 'ALL';
+  let S = null, viewConf = 0, draftPos = 'ALL', newDiff = 'normal';
   let offer = null;   // trade being built: { partner, give: {players, picks}, get: {players, picks} }
 
   function show(id) {
@@ -53,10 +53,17 @@
       h('b', null, 'Play full screen'),
       h('div', { class: 'dim' }, 'In Safari tap Share, then "Add to Home Screen". Open the game from that icon and it runs with no browser bars.'),
       h('div', { class: 'dim', style: 'font-size:13px' }, 'The Home Screen version keeps its own save, separate from this one.')));
+    // difficulty for a new career
+    const diffDesc = { easy: 'Throws are led for you, a slower pass rush, fewer interceptions', normal: 'Light lead help, scaled by your quarterback’s accuracy', hard: 'No passing help, more interceptions' };
+    act.append(h('div', { class: 'card tip' },
+      h('b', null, 'Difficulty for a new career'),
+      h('div', { class: 'tabs' }, ...Object.entries(GP.DIFFICULTY).map(([k, label]) =>
+        h('button', { class: 'btn small' + (k === newDiff ? '' : ' ghost'), onclick: () => { newDiff = k; renderTitle(); } }, label))),
+      h('div', { class: 'dim' }, diffDesc[newDiff])));
     const grid = $('#team-grid'); grid.innerHTML = '';
     const start = (t) => {
       if (saved && !confirm('Start a new career? This replaces your current save.')) return;
-      S = GP.newCareer(t.id); GP.save(S); viewConf = t.conf; renderHub();
+      S = GP.newCareer(t.id, newDiff); GP.save(S); viewConf = t.conf; renderHub();
     };
     GP.CONFS.forEach((cn, c) => {
       grid.append(h('h3', { class: 'conf' }, cn + ' Conference'));
@@ -126,6 +133,10 @@
       h('span', { class: 'sp' }),
       h('span', { class: 'pill' }, `Season ${S.season} · ${rec.w}-${rec.l}`),
       h('span', { class: 'pill' }, 'Coaching points ', h('b', null, String(S.credits))),
+      h('button', { class: 'btn ghost small', title: 'Change difficulty', onclick: () => {
+        const order = ['easy', 'normal', 'hard'], next = order[(order.indexOf(S.difficulty || 'normal') + 1) % 3];
+        S.difficulty = next; GP.save(S); renderHub();
+      } }, 'Difficulty: ' + GP.DIFFICULTY[S.difficulty || 'normal']),
       h('button', { class: 'btn ghost small', onclick: renderTitle }, 'Menu')));
 
     if (S.news && S.news.length) hub.append(h('div', { class: 'card news' }, ...S.news.map((n) => h('div', null, n))));
@@ -346,7 +357,7 @@
     const or = GP.rec(S, game.oppId);
     show('match');
     GP.match = new GP.Match($('#field'), {
-      me: GP.team(S.teamId), opp: GP.team(game.oppId), roster: GP.lineup(S), staff: S.staff,
+      me: GP.team(S.teamId), opp: GP.team(game.oppId), roster: GP.lineup(S), staff: S.staff, difficulty: S.difficulty || 'normal',
       oppOff: or.off, oppDef: or.def, label: game.label,
       onEnd: (my, opp, st, info) => {
         GP.match = null; GP.advance(S, my, opp);
