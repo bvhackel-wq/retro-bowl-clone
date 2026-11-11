@@ -245,6 +245,13 @@
     me.def = r.DEF.ovr + Math.round(((s.staff && s.staff.DC.stars) || 0) * 1.5);
   };
   GP.rec = (s, id) => s.teams.find((t) => t.id === id);
+  // Every other team's defensive coordinator: 0-5 stars, kept for the career. Loosely follows the team's defense,
+  // but a talented defense can have a poor coordinator (and the reverse). His stars set how often his players bust.
+  GP.oppDC = function (s, id) {
+    const t = GP.rec(s, id);
+    if (t.dc == null) { t.dc = GP.clamp(Math.round((t.def - 60) / 8) + GP.rint(-2, 2), 0, 5); GP.save(s); }
+    return t.dc;
+  };
   const byRecord = (a, b) => b.w - a.w || (b.pf - b.pa) - (a.pf - a.pa);
   GP.standings = (s) => s.teams.slice().sort(byRecord);   // whole league, best first
   GP.divStandings = (s, conf, div) =>

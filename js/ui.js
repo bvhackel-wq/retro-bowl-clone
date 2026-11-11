@@ -153,7 +153,7 @@
       hub.append(h('h2', null, (S.phase === 'playoffs' ? 'Playoffs — ' : '') + game.label), h('div', { class: 'card next' },
         badge(o),
         h('div', null, h('div', { class: 'vs' }, 'vs ' + full(o)),
-          h('div', { class: 'dim' }, `${or.w}-${or.l} · Offense ${or.off} · Defense ${or.def}`),
+          h('div', { class: 'dim' }, `${or.w}-${or.l} · Offense ${or.off} · Defense ${or.def} · DC ${starText(GP.oppDC(S, game.oppId))}`),
           h('div', { class: 'dim' }, `You: Offense ${rec.off} · Defense ${rec.def}`)),
         h('span', { style: 'flex:1' }),
         h('button', { class: 'btn', onclick: () => startMatch(game) }, 'Play game')));
@@ -358,7 +358,7 @@
     show('match');
     GP.match = new GP.Match($('#field'), {
       me: GP.team(S.teamId), opp: GP.team(game.oppId), roster: GP.lineup(S), staff: S.staff, difficulty: S.difficulty || 'normal',
-      oppOff: or.off, oppDef: or.def, label: game.label,
+      oppOff: or.off, oppDef: or.def, oppDC: GP.oppDC(S, game.oppId), label: game.label,
       onEnd: (my, opp, st, info) => {
         GP.match = null; GP.advance(S, my, opp);
         if (info && info.forfeit) { S.news = (S.news || []).concat(`You forfeited against ${full(GP.team(game.oppId))}. It counts as a ${my}-${opp} loss.`); GP.save(S); }

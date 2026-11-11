@@ -57,6 +57,16 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
   offensive coordinator calls a play each snap; Change shows the six types, and picking one gives his
   best play of that type for the situation (pick it again for his next one). His read of each coverage
   comes from measured results of every play against every call.
+- **Defenders have jobs, and make mistakes.** Man defenders play leverage: they shade a yard inside or
+  outside and give up the other way (inside in Cover 0, 2-Man and press; outside in Cover 1, where help
+  is in the middle). A man defender whose man stays in to block drops into the hole over the middle. With
+  one deep safety he plays the run fast; with two, both read pass first, so Cover 2 and 2-Man are the
+  shells to run against (Cover 4's safeties still fit the run). Before every snap each defender may bust
+  his assignment: he loses his man, jumps a short route, drops to the wrong spot, bites hard on play
+  action or overruns a run. Low-star players and low-star coordinators bust more: about 1 bust every 12
+  plays from a 5-star defense under a 5-star coordinator, 1 every 2 from 0 stars under 0 stars. Every
+  team's defensive coordinator has 0-5 stars, shown on the next-game card. A big catch a bust caused
+  pops up as "Busted coverage!".
 - **Read the defense.** The opposing coordinator calls a coverage every snap from a nine-call playbook:
   Cover 0 (all-out blitz, nobody deep), Cover 1 and Cover 1 Press (man with one deep safety), Cover 2,
   Cover 3, Cover 4 (quarters), 2-Man (two deep, man under), Fire Zone (linebacker blitz, three deep, a
