@@ -1098,8 +1098,12 @@
       const dcov = d && d.info ? d.info.cov : 70, dskill = clamp(0.6 + (dcov - 60) * 0.015, 0.4, 1.2) * ((this.cfg.difficulty || 'normal') === 'hard' ? 1.15 : 1);
       if (d && (!o || dd < od) && Math.random() < (o ? 0.22 : 0.35) * this.dif.pick * dskill) return this.intercepted(b.tx);
       if (!o) return this.incomplete(d ? 'Broken up' : 'Incomplete');
-      let pc = 0.8 + ((o.hands != null ? o.hands : o.ovr) - 60) * 0.004 - (od / 1.9) * 0.15;   // a back's catching stat
-      // a defender on him makes it a contested catch; strength helps him win it
+      const hands = o.hands != null ? o.hands : o.ovr;   // a back's catching stat
+      // Uncontested, a catchable ball is almost always caught: about 2% drops at 70 catching (3-4% at 50,
+      // under 1% at 90), a little more on a ball he has to reach for. With a defender on him it's a contested catch
+      // (below), where the old odds still apply and strength helps him win it.
+      let pc = d ? 0.8 + (hands - 60) * 0.004 - (od / 1.9) * 0.15
+        : clamp(0.988 + (hands - 70) * 0.0007 - (od / (1.9 + this.dif.window)) * 0.015, 0.96, 0.998);
       if (d) pc -= 0.4 * dskill * (this.dif.pick < 1 ? 0.75 : 1) * (1 - dd / 1.7) * (o.pow != null ? clamp(1 - (o.pow - 65) * 0.008, 0.75, 1.2) : 1);
       if (Math.random() > pc) return this.incomplete(d ? 'Broken up' : 'Dropped');
       // caught
