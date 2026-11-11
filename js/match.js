@@ -363,7 +363,7 @@
       }
       p.hidden = false;
     }
-    hidePanel() { this.el.panel.hidden = true; }
+    hidePanel() { this.el.panel.hidden = true; this.el.panel.className = ''; }
 
     // ---------- drive / down flow ----------
     // Stamina: every snap drains the QB's energy (faster with low stamina); he's fresh each drive.
