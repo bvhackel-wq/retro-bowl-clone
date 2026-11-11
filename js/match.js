@@ -27,16 +27,42 @@
 
   // Route points are [yards downfield, yards toward the middle of the field] from the receiver's start.
   const PLAYS = [
-    { id: 'slants', name: 'Quick Slants', type: 'pass', desc: 'Fast throws inside',
+    { id: 'slants', name: 'Quick Slants', type: 'pass', cat: 'quick', desc: 'Fast throws inside',
       routes: { WR1: { pts: [[3, 0], [13, 10]] }, WR2: { pts: [[3, 0], [13, 10]] }, TE: { pts: [[6, 0]], stop: true }, RB: { pts: [[0, -6], [5, -9]] } } },
-    { id: 'verts', name: 'Verticals', type: 'pass', desc: 'Everybody deep',
+    { id: 'verts', name: 'Verticals', type: 'pass', cat: 'deep', desc: 'Everybody deep',
       routes: { WR1: { pts: [[45, 0]] }, WR2: { pts: [[45, 0]] }, TE: { pts: [[10, 0], [45, 3]] }, RB: { pts: [[2, -5]], stop: true } } },
-    { id: 'post', name: 'Post & Cross', type: 'pass', desc: 'Deep post, TE crossing',
+    { id: 'post', name: 'Post & Cross', type: 'pass', cat: 'deep', desc: 'Deep post, TE crossing',
       routes: { WR1: { pts: [[12, 0], [40, 12]] }, WR2: { pts: [[10, 0], [12, -2]], stop: true }, TE: { pts: [[5, 0], [9, 16]] }, RB: { pts: [[1, -6], [14, -10]] } } },
-    { id: 'curls', name: 'Curls', type: 'pass', desc: 'Receivers stop at 11',
+    { id: 'curls', name: 'Curls', type: 'pass', cat: 'quick', desc: 'Receivers stop at 11',
       routes: { WR1: { pts: [[13, 0], [11, 1.5]], stop: true }, WR2: { pts: [[13, 0], [11, 1.5]], stop: true }, TE: { pts: [[6, 0], [8, -6]] }, RB: { pts: [[4, 3]], stop: true } } },
-    { id: 'run', name: 'HB Run', type: 'run', desc: 'Hand off and steer' },
+    { id: 'run', name: 'HB Off Tackle', type: 'run', cat: 'inside', side: 1, rbY: 4.4, desc: 'Behind the tight end' },
+    // --- added plays (route points: [yards downfield, yards toward the middle]) ---
+    { id: 'outs', name: 'Quick Outs', type: 'pass', cat: 'quick', desc: 'Receivers break to the sideline at 5',
+      routes: { WR1: { pts: [[5, 0], [5, -4]], stop: true }, WR2: { pts: [[5, 0], [5, -4]], stop: true }, TE: { pts: [[4, 0], [7, 5]] }, RB: { pts: [[1, -6]], stop: true } } },
+    { id: 'stick', name: 'Stick', type: 'pass', cat: 'quick', desc: 'Tight end sits at 6, back to the flat',
+      routes: { WR1: { pts: [[12, 0]] }, WR2: { pts: [[6, 0], [6, 2]], stop: true }, TE: { pts: [[6, 0]], stop: true }, RB: { pts: [[0, -7], [2, -10]], stop: true } } },
+    { id: 'dagger', name: 'Dagger', type: 'pass', cat: 'deep', desc: 'Seam clears out a deep dig',
+      routes: { WR1: { pts: [[30, 2]] }, WR2: { pts: [[14, 0], [14, 12]] }, TE: { pts: [[25, 1]] }, RB: { pts: [[2, -5]], stop: true } } },
+    { id: 'comeback', name: 'Comebacks', type: 'pass', cat: 'deep', desc: 'Push to 16, turn back to the sideline',
+      routes: { WR1: { pts: [[16, 0], [13, -2.5]], stop: true }, WR2: { pts: [[16, 0], [13, -2.5]], stop: true }, TE: { pts: [[8, 0], [10, 6]] }, RB: { pts: [[3, -6]], stop: true } } },
+    { id: 'dive', name: 'HB Dive', type: 'run', cat: 'inside', side: 1, rbY: 1.3, desc: 'Straight up the middle' },
+    { id: 'toss_r', name: 'Toss Right', type: 'run', cat: 'outside', side: 1, rbY: 3, sweep: true, desc: 'Pitch, run for the sideline, turn up' },
+    { id: 'toss_l', name: 'Toss Left', type: 'run', cat: 'outside', side: -1, rbY: 3, sweep: true, desc: 'The same to the other side' },
+    { id: 'rb_screen', name: 'RB Screen', type: 'pass', cat: 'screen', screen: 'rb', desc: 'Let the rush in, dump it to the back',
+      routes: { WR1: { pts: [[12, 0]] }, WR2: { pts: [[12, 0]] }, TE: { pts: [[6, 0]], stop: true }, RB: { pts: [[-1, -4], [0, -7]], stop: true } } },
+    { id: 'wr_screen', name: 'WR Screen', type: 'pass', cat: 'screen', screen: 'wr', desc: 'Quick throw behind blockers',
+      routes: { WR1: { pts: [[-1, 1.5]], stop: true }, WR2: { block: true }, TE: { block: true }, RB: { pts: [[1, -5]], stop: true } } },
+    { id: 'pa_post', name: 'PA Post', type: 'pass', cat: 'pa', pa: true, desc: 'Fake the run, post behind the linebackers',
+      routes: { WR1: { pts: [[12, 0], [32, 10]] }, WR2: { pts: [[12, 0], [12, 10]] }, TE: { pts: [[8, 0], [20, 2]] }, RB: { block: true } } },
+    { id: 'pa_cross', name: 'PA Crossers', type: 'pass', cat: 'pa', pa: true, desc: 'Fake the run, receivers cross at 12',
+      routes: { WR1: { pts: [[10, 0], [13, 22]] }, WR2: { pts: [[6, 0], [8, 20]] }, TE: { pts: [[14, 0]], stop: true }, RB: { block: true } } },
+    { id: 'pa_shot', name: 'PA Deep Shot', type: 'pass', cat: 'pa', pa: true, desc: 'Fake the run, take the top off',
+      routes: { WR1: { pts: [[40, 2]] }, WR2: { pts: [[40, 2]] }, TE: { pts: [[3, 0], [4, 8]], stop: true }, RB: { block: true } } },
   ];
+  // play types shown when you change the call; the coordinator picks the play within a type
+  const PLAY_TYPES = [['quick', 'Quick pass', 'Short, fast throws'], ['deep', 'Deep pass', 'Push the ball downfield'],
+                      ['inside', 'Inside run', 'Between the tackles'], ['outside', 'Outside run', 'Get to the edge'],
+                      ['screen', 'Screen', 'Let the rush come, throw behind blockers'], ['pa', 'Play action', 'Fake the run, throw deep']];
 
   // Defensive calls and how often they come (percent).
   // The defensive playbook. Two-high calls (Cover 4, 2-Man, Prevent) take a lineman off the field for a
@@ -44,6 +70,19 @@
   const COVERAGES = { cover0: 'Cover 0', cover1: 'Cover 1', cover1p: 'Cover 1 Press', cover2: 'Cover 2', cover3: 'Cover 3',
                       cover4: 'Cover 4', '2man': '2-Man', firezone: 'Fire Zone', prevent: 'Prevent' };
   const TWO_HIGH = { cover4: 1, '2man': 1, prevent: 1 };
+  // what each play gains against each coverage, relative to that coverage's average (measured in testing);
+  // the offensive coordinator uses it to read the defense
+  let OC_FIT = {
+    cover0: { slants: 4, verts: -4, post: 1, curls: 1, run: 1, outs: 3, stick: -2, dagger: -4, comeback: -4, dive: 0, toss_r: 4, toss_l: 0, rb_screen: 0, wr_screen: -1, pa_post: -3, pa_cross: -3, pa_shot: 2 },
+    cover1: { slants: 4, verts: -2, post: 1, curls: 0, run: 0, outs: -2, stick: -2, dagger: -2, comeback: -2, dive: -1, toss_r: 0, toss_l: 0, rb_screen: 0, wr_screen: -2, pa_post: 1, pa_cross: 0, pa_shot: 4 },
+    cover1p: { slants: 4, verts: -2, post: 0, curls: 0, run: 0, outs: -2, stick: -2, dagger: -2, comeback: -2, dive: -1, toss_r: 0, toss_l: 0, rb_screen: 0, wr_screen: -1, pa_post: 1, pa_cross: 1, pa_shot: 4 },
+    cover2: { slants: 0, verts: 1, post: -1, curls: 1, run: -1, outs: -1, stick: 1, dagger: 1, comeback: 2, dive: -2, toss_r: 0, toss_l: 0, rb_screen: -2, wr_screen: -2, pa_post: 2, pa_cross: 0, pa_shot: 1 },
+    cover3: { slants: -1, verts: 2, post: 3, curls: 1, run: -1, outs: -3, stick: 1, dagger: 1, comeback: 2, dive: -1, toss_r: -1, toss_l: -1, rb_screen: -2, wr_screen: -1, pa_post: 1, pa_cross: 0, pa_shot: 1 },
+    cover4: { slants: -1, verts: 0, post: 2, curls: 1, run: -1, outs: -2, stick: 0, dagger: 1, comeback: 2, dive: -1, toss_r: -1, toss_l: -1, rb_screen: -1, wr_screen: -1, pa_post: 1, pa_cross: 0, pa_shot: 1 },
+    '2man': { slants: 3, verts: -2, post: 0, curls: -1, run: 0, outs: -2, stick: -2, dagger: -2, comeback: -1, dive: 0, toss_r: 0, toss_l: 0, rb_screen: 0, wr_screen: -2, pa_post: 2, pa_cross: 1, pa_shot: 3 },
+    firezone: { slants: -1, verts: 1, post: 1, curls: 2, run: -1, outs: -3, stick: 1, dagger: 1, comeback: 2, dive: -2, toss_r: -2, toss_l: -1, rb_screen: -1, wr_screen: -1, pa_post: 2, pa_cross: 0, pa_shot: 1 },
+    prevent: { slants: -1, verts: 1, post: 1, curls: 1, run: -1, outs: -2, stick: 1, dagger: 1, comeback: 2, dive: -1, toss_r: -1, toss_l: -1, rb_screen: -1, wr_screen: 0, pa_post: 0, pa_cross: 0, pa_shot: 0 },
+  };
   const COVER_ALIAS = { man: 'cover1', press: 'cover1p', blitz: 'cover0' };   // older names
   const coverKey = (t) => COVER_ALIAS[t] || t;
 
@@ -343,29 +382,23 @@
       const st = this.cfg.staff, stars = st ? st.OC.stars : 1;
       const togo = this.fdx >= 110 ? 110 - this.los : this.fdx - this.los, diff = this.score.me - this.score.opp;
       const late = (this.q === 2 || this.q === 4) && this.clock < 60;
-      const fit = {
-        // (from testing in this game: what each play gains against each call)
-        cover1: { slants: 3, verts: -2, post: 1, curls: 0, run: 1 }, cover1p: { slants: 3, verts: -2, post: 1, curls: 0, run: 2 },
-        cover0: { slants: 5, verts: 2, post: 1, curls: 2, run: 2 }, cover2: { slants: 1, verts: 3, post: 0, curls: 1, run: 0 },
-        cover3: { slants: 0, verts: 2, post: 3, curls: 2, run: 2 }, cover4: { slants: 0, verts: 2, post: 2, curls: 1, run: 1 },
-        '2man': { slants: 3, verts: -2, post: 0, curls: -1, run: 0 }, firezone: { slants: 0, verts: 2, post: 3, curls: 3, run: 1 },
-        prevent: { slants: 0, verts: 2, post: 2, curls: 3, run: 2 },
-      };
-      const score = { slants: 0, verts: 0, post: 0, curls: 0, run: 0 };
-      // the situation: distance, field position, clock and score
-      // (1st & 10 is a normal down: no push either way)
-      if (togo <= 2) { score.run += 3; score.slants += 1; }
-      else if ((this.down >= 2 && togo >= 7) || togo >= 13) { score.verts += 2; score.post += 2; score.run -= 2; }   // long yardage
-      else if (this.down >= 2) { score.curls += 1; score.slants += 1; }                                                // medium
-      if (this.los >= 90) { score.verts -= 3; score.slants += 1; score.curls += 1; score.run += 1; }   // red zone: no room deep
-      if (late && diff < 0) { score.run -= 3; score.verts += 1; score.post += 1; }                       // need to move fast
-      if (this.q >= 4 && diff > 0 && !late) score.run += 3;                                              // protect the lead, burn clock
-      // the defense's look: a better coordinator reads it more often
-      if (Math.random() < 0.1 + stars * 0.18) for (const k in score) score[k] += fit[coverKey(this.dcall.shown || this.dcall.type)][k] * 1.5;
-      // and a worse one is simply less consistent
-      for (const k in score) score[k] += gauss() * (5.2 - stars) * 0.9;
-      const best = Object.keys(score).sort((a, b) => score[b] - score[a])[0];
-      let call = { play: PLAYS.find((p) => p.id === best) };
+      // the situation, by play type
+      const sit = { quick: 0, deep: 0, inside: 0, outside: 0, screen: 0, pa: 0 };
+      if (togo <= 2) { sit.inside += 3; sit.outside += 1; sit.quick += 1; sit.pa += 1; }
+      else if ((this.down >= 2 && togo >= 7) || togo >= 13) { sit.deep += 2; sit.screen += 1; sit.inside -= 2; sit.outside -= 1; if (this.down <= 2) sit.pa += 1; }
+      else if (this.down >= 2) sit.quick += 1;
+      else { sit.inside += 0.5; sit.pa += 0.5; }                                                          // 1st & 10: balanced
+      if (this.los >= 90) { sit.deep -= 3; sit.pa -= 1; sit.quick += 1; sit.inside += 1; }                 // red zone: no room deep
+      if (late && diff < 0) { sit.inside -= 3; sit.outside -= 2; sit.screen -= 1; sit.deep += 1; sit.quick += 0.5; }   // hurry
+      if (this.q >= 4 && diff > 0 && !late) { sit.inside += 3; sit.outside += 2; }                         // protect the lead
+      const runShare = this.tend && this.tend.n ? this.tend.run / this.tend.n : 0.35;
+      sit.pa += clamp(runShare - 0.35, -0.3, 0.4) * 4;                                                     // play action works after you've run
+      // his read of the coverage the defense shows (a better coordinator reads it more often)
+      const reads = Math.random() < 0.1 + stars * 0.18, fit = OC_FIT[coverKey(this.dcall.shown || this.dcall.type)] || {};
+      this.ocScores = {};
+      for (const p of PLAYS) this.ocScores[p.id] = sit[p.cat] + (reads ? (fit[p.id] || 0) * 1.5 : 0) + gauss() * (5.2 - stars) * 0.9;
+      const best = PLAYS.slice().sort((a, b) => this.ocScores[b.id] - this.ocScores[a.id])[0];
+      let call = { play: best };
       if (this.down === 4) {
         const fg = Math.round(110 - this.los + 17), desperate = this.q >= 4 && this.clock < 120 && diff < 0 && diff >= -8;
         if (desperate || (togo <= 1 && this.los >= 55)) call.kick = null;
@@ -374,19 +407,29 @@
       }
       return call;
     }
+    // You picked a play type: the coordinator's best play of that type; the same type again gives his next one.
+    pickType(cat) {
+      const list = PLAYS.filter((p) => p.cat === cat).sort((a, b) => this.ocScores[b.id] - this.ocScores[a.id]);
+      const i = this.typePick && this.typePick.cat === cat ? (this.typePick.i + 1) % list.length : 0;
+      this.typePick = { cat, i };
+      this.pickPlay(list[i]);
+    }
     // the "Play: ... · Change" button over the field before the snap
     chip() {
       const c = this.el.chip, show = this.phase === 'presnap' && this.el.panel.hidden && !this.paused;
       if (c.hidden === !show && c.dataset.play === (this.play && this.play.id)) return;
       c.hidden = !show; c.dataset.play = this.play ? this.play.id : '';
-      if (show) c.innerHTML = `<small>${this.play === this.ocPick ? "OC's call" : 'Your call'}</small><b>${this.play.name}</b><span>Change</span>`;
+      const type = (PLAY_TYPES.find((t) => t[0] === (this.play && this.play.cat)) || [0, ''])[1];
+      if (show) c.innerHTML = `<small>${this.play === this.ocPick ? "OC's call" : 'Your call'} · ${type}</small><b>${this.play.name}</b><span>Change</span>`;
       // where the button ends, in art pixels, so the bottom hint can sit to its right
       const bw = this.cv.getBoundingClientRect().width;
       this.chipEnd = show && bw ? Math.ceil(((c.offsetLeft + c.offsetWidth) / bw) * AW) + 6 : 0;
     }
     playList(title) {
       const call = this.ocLast;
-      const opts = PLAYS.map((p) => ({ label: p.name, sub: p.desc, rec: !call.kick && call.play === p, fn: () => this.pickPlay(p) }));
+      // play types; the coordinator fills in the play
+      const opts = PLAY_TYPES.map(([cat, label, desc]) => ({ label, sub: this.play && this.play.cat === cat ? `Now: ${this.play.name} · tap for another` : desc,
+        rec: !call.kick && call.play.cat === cat, fn: () => this.pickType(cat) }));
       if (this.down === 4) {
         const dist = Math.round(110 - this.los + 17);
         if (dist <= this.kickRange + 8) opts.push({ label: `Field Goal`, sub: `${dist} yds · range ${this.kickRange}`, kick: true, rec: call.kick === 'fg', fn: () => this.startKick('fg') });
@@ -397,7 +440,7 @@
 
     toChoose() {
       this.phase = 'choose'; this.kick = null; this.play = null;
-      this.dcall = this.callDefense(); this.defNote = null;
+      this.dcall = this.callDefense(); this.defNote = null; this.typePick = null;
       this.setupFormation();
       // the offensive coordinator calls the play; on 4th down he only recommends (you decide)
       const call = this.ocLast = this.ocCall();
@@ -417,8 +460,15 @@
         d.react = (d.react || 0) + 0.25 + (d.job === 'deep' ? 0.6 : d.job === 'zone' && d.anchor && d.anchor[0] - this.los >= 8 ? 0.3 : 0);
       }
       this.phase = 'live'; this.t = 0; this.caught = false; this.scramble = false; this.gesture = null; this.aim = null;
+      // play action: linebackers and safeties step up on the fake; good cover men barely bite, and the more
+      // you've run the ball this game, the harder they bite
+      if (this.play.pa) {
+        const runShare = this.tend.n ? this.tend.run / this.tend.n : 0.3;
+        for (const d of this.def) if ((d.role === 'LB' || d.role === 'S') && d.info)
+          d.bite = clamp((0.15 + Math.max(0, 85 - d.info.cov) * 0.012) * (0.6 + runShare), 0.05, 0.8);
+      }
       // what the offense called, so the defense can adjust to its tendencies
-      const id = this.play.id; this.tend.n++; this.tend[id === 'run' ? 'run' : id === 'verts' || id === 'post' ? 'deep' : 'short']++;
+      const cat = this.play.cat; this.tend.n++; this.tend[cat === 'inside' || cat === 'outside' ? 'run' : cat === 'deep' || cat === 'pa' ? 'deep' : 'short']++;
       // a disguised coverage rotates to the real call now
       const dc = this.dcall, shown = coverKey(dc.shown || dc.type), real = coverKey(dc.type);
       if (shown !== real) {
@@ -451,9 +501,9 @@
         c.s2 = dl1;
         if (!reuse) { dl1.x = L + 11; dl1.y = MID + 5; }
       } else if (reuse && reuse.s2) { rush(dl1, 0.3); }                       // a "safety" who was a lineman comes on a blitz
-      if (type === 'cover0') {         // all-out pressure, man everywhere, nobody deep
+      if (type === 'cover0') {         // pressure, man on every receiver, nobody deep
         c.lb1 = D('lb1', 'LB', 4, MID - 5, lb, 0.2); rush(c.lb1, 0.4);
-        c.lb2 = D('lb2', 'LB', 4, MID + 5, lb, 0.2); rush(c.lb2, 0.4);
+        c.lb2 = D('lb2', 'LB', 4, MID + 4, lb, 0.2); man(c.lb2, rb);          // every eligible receiver has a man
         c.c1 = D('c1', 'CB', 5, 3.5, db, 0.7); man(c.c1, w1);
         c.c2 = D('c2', 'CB', 5, FW - 3.5, db, 0.7); man(c.c2, w2);
         c.s = D('s', 'S', 8, MID - 5, db, 0.5); man(c.s, te);
@@ -548,7 +598,9 @@
       this.qb = M('O', 'QB', L - 5, MID, 5.5); this.qb.agi = this.qbs.agi; this.qb.sta = this.qbs.sta; this.qb.sStat = this.qbs.spd;
       // on a run the back sets up in the off-tackle gap, so running straight hits a lane, not a lineman
       const rs = r.RB.stats || {}, rv = (k) => (rs[k] != null ? rs[k] : r.RB.ovr);
-      const rb = M('O', 'RB', L - 5, MID + (this.play && this.play.type === 'run' ? 4.4 : 3), wr(rv('spd')) + 0.1); rb.ovr = r.RB.ovr;
+      const pl = this.play, runSide = pl && pl.type === 'run' ? pl.side || 1 : 1;
+      const rb = M('O', 'RB', L - 5, MID + (pl && pl.type === 'run' ? runSide * (pl.rbY || 4.4) : 3), wr(rv('spd')) + 0.1); rb.ovr = r.RB.ovr;
+      rb.sweep = pl && pl.sweep ? runSide : 0;          // outside runs head for the sideline first
       rb.agi = rv('agi'); rb.hands = rv('hands'); rb.pow = rv('pow'); rb.sta = rv('sta'); rb.sStat = rv('spd');
       const recv = (key, y) => {
         const st = r[key].stats || {}, v = (k) => (st[k] != null ? st[k] : r[key].ovr);
@@ -559,7 +611,7 @@
       const w1 = recv('WR1', 3), w2 = recv('WR2', FW - 3);
       const ts = r.TE.stats || {}, tv = (k) => (ts[k] != null ? ts[k] : r.TE.ovr);
       // on runs the tight end lines up on the run side, just outside the hole, and leads the way
-      const te = M('O', 'TE', L - 0.6, MID + (this.play && this.play.type === 'run' ? 6.6 : -7), 6.2 + (tv('spd') - 60) * 0.03);
+      const te = M('O', 'TE', L - 0.6, MID + (this.play && this.play.type === 'run' ? runSide * 6.6 : -7), 6.2 + (tv('spd') - 60) * 0.03);
       Object.assign(te, { ovr: r.TE.ovr, hands: tv('hands') + (ts.hands != null ? 0 : 6), pow: tv('pow') + (ts.pow != null ? 0 : 6),
                           blk: tv('blk'), sta: tv('sta'), agi: 55, sStat: tv('spd') });
       // three linemen, each with his own stats; tired linemen block up to 25% worse
@@ -607,6 +659,7 @@
           const rt = this.play.routes[p.role];
           if (!rt) continue;
           const inS = p.y < MID ? 1 : -1;
+          if (rt.block) { p.route = { block: true, pts: [] }; continue; }      // stays in to block
           p.route = { stop: rt.stop, pts: rt.pts.map(([dx, dy]) => [Math.min(p.x + dx, 118), clamp(p.y + dy * inS, 1.2, FW - 1.2)]) };
         }
       }
@@ -758,7 +811,9 @@
           if (c === qb && this.t < 0.8) go(p, L - 7.5, MID, 4, dt, 8); else go(p, p.x, p.y, 0, dt, 8);
           continue;
         }
-        const mustBlock = runPhase || !isPass;
+        // RB screen: the line holds briefly, then releases to lead-block in the flat
+        if (p.role === 'OL' && isPass && this.play.screen === 'rb' && !runPhase && this.t > 0.75) { go(p, L + 1.5, MID + 7, p.spd, dt, 8); continue; }
+        const mustBlock = runPhase || !isPass || (p.route && p.route.block);
         if (p.role === 'OL' || mustBlock) {
           p.blocking = true;
           let d = !mustBlock && p.mark && p.mark.eng < p.mark.shed ? p.mark : this.blockTarget(p, mustBlock ? ref : qb);
@@ -774,6 +829,7 @@
       const recs = this.off.filter((p) => p.route);
       for (const d of this.def) {
         if (d.stun > 0) { d.stun -= dt; continue; }
+        if (d.bite > 0 && !runPhase) { d.bite -= dt; go(d, this.los + 1, d.y, d.spd * 0.8, dt, 6); continue; }   // biting on the fake
         const f = this.blockFactor(d, dt);
         let tx, ty, sp = d.spd;
         if (runPhase || (!isPass && this.t > d.react)) {
@@ -922,6 +978,7 @@
         p.cut.t -= dt; dy = p.cut.dir * 0.75;
       } else {
         dy = ((k.arrowdown || k.s ? 1 : 0) - (k.arrowup || k.w ? 1 : 0)) * 0.75;
+        if (!dy && p.sweep && (p.runT || 0) < 0.9) dy = p.sweep * 0.85;      // outside run: to the edge, then up
       }
       const dx = Math.sqrt(1 - dy * dy);
       go(p, p.x + dx * 5, p.y + dy * 5, sp, dt, acc);
@@ -1503,4 +1560,6 @@
 
   GP.Match = Match;
   GP.PLAYS = PLAYS;
+  GP.PLAY_TYPES = PLAY_TYPES;
+  GP.setOcFit = (f) => { OC_FIT = f; };
 })();

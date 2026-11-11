@@ -49,6 +49,14 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
   yards at 40 kick distance up to about 60 at 99). A clean punt lands where you aimed; a shank falls
   short and veers. Into the end zone is a touchback, over the sideline is spotted where it went out,
   otherwise there's a short return (fair catch inside their 10).
+- **Playbook:** 17 plays in six types. Quick pass (Slants, Curls, Quick Outs, Stick), Deep pass
+  (Verticals, Post & Cross, Dagger, Comebacks), Inside run (HB Off Tackle, HB Dive), Outside run (Toss
+  Right/Left: to the edge, then up), Screen (RB Screen: the line releases to lead-block; WR Screen:
+  receiver steps back behind blockers) and Play action (PA Post, PA Crossers, PA Deep Shot: linebackers
+  and safeties bite on the fake, less if they cover well, more the more you've run that game). The
+  offensive coordinator calls a play each snap; Change shows the six types, and picking one gives his
+  best play of that type for the situation (pick it again for his next one). His read of each coverage
+  comes from measured results of every play against every call.
 - **Read the defense.** The opposing coordinator calls a coverage every snap from a nine-call playbook:
   Cover 0 (all-out blitz, nobody deep), Cover 1 and Cover 1 Press (man with one deep safety), Cover 2,
   Cover 3, Cover 4 (quarters), 2-Man (two deep, man under), Fire Zone (linebacker blitz, three deep, a
