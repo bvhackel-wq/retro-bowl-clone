@@ -23,7 +23,7 @@
   const FALL_TIME = 0.35;          // seconds the tackle animation takes (runner falls forward)
   // Opponent defensive slots in the order setupFormation builds them, with a tackling offset vs team defense.
   const DSLOTS = [['DL1', 'DL', 0], ['DL2', 'DL', 0], ['DL3', 'DL', 0], ['LB1', 'LB', 5], ['LB2', 'LB', 5],
-                  ['CB1', 'CB', -4], ['CB2', 'CB', -4], ['S', 'S', 2]];
+                  ['CB1', 'CB', -4], ['CB2', 'CB', -4], ['S', 'S', 2], ['S2', 'S', 2]];   // S2 plays only in two-high calls
 
   // Route points are [yards downfield, yards toward the middle of the field] from the receiver's start.
   const PLAYS = [
@@ -39,7 +39,13 @@
   ];
 
   // Defensive calls and how often they come (percent).
-  const CALLS = [['man', 30], ['press', 15], ['cover2', 20], ['cover3', 20], ['blitz', 15]];
+  // The defensive playbook. Two-high calls (Cover 4, 2-Man, Prevent) take a lineman off the field for a
+  // second safety, so they rush only two and are soft against the run.
+  const COVERAGES = { cover0: 'Cover 0', cover1: 'Cover 1', cover1p: 'Cover 1 Press', cover2: 'Cover 2', cover3: 'Cover 3',
+                      cover4: 'Cover 4', '2man': '2-Man', firezone: 'Fire Zone', prevent: 'Prevent' };
+  const TWO_HIGH = { cover4: 1, '2man': 1, prevent: 1 };
+  const COVER_ALIAS = { man: 'cover1', press: 'cover1p', blitz: 'cover0' };   // older names
+  const coverKey = (t) => COVER_ALIAS[t] || t;
 
   const hyp = Math.hypot;
   const gauss = () => (Math.random() + Math.random() + Math.random() - 1.5) * 1.15;
@@ -109,6 +115,7 @@
       window.addEventListener('keyup', this.onKeyUp);
 
       this.paused = false; this.initPause();
+      this.tend = { run: 0, short: 0, deep: 0, n: 0 };
       this.el.chip.onclick = () => { if (this.phase === 'presnap' && !this.paused) this.playList('Change the play — ' + this.downText()); };
       this.onResize = () => this.resize();
       window.addEventListener('resize', this.onResize);
@@ -337,9 +344,12 @@
       const togo = this.fdx >= 110 ? 110 - this.los : this.fdx - this.los, diff = this.score.me - this.score.opp;
       const late = (this.q === 2 || this.q === 4) && this.clock < 60;
       const fit = {
-        man: { slants: 3, verts: 1, post: 2, curls: 1, run: 2 }, press: { slants: 1, verts: 3, post: 2, curls: 2, run: 2 },
-        cover2: { slants: 3, verts: 2, post: 1, curls: 2, run: 2 }, cover3: { slants: 2, verts: 0, post: 2, curls: 3, run: 3 },
-        blitz: { slants: 4, verts: -3, post: 2, curls: -3, run: 1 },
+        // (from testing in this game: what each play gains against each call)
+        cover1: { slants: 3, verts: -2, post: 1, curls: 0, run: 1 }, cover1p: { slants: 3, verts: -2, post: 1, curls: 0, run: 2 },
+        cover0: { slants: 5, verts: 2, post: 1, curls: 2, run: 2 }, cover2: { slants: 1, verts: 3, post: 0, curls: 1, run: 0 },
+        cover3: { slants: 0, verts: 2, post: 3, curls: 2, run: 2 }, cover4: { slants: 0, verts: 2, post: 2, curls: 1, run: 1 },
+        '2man': { slants: 3, verts: -2, post: 0, curls: -1, run: 0 }, firezone: { slants: 0, verts: 2, post: 3, curls: 3, run: 1 },
+        prevent: { slants: 0, verts: 2, post: 2, curls: 3, run: 2 },
       };
       const score = { slants: 0, verts: 0, post: 0, curls: 0, run: 0 };
       // the situation: distance, field position, clock and score
@@ -351,7 +361,7 @@
       if (late && diff < 0) { score.run -= 3; score.verts += 1; score.post += 1; }                       // need to move fast
       if (this.q >= 4 && diff > 0 && !late) score.run += 3;                                              // protect the lead, burn clock
       // the defense's look: a better coordinator reads it more often
-      if (Math.random() < 0.1 + stars * 0.18) for (const k in score) score[k] += fit[this.dcall.type][k] * 1.5;
+      if (Math.random() < 0.1 + stars * 0.18) for (const k in score) score[k] += fit[coverKey(this.dcall.shown || this.dcall.type)][k] * 1.5;
       // and a worse one is simply less consistent
       for (const k in score) score[k] += gauss() * (5.2 - stars) * 0.9;
       const best = Object.keys(score).sort((a, b) => score[b] - score[a])[0];
@@ -387,9 +397,7 @@
 
     toChoose() {
       this.phase = 'choose'; this.kick = null; this.play = null;
-      let r = Math.random() * 100, type = 'man';
-      for (const [t, w] of CALLS) { if ((r -= w) < 0) { type = t; break; } }
-      this.dcall = { type, lbBlitz: type === 'man' && Math.random() < 0.15 };
+      this.dcall = this.callDefense(); this.defNote = null;
       this.setupFormation();
       // the offensive coordinator calls the play; on 4th down he only recommends (you decide)
       const call = this.ocLast = this.ocCall();
@@ -403,8 +411,22 @@
     }
     snap() {
       // on runs the second level reacts a beat late; linemen's hold times are already set by run blocking
-      if (this.play.type === 'run') for (const d of this.def) { if (d.role !== 'DL') d.shed *= 1.7; d.react = (d.react || 0) + 0.25; }
+      // deep defenders guard against the pass first, so they read the run late
+      if (this.play.type === 'run') for (const d of this.def) {
+        if (d.role !== 'DL') d.shed *= 1.7;
+        d.react = (d.react || 0) + 0.25 + (d.job === 'deep' ? 0.6 : d.job === 'zone' && d.anchor && d.anchor[0] - this.los >= 8 ? 0.3 : 0);
+      }
       this.phase = 'live'; this.t = 0; this.caught = false; this.scramble = false; this.gesture = null; this.aim = null;
+      // what the offense called, so the defense can adjust to its tendencies
+      const id = this.play.id; this.tend.n++; this.tend[id === 'run' ? 'run' : id === 'verts' || id === 'post' ? 'deep' : 'short']++;
+      // a disguised coverage rotates to the real call now
+      const dc = this.dcall, shown = coverKey(dc.shown || dc.type), real = coverKey(dc.type);
+      if (shown !== real) {
+        const reuse = Object.assign({}, this.cov);
+        this.cov = this.buildCoverage(dc.type, Object.assign({ L: this.los, M: (...a) => this.mk(...a), w1: this.off.find((p) => p.role === 'WR1'), w2: this.off.find((p) => p.role === 'WR2'),
+          te: this.off.find((p) => p.role === 'TE'), rb: this.rb, db: 7, lb: 7, dl1: this.def[1], lbBlitz: dc.lbBlitz }, { reuse }));
+      }
+      this.defNoteNext = `DEFENSE: ${COVERAGES[real].toUpperCase()}` + (shown !== real ? ` (SHOWED ${COVERAGES[shown].toUpperCase()})` : '');
       this.energy = Math.max(0, this.energy - (3 + (100 - this.qbs.sta) * 0.07));
       // the line tires too, each man by his own stamina
       for (const p of this.off) if (p.role === 'OL') this.olEnergy[p.slot] = Math.max(0, this.olEnergy[p.slot] - (3 + (100 - p.sta) * 0.06));
@@ -413,6 +435,113 @@
     mk(team, role, x, y, spd) {
       return { team, role, x, y, vx: 0, vy: 0, spd, wp: 0, dir: [1, 0], stun: 0, eng: 0, shed: rnd(0.7, 1.5), blocking: false };
     }
+    // Positions and jobs for one coverage call. With ctx.reuse (a disguise rotating at the snap), the players
+    // already on the field keep their spots and take the new jobs.
+    buildCoverage(type, ctx) {
+      type = coverKey(type);
+      const { L, M, w1, w2, te, rb, db, lb, dl1 } = ctx, reuse = ctx.reuse;
+      const D = (key, role, x, y, sp, react) => { if (reuse) { const p = reuse[key]; p.react = react; return p; } const p = M('D', role, L + x, y, sp); p.react = react; return p; };
+      const clear = (p) => { p.job = null; p.mark = null; p.anchor = null; p.lane = null; p.delay = 0; return p; };
+      const man = (p, m) => { clear(p); p.job = 'man'; p.mark = m; };
+      const deep = (p, ax, ay, y0, y1) => { clear(p); p.job = 'deep'; p.anchor = [L + ax, ay]; p.lane = [y0, y1]; };
+      const zone = (p, ax, ay) => { clear(p); p.job = 'zone'; p.anchor = [L + ax, ay]; };
+      const rush = (p, delay) => { clear(p); p.job = 'rush'; p.shed = 0.5; p.delay = delay || 0; };
+      const c = {};
+      if (TWO_HIGH[type]) {            // the middle lineman becomes a second safety
+        c.s2 = dl1;
+        if (!reuse) { dl1.x = L + 11; dl1.y = MID + 5; }
+      } else if (reuse && reuse.s2) { rush(dl1, 0.3); }                       // a "safety" who was a lineman comes on a blitz
+      if (type === 'cover0') {         // all-out pressure, man everywhere, nobody deep
+        c.lb1 = D('lb1', 'LB', 4, MID - 5, lb, 0.2); rush(c.lb1, 0.4);
+        c.lb2 = D('lb2', 'LB', 4, MID + 5, lb, 0.2); rush(c.lb2, 0.4);
+        c.c1 = D('c1', 'CB', 5, 3.5, db, 0.7); man(c.c1, w1);
+        c.c2 = D('c2', 'CB', 5, FW - 3.5, db, 0.7); man(c.c2, w2);
+        c.s = D('s', 'S', 8, MID - 5, db, 0.5); man(c.s, te);
+      } else if (type === 'cover1' || type === 'cover1p') {   // man free: one deep safety; press walks the corners up
+        const off = type === 'cover1p' ? 1.6 : 6;
+        c.c1 = D('c1', 'CB', off, 3.5, db, 0.7); man(c.c1, w1);
+        c.c2 = D('c2', 'CB', off, FW - 3.5, db, 0.7); man(c.c2, w2);
+        c.lb1 = D('lb1', 'LB', 5, MID - 5, lb, 0.3); man(c.lb1, te);
+        c.lb2 = D('lb2', 'LB', 5, MID + 4, lb, 0.3); if (ctx.lbBlitz) rush(c.lb2, 0.2); else man(c.lb2, rb);
+        c.s = D('s', 'S', type === 'cover1p' ? 15 : 13, MID, db, 0.6); deep(c.s, 12, MID, 0, FW);
+      } else if (type === 'cover2') {  // corners bail to deep halves, three underneath
+        c.c1 = D('c1', 'CB', 9, 5, db, 0.7); deep(c.c1, 14, 9, 0, MID);
+        c.c2 = D('c2', 'CB', 9, FW - 5, db, 0.7); deep(c.c2, 14, FW - 9, MID, FW);
+        c.lb1 = D('lb1', 'LB', 5, 8, lb, 0.3); zone(c.lb1, 6, 7);
+        c.lb2 = D('lb2', 'LB', 5, FW - 8, lb, 0.3); zone(c.lb2, 6, FW - 7);
+        c.s = D('s', 'S', 9, MID, db, 0.5); zone(c.s, 8, MID);
+      } else if (type === 'cover3' || type === 'firezone') {  // three deep; fire zone sends a linebacker and drops a lineman
+        c.c1 = D('c1', 'CB', 8, 4, db, 0.7); deep(c.c1, 13, 6, 0, 12);
+        c.c2 = D('c2', 'CB', 8, FW - 4, db, 0.7); deep(c.c2, 13, FW - 6, 24, FW);
+        c.s = D('s', 'S', 14, MID, db, 0.6); deep(c.s, 14, MID, 12, 24);
+        c.lb1 = D('lb1', 'LB', 5, MID - 6, lb, 0.3); zone(c.lb1, 5.5, type === 'firezone' ? MID - 3 : MID - 7);
+        c.lb2 = D('lb2', 'LB', type === 'firezone' ? 4 : 5, MID + 6, lb, 0.3);
+        if (type === 'firezone') { rush(c.lb2, 0.25); zone(dl1, 3.5, MID + 6); } else zone(c.lb2, 5.5, MID + 7);
+      } else if (type === 'cover4') {  // quarters: four deep, two underneath
+        c.c1 = D('c1', 'CB', 7, 4, db, 0.7); deep(c.c1, 13, 4.5, 0, 9);
+        c.s = D('s', 'S', 11, MID - 5, db, 0.6); deep(c.s, 13, MID - 4.5, 9, MID);
+        deep(c.s2, 13, MID + 4.5, MID, 27);
+        c.c2 = D('c2', 'CB', 7, FW - 4, db, 0.7); deep(c.c2, 13, FW - 4.5, 27, FW);
+        c.lb1 = D('lb1', 'LB', 5, MID - 6, lb, 0.3); zone(c.lb1, 5.5, MID - 6);
+        c.lb2 = D('lb2', 'LB', 5, MID + 6, lb, 0.3); zone(c.lb2, 5.5, MID + 6);
+      } else if (type === '2man') {    // two deep halves, man underneath
+        c.c1 = D('c1', 'CB', 3, 3.5, db, 0.7); man(c.c1, w1);
+        c.c2 = D('c2', 'CB', 3, FW - 3.5, db, 0.7); man(c.c2, w2);
+        c.lb1 = D('lb1', 'LB', 5, MID - 5, lb, 0.3); man(c.lb1, te);
+        c.lb2 = D('lb2', 'LB', 5, MID + 4, lb, 0.3); man(c.lb2, rb);
+        c.s = D('s', 'S', 12, MID - 6, db, 0.6); deep(c.s, 14, 9, 0, MID);
+        deep(c.s2, 14, FW - 9, MID, FW);
+      } else {                         // prevent: everyone deep, rush two
+        c.c1 = D('c1', 'CB', 12, 5, db, 0.7); deep(c.c1, 18, 5, 0, 12);
+        c.c2 = D('c2', 'CB', 12, FW - 5, db, 0.7); deep(c.c2, 18, FW - 5, 24, FW);
+        c.s = D('s', 'S', 18, MID - 3, db, 0.6); deep(c.s, 22, MID - 3, 12, MID);
+        deep(c.s2, 22, MID + 3, MID, 24);
+        c.lb1 = D('lb1', 'LB', 7, MID - 6, lb, 0.3); zone(c.lb1, 9, MID - 6);
+        c.lb2 = D('lb2', 'LB', 7, MID + 6, lb, 0.3); zone(c.lb2, 9, MID + 6);
+      }
+      return c;
+    }
+
+    // ---------- the defense's play caller ----------
+    // Calls a coverage the way an NFL coordinator would: by down and distance, field position, clock and score,
+    // and the offense's tendencies so far this game. Better defenses adapt more and disguise more.
+    callDefense() {
+      const d = this.cfg.oppDef, smart = clamp((d - 60) / 30, 0, 1);
+      const togo = this.fdx >= 110 ? 110 - this.los : this.fdx - this.los, lead = this.score.opp - this.score.me;   // the defense's lead
+      let w;
+      if (this.down >= 3 && togo <= 3) w = { cover1p: 25, cover0: 25, cover1: 25, firezone: 15, cover3: 10 };
+      else if (this.down === 3 && togo >= 8) w = { cover4: 20, '2man': 20, cover2: 18, firezone: 15, cover1: 12, cover3: 10, cover0: 5 };
+      else if (this.down === 3) w = { cover1: 25, firezone: 18, '2man': 15, cover3: 15, cover0: 12, cover2: 10, cover1p: 5 };
+      else if (this.down === 2 && togo >= 7) w = { cover3: 22, cover4: 20, cover2: 20, cover1: 15, firezone: 10, '2man': 8, cover0: 5 };
+      else if (this.down === 2 && togo <= 3) w = { cover1: 25, cover1p: 20, cover3: 20, cover0: 15, firezone: 10, cover2: 10 };
+      else w = { cover3: 30, cover1: 22, cover2: 15, cover4: 15, firezone: 6, cover0: 4, '2man': 4, cover1p: 4 };
+      const mul = (k, f) => { if (w[k] != null) w[k] *= f; };
+      if (this.los >= 90) { mul('cover1', 1.6); mul('cover1p', 1.6); mul('cover0', 1.6); mul('cover2', 1.2); mul('cover4', 0.6); mul('cover3', 0.8); }   // red zone: tight man
+      if (this.los >= 105) { mul('cover0', 2); mul('cover1p', 2); }                                                                        // goal line
+      const late = (this.q === 4 && this.clock < 60) || (this.q === 2 && this.clock < 25);
+      if (late && lead > 0 && lead <= 8 && this.los < 85) w = { prevent: 50, cover4: 30, cover2: 20 };                                     // protect the lead, keep it in front
+      else if (this.q === 2 && this.clock < 25 && this.los < 70) w = { prevent: 40, cover4: 35, cover2: 25 };                              // end of the half
+      if (this.q >= 4 && this.clock < 120 && lead < 0) { mul('cover0', 2); mul('firezone', 1.5); }                                        // trailing late: bring it
+      // tendencies: a run-heavy offense sees loaded boxes; a deep-throwing one sees two-high shells
+      const t = this.tend;
+      if (t.n >= 4) {
+        const run = t.run / t.n, dp = t.deep / t.n, sh = t.short / t.n;
+        const f = (x) => 1 + smart * x;
+        if (run > 0.45) { for (const k of ['cover1', 'cover0', 'firezone', 'cover3', 'cover1p']) mul(k, f((run - 0.45) * 3)); for (const k of ['cover4', '2man', 'prevent']) mul(k, 1 / f((run - 0.45) * 3)); }
+        if (dp > 0.35) for (const k of ['cover2', 'cover4', '2man']) mul(k, f((dp - 0.35) * 4));
+        if (sh > 0.4) { mul('cover1p', f((sh - 0.4) * 4)); mul('cover2', f((sh - 0.4) * 2)); }
+      }
+      let r = Math.random() * Object.values(w).reduce((a, b) => a + b, 0), type = 'cover3';
+      for (const k in w) { if ((r -= w[k]) < 0) { type = k; break; } }
+      // disguise: show one shell and rotate to the real call at the snap
+      let shown = type;
+      if (type !== 'prevent' && Math.random() < 0.08 + smart * 0.17) {
+        const looks = ['cover1', 'cover2', 'cover3', 'cover4'].filter((x) => x !== type);
+        shown = looks[Math.floor(Math.random() * looks.length)];
+      }
+      return { type, shown, lbBlitz: type === 'cover1' && Math.random() < (this.down >= 3 ? 0.3 : 0.12) };
+    }
+
     setupFormation() {
       const L = this.los, r = this.cfg.roster, d = this.cfg.oppDef, M = (...a) => this.mk(...a);
       const wr = (o) => 6.6 + (o - 60) * 0.035;
@@ -455,40 +584,11 @@
         else p.shed = clamp(2.6 + rnd(0, 2.4) + (ol[i].blk - d) * 0.05, 1.5, 7) * (this.dif ? this.dif.rush : 1);
         ol[i].mark = p; return p;
       });
-      // back five line up according to the coverage call; alignment is the pre-snap tell
-      const call = this.dcall, D = (role, x, y, sp, react) => { const p = M('D', role, L + x, y, sp); p.react = react; return p; };
-      const man = (p, m) => { p.job = 'man'; p.mark = m; };
-      const deep = (p, ax, ay, y0, y1) => { p.job = 'deep'; p.anchor = [L + ax, ay]; p.lane = [y0, y1]; };
-      const zone = (p, ax, ay) => { p.job = 'zone'; p.anchor = [L + ax, ay]; };
-      const rush = (p) => { p.job = 'rush'; p.shed = 0.5; };
-      let lb1, lb2, c1, c2, s;
-      if (call.type === 'cover2') {          // corners bail to deep halves, three underneath
-        c1 = D('CB', 9, 5, db, 0.7); deep(c1, 14, 9, 0, MID);
-        c2 = D('CB', 9, FW - 5, db, 0.7); deep(c2, 14, FW - 9, MID, FW);
-        lb1 = D('LB', 5, 8, lb, 0.3); zone(lb1, 6, 7);
-        lb2 = D('LB', 5, FW - 8, lb, 0.3); zone(lb2, 6, FW - 7);
-        s = D('S', 9, MID, db, 0.5); zone(s, 8, MID);
-      } else if (call.type === 'cover3') {   // three deep, two hook zones
-        c1 = D('CB', 8, 4, db, 0.7); deep(c1, 13, 6, 0, 12);
-        c2 = D('CB', 8, FW - 4, db, 0.7); deep(c2, 13, FW - 6, 24, FW);
-        s = D('S', 14, MID, db, 0.6); deep(s, 14, MID, 12, 24);
-        lb1 = D('LB', 5, MID - 6, lb, 0.3); zone(lb1, 5.5, MID - 7);
-        lb2 = D('LB', 5, MID + 6, lb, 0.3); zone(lb2, 5.5, MID + 7);
-      } else if (call.type === 'blitz') {    // both linebackers come, nobody deep
-        lb1 = D('LB', 4, MID - 5, lb, 0.2); rush(lb1); lb1.delay = 0.4;
-        lb2 = D('LB', 4, MID + 5, lb, 0.2); rush(lb2); lb2.delay = 0.4;
-        c1 = D('CB', 5, 3.5, db, 0.7); man(c1, w1);
-        c2 = D('CB', 5, FW - 3.5, db, 0.7); man(c2, w2);
-        s = D('S', 8, MID - 5, db, 0.5); man(s, te);
-      } else {                               // man coverage with one deep safety; 'press' walks the corners up
-        const off = call.type === 'press' ? 1.6 : 6;
-        c1 = D('CB', off, 3.5, db, 0.7); man(c1, w1);
-        c2 = D('CB', off, FW - 3.5, db, 0.7); man(c2, w2);
-        lb1 = D('LB', 5, MID - 5, lb, 0.3); man(lb1, te);
-        lb2 = D('LB', 5, MID + 4, lb, 0.3);
-        if (call.lbBlitz) rush(lb2); else man(lb2, rb);
-        s = D('S', call.type === 'press' ? 15 : 13, MID, db, 0.6); deep(s, 12, MID, 0, FW);
-      }
+      // the back seven line up according to the coverage they show; the alignment is the pre-snap tell
+      const cov = this.buildCoverage(this.dcall.shown || this.dcall.type, { L, M, w1, w2, te, rb, db, lb, dl1: dl[1], lbBlitz: this.dcall.lbBlitz });
+      const { lb1, lb2, c1, c2, s } = cov;
+      if (cov.s2) ol[1].mark = null;               // the middle lineman dropped out: his blocker finds someone else
+      this.cov = cov;
       for (const p of dl) p.react = 0;
       this.def = [...dl, lb1, lb2, c1, c2, s];
       this.def.forEach((p, i) => {
@@ -496,6 +596,9 @@
         // defensive backs and linebackers run on the same speed scale as receivers, so speed matchups are real
         if (p.role !== 'DL') p.spd = (6.6 + (p.info.spd - 60) * 0.035) * (p.role === 'LB' ? 0.98 : 1);
       });
+      if (this.cov.s2) {                            // the second safety takes the middle lineman's place
+        const p = this.cov.s2; p.info = this.dRoster.S2; p.role = 'S'; p.spd = 6.6 + (p.info.spd - 60) * 0.035;
+      }
       this.off.forEach((p, i) => { p.skin = (i * 7 + 2) % 3; });
       this.downed = null;
 
@@ -896,6 +999,7 @@
       }
     }
     endPlay(msg, after, hold) {
+      this.defNote = this.defNoteNext || null; this.defNoteNext = null;
       this.phase = 'dead'; this.deadT = hold || 1.5; this.banner = { text: msg, t: this.deadT };
       this.after = after; this.aim = null; this.gesture = null;
     }
@@ -1286,6 +1390,11 @@
         const t = this.banner.text, sc = Px.width(t, 2) > AW - 24 ? 1 : 2, w = Px.width(t, sc) + 14, h = 7 * sc + 10;
         Px.box(g, Math.round(AW / 2 - w / 2), 30, w, h, '#10182a', '#ffb43a');
         Px.text(g, t, AW / 2, 35, '#ffb43a', sc, { center: true });
+        if (this.defNote) {
+          const w2 = Px.width(this.defNote) + 10;
+          Px.box(g, Math.round(AW / 2 - w2 / 2), 30 + h + 2, w2, 12, 'rgba(16,24,42,.85)');
+          Px.text(g, this.defNote, AW / 2, 30 + h + 5, '#9fd3ff', 1, { center: true });
+        }
       }
 
       this.drawScoreboard(g);

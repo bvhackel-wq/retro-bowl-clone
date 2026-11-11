@@ -49,13 +49,16 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
   yards at 40 kick distance up to about 60 at 99). A clean punt lands where you aimed; a shank falls
   short and veers. Into the end zone is a touchback, over the sideline is spotted where it went out,
   otherwise there's a short return (fair catch inside their 10).
-- **Read the defense.** The play-call strip sits under the field so you can see the alignment
-  before you choose. The defense mixes five calls:
-  - *Man* — corners 6 yards off, one deep safety. Beat it with crossing routes and speed mismatches.
-  - *Press man* — corners on the line. Quick throws are tight; deep routes win if your receiver is faster.
-  - *Two deep* — corners 9 yards off and bailing, safety walked up. Flats and the deep middle are open.
-  - *Three deep* — both corners and the safety deep. Throw underneath.
-  - *Blitz* — both linebackers creep up and nobody is deep. Get the ball out fast.
+- **Read the defense.** The opposing coordinator calls a coverage every snap from a nine-call playbook:
+  Cover 0 (all-out blitz, nobody deep), Cover 1 and Cover 1 Press (man with one deep safety), Cover 2,
+  Cover 3, Cover 4 (quarters), 2-Man (two deep, man under), Fire Zone (linebacker blitz, three deep, a
+  lineman dropping into coverage) and Prevent. Two-deep calls take a lineman off for a second safety.
+  He calls by down and distance (base looks on early downs, two-deep shells on 3rd and long, pressure on
+  3rd and short), field position (man in the red zone), clock and score (prevent to protect a late lead,
+  more blitzing when trailing), and your tendencies this game. Better defenses adapt more and sometimes
+  disguise, showing one shell and rotating at the snap. After each play a note shows what they were in.
+  Each call has holes: slants beat man and Cover 0, verticals beat Cover 2, posts beat Cover 3 and Fire
+  Zone, curls beat Cover 3 and Prevent.
 - **Stars and stats:** every player has a 0–5★ rating fixed for life. Stars set the general level
   of his ceilings (about 52 at 0★ to 94 at 5★), and each stat has its own cap scattered around that
   level, so two 3★ players can have different strengths. Upgrades stop at the cap; the bar's tick
