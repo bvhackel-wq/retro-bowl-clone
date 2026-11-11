@@ -24,7 +24,7 @@ jobs:
           TOKEN: ${{ github.token }}
         run: |
           mkdir _site
-          cp index.html style.css _site/
+          cp index.html style.css manifest.webmanifest icon-180.png icon-512.png _site/
           cp -r js _site/
           touch _site/.nojekyll
           # cache-busting: give every script and stylesheet a new URL per deploy, so phones that cached

@@ -4,6 +4,15 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <title>Pocket Gridiron</title>
+<!-- opened from the Home Screen, it runs like an app: full screen, no browser bars -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Gridiron">
+<meta name="theme-color" content="#101827">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" type="image/png" href="icon-180.png">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -36,11 +45,17 @@
     <div id="hud">
       <div class="side"><span id="hud-me-name"></span><b id="hud-me">0</b></div>
       <div class="mid"><span id="hud-q">Q1</span><b id="hud-clock">2:00</b><span id="hud-down"></span></div>
-      <div class="side"><b id="hud-opp">0</b><span id="hud-opp-name"></span></div>
+      <div class="side"><b id="hud-opp">0</b><span id="hud-opp-name"></span><button id="fs-btn" class="btn ghost small" hidden title="Full screen">⛶</button></div>
     </div>
     <div id="stage">
       <canvas id="field" width="1920" height="1080"></canvas>
       <div id="panel" hidden></div>
+    </div>
+    <div id="rotate">
+      <div class="rot-phone"></div>
+      <b>Turn your phone sideways</b>
+      <span>The field is wide, so it plays best in landscape.</span>
+      <button id="rotate-ok" class="btn ghost small">Play anyway</button>
     </div>
   </section>
 </main>

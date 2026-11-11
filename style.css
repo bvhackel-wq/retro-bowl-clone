@@ -3,7 +3,7 @@
   --accent:#ffb43a; --good:#4fd18b; --bad:#ff6b6b;
 }
 *{box-sizing:border-box}
-html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);
+html,body{overscroll-behavior:none;margin:0;height:100%;background:var(--bg);color:var(--ink);
   font-family:ui-rounded,"Trebuchet MS","Segoe UI",system-ui,sans-serif;-webkit-tap-highlight-color:transparent}
 #app{max-width:1100px;margin:0 auto;padding:0 16px}
 .screen{display:none;padding:16px 0 32px}
@@ -69,6 +69,23 @@ tr.me td{color:var(--accent);font-weight:800}
 
 /* match */
 #match{padding:0}
+/* during a game the page is pinned in place so swipes only reach the game, and the match fills the screen */
+body.playing{position:fixed;inset:0;overflow:hidden;width:100%;height:100%;touch-action:none}
+body.playing #app{max-width:none;padding:0;height:100%}
+#match.on{position:fixed;inset:0;display:flex;flex-direction:column;background:var(--bg);
+  padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+#match.on #hud{flex:none}
+#match button{touch-action:manipulation}
+#fs-btn{padding:4px 8px;font-size:16px;line-height:1}
+#rotate{display:none}
+@media (orientation:portrait) and (max-width:700px){
+  body.playing:not(.rotate-ok) #rotate{display:flex;position:absolute;inset:0;z-index:5;background:rgba(16,24,39,.96);
+    flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center;padding:24px}
+  #rotate span{color:var(--dim)}
+  .rot-phone{width:34px;height:58px;border:4px solid var(--accent);border-radius:8px;animation:rot 1.8s ease-in-out infinite}
+  @keyframes rot{0%,30%{transform:rotate(0)}60%,100%{transform:rotate(90deg)}}
+}
 #hud{display:flex;align-items:center;justify-content:space-between;padding:8px 6px;gap:8px}
 #hud .side{display:flex;align-items:center;gap:10px;font-weight:800;min-width:0}
 #hud .side b{font-size:30px;font-variant-numeric:tabular-nums}
@@ -77,14 +94,17 @@ tr.me td{color:var(--accent);font-weight:800}
 #hud .mid span{color:var(--dim);font-size:14px}
 #hud-down{color:var(--accent)!important;font-weight:700}
 #match{--strip:100px}
-#stage{position:relative;margin:0 auto;max-width:calc((100vh - var(--hud, 70px) - var(--strip)) * 16 / 9);padding-bottom:var(--strip)}
+#stage{position:relative;margin:0 auto;width:100%;max-width:calc((100vh - var(--hud, 70px) - var(--strip)) * 16 / 9);padding-bottom:var(--strip)}
+@supports (height:100dvh){
+  #stage{max-width:calc((100dvh - var(--hud, 70px) - var(--strip) - env(safe-area-inset-top) - env(safe-area-inset-bottom)) * 16 / 9)}
+}
 #field{image-rendering:crisp-edges;image-rendering:pixelated;display:block;width:100%;aspect-ratio:16/9;border-radius:10px;touch-action:none;user-select:none;-webkit-user-select:none}
 #panel{position:absolute;left:0;right:0;bottom:0;height:calc(var(--strip) - 4px);padding:6px 0;overflow:hidden}
 #panel.modal{top:0;height:auto;bottom:var(--strip);background:rgba(12,18,30,.9);padding:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:10px;text-align:center}
 #panel h3{font-size:15px;margin-bottom:8px}
 #panel.modal h3{font-size:clamp(20px,4vw,32px)}
 #panel p{margin:4px 0 12px;color:var(--dim);white-space:pre-line}
-#panel .opts{display:flex;gap:8px;justify-content:safe center;overflow-x:auto;padding:2px}
+#panel .opts{display:flex;gap:8px;justify-content:safe center;overflow-x:auto;padding:2px;touch-action:pan-x}
 #panel.modal .opts{flex-wrap:wrap}
 #panel .opt{flex:none}
 #panel .opt{background:var(--card);box-shadow:inset 0 0 0 1px var(--line);border-radius:10px;padding:8px 12px;text-align:left;min-width:120px}
@@ -94,11 +114,12 @@ tr.me td{color:var(--accent);font-weight:800}
 #panel .opt.kick{background:#2a2440}
 @media(max-width:640px){#panel .opt{min-width:0;padding:6px 9px;font-size:13px}#panel .opt small{display:none}}
 @media(max-height:480px){
-  #match{--strip:50px;--hud:44px}
+  #match{--strip:44px;--hud:30px}
+  #hud{height:30px;box-sizing:border-box} #hud .mid b{font-size:16px} #hud .mid span{font-size:12px} #hud .side{gap:6px}
   #panel .opts{gap:5px}
   #panel:not(.modal) h3,#panel .opt small{display:none}
   #panel .opt{padding:8px 7px;font-size:12px;min-width:0}
-  #hud{padding:2px 6px} #hud .side b{font-size:22px}
+  #hud{padding:2px 8px} #hud .side b{font-size:20px}
 }
 
 .rhead{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);margin:14px 0 2px}
@@ -124,3 +145,5 @@ button.link:hover{color:var(--bad)}
 .teampick{font:inherit;font-size:17px;font-weight:800;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:6px 8px;margin-top:4px;max-width:100%}
 .meterbox{min-width:220px}
 .bar.meter{height:8px;margin-top:6px}
+
+.tip{width:100%;margin-top:10px;display:flex;flex-direction:column;gap:4px}

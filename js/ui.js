@@ -7,8 +7,25 @@
 
   function show(id) {
     document.querySelectorAll('.screen').forEach((e) => e.classList.toggle('on', e.id === id));
+    document.body.classList.toggle('playing', id === 'match');   // pins the page during a game
     window.scrollTo(0, 0);
   }
+  // During a game, a drag anywhere but the play-call strip must not scroll, zoom or refresh the page.
+  document.addEventListener('touchmove', (e) => {
+    if (document.body.classList.contains('playing') && !e.target.closest('#panel .opts')) e.preventDefault();
+  }, { passive: false });
+  document.addEventListener('gesturestart', (e) => { if (document.body.classList.contains('playing')) e.preventDefault(); });
+  // a real full-screen button where the browser allows it (not iPhone Safari: add to Home Screen there)
+  const fsBtn = document.getElementById('fs-btn'), root = document.documentElement;
+  const fsReq = root.requestFullscreen || root.webkitRequestFullscreen;
+  if (fsReq && !navigator.standalone) {
+    fsBtn.hidden = false;
+    fsBtn.onclick = () => {
+      if (document.fullscreenElement || document.webkitFullscreenElement) (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+      else fsReq.call(root).then(() => screen.orientation && screen.orientation.lock && screen.orientation.lock('landscape').catch(() => {})).catch(() => {});
+    };
+  }
+  document.getElementById('rotate-ok').onclick = () => document.body.classList.add('rotate-ok');
   function h(tag, attrs, ...kids) {
     const e = document.createElement(tag);
     for (const k in attrs || {}) {
@@ -30,6 +47,12 @@
       const t = GP.team(saved.teamId);
       act.append(h('button', { class: 'btn', onclick: () => { S = saved; viewConf = t.conf; renderHub(); } }, `Continue — ${full(t)}, season ${saved.season}`));
     }
+    // iPhone Safari can't go full screen from a web page; the Home Screen version can
+    const iphone = /iPhone|iPod/.test(navigator.userAgent) && !navigator.standalone;
+    if (iphone) act.append(h('div', { class: 'card tip' },
+      h('b', null, 'Play full screen'),
+      h('div', { class: 'dim' }, 'In Safari tap Share, then "Add to Home Screen". Open the game from that icon and it runs with no browser bars.'),
+      h('div', { class: 'dim', style: 'font-size:13px' }, 'The Home Screen version keeps its own save, separate from this one.')));
     const grid = $('#team-grid'); grid.innerHTML = '';
     const start = (t) => {
       if (saved && !confirm('Start a new career? This replaces your current save.')) return;
