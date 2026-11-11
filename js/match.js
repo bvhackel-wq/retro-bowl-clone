@@ -1667,6 +1667,12 @@
         }
       }
 
+      // a thrown ball: a small marker on the turf where it will come down (drawn under the players)
+      if (show && this.phase === 'live' && this.ball.state === 'air') {
+        const b = this.ball, X = this.ax(b.tx), Y = this.ay(b.ty), r = 6 + (Math.floor(this.animT * 8) % 2);
+        Px.ring(g, X, Y + 1, r, r - 3, '#10182a'); Px.ring(g, X, Y, r, r - 3, '#ffd84a');
+        g.fillStyle = '#ffd84a'; g.fillRect(X - 2, Y, 5, 1); g.fillRect(X, Y - 2, 1, 5);
+      }
       if (show) {
         const all = [...this.def, ...this.off].sort((a, b) => a.y - b.y);
         for (const p of all) this.drawPlayer(p);

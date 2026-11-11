@@ -45,6 +45,8 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
   sets how long they hold), then charge the ball. Kick quickly: a rusher near the ball when the kicker
   connects may block it, and one who reaches it first blocks it outright. A blocked field goal gives
   the other team the ball at the spot. The kicker takes his steps and swings through on every kick.
+- **Landing marker:** once a pass is in the air, a yellow marker on the turf shows where it will come down
+  (after the throw's scatter), so you can see whether it's leading your receiver or floating to a defender.
 - **Punting:** the same three steps from 13 yards behind the line. Aim where it should land (reach 30
   yards at 40 kick distance up to about 60 at 99). A clean punt lands where you aimed; a shank falls
   short and veers. The punt meter's green zone is wider than a field goal's. Into the end zone is a
