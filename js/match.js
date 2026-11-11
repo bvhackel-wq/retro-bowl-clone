@@ -1598,10 +1598,11 @@
       this.art = this.art || document.createElement('canvas'); this.art.width = AW; this.art.height = AH;
       this.ag = this.art.getContext('2d');
       this.fieldImg = GP.Pixel.field(me, opp, YA, TOPA, FW, PAD);
-      // home kit: team-colour helmet and jersey, pants in the second colour. Away kit: white jersey, coloured pants.
+      if (!this.kits0) this.kits0 = GP.matchKits(this.cfg.me.id, this.cfg.opp.id, this.cfg.home !== false, this.cfg.uniform);
       this.kits = {
-        O: GP.Pixel.sprites({ helmet: me.c1, decal: me.c2, jersey: me.c1, number: me.c2, pants: me.c2, sock: me.c1 }),
-        D: GP.Pixel.sprites({ helmet: opp.c1, decal: opp.c2, jersey: '#f4f6f8', number: opp.c1, pants: opp.c1, sock: '#f4f6f8' }),
+        // each side in its uniform for this game (see uniforms.js)
+        O: GP.Pixel.sprites(this.kits0.me),
+        D: GP.Pixel.sprites(this.kits0.opp),
       };
     }
 

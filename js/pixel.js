@@ -120,7 +120,7 @@
   // kit: { helmet, decal, jersey, number, pants, sock }. Returns sprites[skin][pose][0 right | 1 left].
   P.sprites = function (kit) {
     return SKIN.map((skin) => {
-      const pal = { H: kit.helmet, h: kit.decal, F: skin, M: '#d9dde3', J: kit.jersey, N: kit.number, S: skin, P: kit.pants, L: kit.sock, B: '#1b1b22' };
+      const pal = { H: kit.helmet, h: kit.decal, F: skin, M: kit.mask || '#d9dde3', J: kit.jersey, N: kit.number, S: skin, P: kit.pants, L: kit.sock, B: '#1b1b22' };
       const set = {};
       for (const k in POSES) set[k] = [render(POSES[k], pal, false), render(POSES[k], pal, true)];
       set.down = [render(POSES.stand, pal, false, true), render(POSES.stand, pal, true, true)];

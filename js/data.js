@@ -321,7 +321,15 @@
       pair = s.playoff.games.find((p) => p.includes(s.teamId));
       if (!pair) return { bye: true, label };
     } else return null;
-    return { oppId: pair[0] === s.teamId ? pair[1] : pair[0], label };
+    // home field: the first team of a pairing hosts the first meeting, the other hosts the rematch
+    // (division opponents meet twice); in the playoffs the first team listed is the higher seed
+    const first = pair[0] === s.teamId;
+    let home = first;
+    if (s.phase === 'regular') {
+      const meet = s.schedule.slice(0, s.week).filter((wk) => wk.some((p) => p.includes(pair[0]) && p.includes(pair[1]))).length;
+      if (meet % 2) home = !first;
+    }
+    return { oppId: first ? pair[1] : pair[0], label, home };
   };
 
   function endSeason(s, champion, note) {

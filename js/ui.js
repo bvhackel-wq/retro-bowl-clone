@@ -78,6 +78,27 @@
     show('title');
   }
 
+  // a player sprite in a given kit, scaled up crisply
+  const kitSprite = (kit) => {
+    const c = GP.Pixel.sprites(kit)[0].stand[0], img = document.createElement('canvas');
+    img.width = c.width; img.height = c.height; img.getContext('2d').drawImage(c, 0, 0); img.className = 'kit';
+    return img;
+  };
+  // Pick what you wear for the next game; shows each of your four uniforms and what the opponent wears against it.
+  function uniformCard(game) {
+    const cur = S.uniform || 'auto', home = game.home !== false;
+    const pick = GP.matchKits(S.teamId, game.oppId, home, cur);
+    const opt = (type, label) => {
+      const k = type === 'auto' ? GP.kit(S.teamId, home ? 'home' : 'away') : GP.kit(S.teamId, type);
+      return h('button', { class: 'kitopt' + (cur === type ? ' on' : ''), onclick: () => { S.uniform = type; GP.save(S); renderHub(); } },
+        kitSprite(k), h('small', null, label));
+    };
+    const name = (t) => (GP.UNIFORM_TYPES.find((u) => u[0] === t) || [0, t])[1];
+    return h('div', { class: 'card' },
+      h('div', { class: 'dim' }, `Uniform · ${home ? 'home game' : 'road game'} · ${GP.team(game.oppId).name} wear ${name(pick.oppType).toLowerCase()}`),
+      h('div', { class: 'kits' }, opt('auto', 'Auto'), ...GP.UNIFORM_TYPES.map(([t, l]) => opt(t, l)),
+        h('span', { class: 'kitvs' }, 'vs'), h('span', { class: 'kitopt' }, kitSprite(pick.opp), h('small', null, GP.team(game.oppId).abbr))));
+  }
   const starText = (n) => '★'.repeat(n) + '☆'.repeat(5 - n);
   // A stat bar with a marker at the player's cap for it.
   const capBar = (val, cap, color) => h('div', { class: 'bar capbar' },
@@ -152,11 +173,12 @@
       const o = GP.team(game.oppId), or = GP.rec(S, game.oppId);
       hub.append(h('h2', null, (S.phase === 'playoffs' ? 'Playoffs — ' : '') + game.label), h('div', { class: 'card next' },
         badge(o),
-        h('div', null, h('div', { class: 'vs' }, 'vs ' + full(o)),
+        h('div', null, h('div', { class: 'vs' }, (game.home === false ? 'at ' : 'vs ') + full(o)),
           h('div', { class: 'dim' }, `${or.w}-${or.l} · Offense ${or.off} · Defense ${or.def} · DC ${starText(GP.oppDC(S, game.oppId))}`),
           h('div', { class: 'dim' }, `You: Offense ${rec.off} · Defense ${rec.def}`)),
         h('span', { style: 'flex:1' }),
         h('button', { class: 'btn', onclick: () => startMatch(game) }, 'Play game')));
+      hub.append(uniformCard(game));
     } else {
       const ch = GP.team(S.champion);
       hub.append(h('h2', null, `Season ${S.season} complete`), h('div', { class: 'card next' },
@@ -358,7 +380,7 @@
     show('match');
     GP.match = new GP.Match($('#field'), {
       me: GP.team(S.teamId), opp: GP.team(game.oppId), roster: GP.lineup(S), staff: S.staff, difficulty: S.difficulty || 'normal',
-      oppOff: or.off, oppDef: or.def, oppDC: GP.oppDC(S, game.oppId), label: game.label,
+      oppOff: or.off, oppDef: or.def, oppDC: GP.oppDC(S, game.oppId), home: game.home !== false, uniform: S.uniform || 'auto', label: game.label,
       onEnd: (my, opp, st, info) => {
         GP.match = null; GP.advance(S, my, opp);
         if (info && info.forfeit) { S.news = (S.news || []).concat(`You forfeited against ${full(GP.team(game.oppId))}. It counts as a ${my}-${opp} loss.`); GP.save(S); }

@@ -151,6 +151,11 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
   laid out like the NFL: the American Conference is the AFC and the National the NFC, every team plays in
   its NFL counterpart's city and division, in that team's colors. Teams go by their city alone; where two
   share a city, the AFC team takes its stadium's location (New Jersey and New York, Inglewood and Los Angeles).
+- **Uniforms:** every team has four, modeled on its NFL counterpart in that team's official colors
+  (js/uniforms.js): home (dark), away (white), alternate (throwback or third jersey) and Color Rush
+  (monochrome). Games have a home team: the host wears home and the visitor white, and if the jerseys look
+  too alike the opponent switches. Pick yours for the next game on your team page (Auto, or any of the four),
+  with a preview of each and of what the opponent will wear.
   14-game season: 6 division games, 4 against another division in your conference, 4 against a
   division in the other conference (pairings rotate each season). Six teams per conference make
   the playoffs (four division winners plus two wild cards; top two seeds get a bye), then
