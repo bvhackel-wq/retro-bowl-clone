@@ -308,7 +308,11 @@
     GP.match = new GP.Match($('#field'), {
       me: GP.team(S.teamId), opp: GP.team(game.oppId), roster: GP.lineup(S),
       oppOff: or.off, oppDef: or.def, label: game.label,
-      onEnd: (my, opp) => { GP.match = null; GP.advance(S, my, opp); renderHub(); },
+      onEnd: (my, opp, st, info) => {
+        GP.match = null; GP.advance(S, my, opp);
+        if (info && info.forfeit) { S.news = (S.news || []).concat(`You forfeited against ${full(GP.team(game.oppId))}. It counts as a ${my}-${opp} loss.`); GP.save(S); }
+        renderHub();
+      },
     });
   }
 

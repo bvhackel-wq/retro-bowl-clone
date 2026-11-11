@@ -52,6 +52,22 @@
         <canvas id="field" width="1920" height="1080"></canvas>
         <div id="panel" hidden></div>
         <button id="fs-btn" hidden title="Full screen">⛶</button>
+        <button id="pause-btn" title="Pause (Esc)" aria-label="Pause"><i></i><i></i></button>
+        <div id="pause" hidden>
+          <div class="pbox">
+            <h3>Paused</h3>
+            <p id="pause-score"></p>
+            <div id="pause-main" class="pbtns">
+              <button id="pause-resume" class="btn">Resume</button>
+              <button id="pause-quit" class="btn ghost">Quit game</button>
+            </div>
+            <div id="pause-confirm" class="pbtns" hidden>
+              <p>Quit and forfeit? The game counts as a loss.</p>
+              <button id="pause-forfeit" class="btn danger">Forfeit and quit</button>
+              <button id="pause-back" class="btn ghost">Keep playing</button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
     <div id="rotate">

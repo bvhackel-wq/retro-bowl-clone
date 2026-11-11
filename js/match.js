@@ -96,6 +96,7 @@
       window.addEventListener('keydown', this.onKey);
       window.addEventListener('keyup', this.onKeyUp);
 
+      this.paused = false; this.initPause();
       this.onResize = () => this.resize();
       window.addEventListener('resize', this.onResize);
       window.addEventListener('orientationchange', this.onResize);
@@ -105,14 +106,49 @@
       this.frame = (now) => {
         if (this.dead) return;
         const dt = Math.min(0.05, (now - this.last) / 1000); this.last = now;
-        this.update(dt); this.draw();
+        if (!this.paused) this.update(dt);   // a paused game freezes: no clock, no movement
+        this.draw();
         this.raf = requestAnimationFrame(this.frame);
       };
       this.raf = requestAnimationFrame(this.frame);
     }
 
+    // ---------- pause ----------
+    initPause() {
+      const $ = (id) => document.getElementById(id);
+      this.pz = { box: $('pause'), main: $('pause-main'), confirm: $('pause-confirm'), score: $('pause-score'), btn: $('pause-btn') };
+      this.pz.btn.onclick = () => this.pause();
+      $('pause-resume').onclick = () => this.resume();
+      $('pause-quit').onclick = () => { this.pz.main.hidden = true; this.pz.confirm.hidden = false; };
+      $('pause-back').onclick = () => this.resume();
+      $('pause-forfeit').onclick = () => this.forfeit();
+      // switching apps or locking the phone pauses the game
+      this.onHide = () => { if (document.hidden) this.pause(); };
+      document.addEventListener('visibilitychange', this.onHide);
+      this.pz.btn.hidden = false;
+    }
+    pause() {
+      if (this.paused || this.dead || this.phase === 'final') return;
+      this.paused = true; this.aim = null; this.gesture = null; this.keys = {};
+      const s = this.score, q = this.q === 5 ? 'Overtime' : `Quarter ${this.q}`;
+      this.pz.score.textContent = `${this.cfg.me.abbr} ${s.me} — ${s.opp} ${this.cfg.opp.abbr} · ${q}`;
+      this.pz.main.hidden = false; this.pz.confirm.hidden = true; this.pz.box.hidden = false;
+    }
+    resume() {
+      if (!this.paused) return;
+      this.paused = false; this.pz.box.hidden = true;
+      this.last = performance.now();          // don't count the paused time as one long frame
+    }
+    // Quitting forfeits: the game is recorded as a loss (by one point if you were level or ahead).
+    forfeit() {
+      const me = this.score.me, opp = Math.max(this.score.opp, me + 1), st = this.stats;
+      this.destroy();
+      this.cfg.onEnd(me, opp, st, { forfeit: true });
+    }
+
     destroy() {
       this.dead = true; cancelAnimationFrame(this.raf);
+      if (this.pz) { this.pz.box.hidden = true; this.pz.btn.hidden = true; document.removeEventListener('visibilitychange', this.onHide); }
       this.cv.removeEventListener('pointerdown', this.onDown);
       this.cv.removeEventListener('pointermove', this.onMove);
       window.removeEventListener('pointerup', this.onUp);
@@ -189,6 +225,8 @@
     pop(text, color) { this.popup = { text, color: color || '#fff', t: 0.9 }; }
     key(e, down) {
       const k = e.key.toLowerCase();
+      if (down && !e.repeat && (k === 'escape' || k === 'p')) { this.paused ? this.resume() : this.pause(); return; }
+      if (this.paused) return;
       if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' '].includes(k)) e.preventDefault();
       this.keys[k] = down;
       if (down && !e.repeat) {
@@ -753,7 +791,7 @@
       return top.length ? top.map((r) => `#${r.num} ${r.pos} (TKL ${r.tkl}) ${r.tk}`).join(' · ') : 'none';
     }
     final() {
-      this.phase = 'final'; this.kick = null;
+      this.phase = 'final'; this.kick = null; if (this.pz) this.pz.btn.hidden = true;
       const s = this.score, st = this.stats, won = s.me > s.opp;
       this.showPanel(won ? 'VICTORY' : 'DEFEAT',
         `${this.cfg.me.abbr} ${s.me} — ${s.opp} ${this.cfg.opp.abbr}\n\nPassing ${st.comp}/${st.att}, ${st.pyd} yds, ${st.ptd} TD, ${st.int} INT\nRushing ${st.ryd} yds, ${st.rtd} TD · Sacked ${st.sack}x\nBroken tackles ${st.broken} (${st.jbroken} on jukes) · Yards after contact ${st.yac} · Fumbles lost ${st.fum}\n\n${this.cfg.opp.abbr} tacklers: ${this.tacklers()}`,
