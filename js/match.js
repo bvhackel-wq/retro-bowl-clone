@@ -745,7 +745,7 @@
         L.t -= dt;
         go(p, end, p.y, L.slide ? 7 : 9, dt, 40);
         p.vy = 0;
-        if (p.x >= end - 0.05 || L.t <= 0) { p.x = Math.min(p.x, end); p.landed = true; }
+        if (p.x >= end - 0.05 || L.t <= 0) { if (p.x >= end - 0.05) p.x = end; p.landed = true; }   // lands at the full distance
         return;
       }
       if (p.stop) {
