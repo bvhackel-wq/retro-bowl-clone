@@ -85,6 +85,9 @@
     stand: [...HEAD, '..JJJJJJ..', '.SJJJJJJS.', '.SJJNNJJS.', '..JJJJJJ..', '..PPPPPP..', '..PP..PP..', '..PP..PP..', '..LL..LL..', '..LL..LL..', '..BB..BBB.'],
     run1: [...HEAD, '..JJJJJJ..', '..JJJJJJSS', 'SSJJNNJJ..', '..JJJJJJ..', '..PPPPPP..', '.PPP..PPP.', 'PP......PP', 'LL......LL', 'BB......BB', '..........'],
     run2: [...HEAD, '..JJJJJJ..', 'SSJJJJJJ..', '..JJNNJJSS', '..JJJJJJ..', '..PPPPPP..', '...PPPP...', '...PPPP...', '...LLLL...', '..LLL.L...', '..BBB.BB..'],
+    // feet-first slide (quarterbacks): leaning back on one hand, legs straight out toward the end zone
+    slide: ['..HHHH........', '.HHhhHH.......', '.HHHHFFM......', '.HHHHFFM......', '..JJJJJ.......', '.JJJNNJS......',
+            'SJJJJJJPPPPPLB', 'S.JJJJPPPPPPLB', '..............'],
   };
   const SKIN = ['#f1c9a5', '#c68e5f', '#7a4a2a'], OUTLINE = '#10182a';
   function render(rows, pal, flip, lying) {

@@ -221,11 +221,16 @@
       else if (!c.juke || c.juke.t <= -JUKE_RECOVER) c.cut = { dir, t: CUT_TIME };
     }
     // Lunge: dive forward about two yards and go down where he lands. Tacklers can't stop the dive itself.
+    // Distance comes from his best athletic stat (speed, power or agility): runners dive head first,
+    // 1 yard at 50 up to 2 yards at 90+; quarterbacks slide feet first, 0.75 up to 1.5 yards.
     lunge() {
       const c = this.carrier;
       if (this.phase !== 'live' || !this.running(c) || c.lunge) return;
-      c.lunge = { t: 0.3 }; c.stop = null; c.cut = null; c.juke = null;
-      this.pop('LUNGE!', '#ffd84a');
+      const best = Math.max(c.sStat || 60, c.pow || 0, c.agi || 0), u = clamp((best - 50) / 40, 0, 1);
+      const slide = c === this.qb;
+      c.lunge = { x0: c.x, dist: slide ? 0.75 + 0.75 * u : 1 + u, t: 0.5, slide };
+      c.stop = null; c.cut = null; c.juke = null;
+      this.pop(slide ? 'SLIDE!' : 'LUNGE!', '#ffd84a');
     }
     // Stop: plant and wait about a second (blockers set up, a defender may overrun him).
     hesitate() {
@@ -393,15 +398,15 @@
     setupFormation() {
       const L = this.los, r = this.cfg.roster, d = this.cfg.oppDef, M = (...a) => this.mk(...a);
       const wr = (o) => 6.6 + (o - 60) * 0.035;
-      this.qb = M('O', 'QB', L - 5, MID, 5.5); this.qb.agi = this.qbs.agi; this.qb.sta = this.qbs.sta;
+      this.qb = M('O', 'QB', L - 5, MID, 5.5); this.qb.agi = this.qbs.agi; this.qb.sta = this.qbs.sta; this.qb.sStat = this.qbs.spd;
       // on a run the back sets up in the off-tackle gap, so running straight hits a lane, not a lineman
       const rs = r.RB.stats || {}, rv = (k) => (rs[k] != null ? rs[k] : r.RB.ovr);
       const rb = M('O', 'RB', L - 5, MID + (this.play && this.play.type === 'run' ? 4.4 : 3), wr(rv('spd')) + 0.1); rb.ovr = r.RB.ovr;
-      rb.agi = rv('agi'); rb.hands = rv('hands'); rb.pow = rv('pow'); rb.sta = rv('sta');
+      rb.agi = rv('agi'); rb.hands = rv('hands'); rb.pow = rv('pow'); rb.sta = rv('sta'); rb.sStat = rv('spd');
       const recv = (key, y) => {
         const st = r[key].stats || {}, v = (k) => (st[k] != null ? st[k] : r[key].ovr);
         const p = M('O', key, L - 0.6, y, wr(v('spd')));
-        Object.assign(p, { ovr: r[key].ovr, hands: v('hands'), agi: v('agi'), sta: v('sta'), pow: v('pow') });
+        Object.assign(p, { ovr: r[key].ovr, hands: v('hands'), agi: v('agi'), sta: v('sta'), pow: v('pow'), sStat: v('spd') });
         return p;
       };
       const w1 = recv('WR1', 3), w2 = recv('WR2', FW - 3);
@@ -409,7 +414,7 @@
       // on runs the tight end lines up on the run side, just outside the hole, and leads the way
       const te = M('O', 'TE', L - 0.6, MID + (this.play && this.play.type === 'run' ? 6.6 : -7), 6.2 + (tv('spd') - 60) * 0.03);
       Object.assign(te, { ovr: r.TE.ovr, hands: tv('hands') + (ts.hands != null ? 0 : 6), pow: tv('pow') + (ts.pow != null ? 0 : 6),
-                          blk: tv('blk'), sta: tv('sta'), agi: 55 });
+                          blk: tv('blk'), sta: tv('sta'), agi: 55, sStat: tv('spd') });
       // three linemen, each with his own stats; tired linemen block up to 25% worse
       const isRun = this.play && this.play.type === 'run';
       const ol = [-2.6, 0, 2.6].map((o, i) => {
@@ -678,7 +683,7 @@
       if (runPhase) {
         if (c.x >= 110) return this.touchdown();
         if (c.y <= 0.3 || c.y >= FW - 0.3) return this.finishRun(c.x, true);
-        if (c.landed) { this.downed = c; return this.finishRun(c.x, false); }
+        if (c.landed) { this.downed = c; c.slid = !!c.lunge.slide; return this.finishRun(c.x, false); }
       }
     }
 
@@ -735,9 +740,12 @@
     }
 
     steerRunner(p, dt) {
-      if (p.lunge) {                                  // diving: straight ahead, fast, then down
-        p.lunge.t -= dt; go(p, p.x + 5, p.y, p.spd * 1.25, dt, 30);
-        if (p.lunge.t <= 0) p.landed = true;
+      if (p.lunge) {                                  // diving or sliding straight ahead, then down
+        const L = p.lunge, end = L.x0 + L.dist;
+        L.t -= dt;
+        go(p, end, p.y, L.slide ? 7 : 9, dt, 40);
+        p.vy = 0;
+        if (p.x >= end - 0.05 || L.t <= 0) { p.x = Math.min(p.x, end); p.landed = true; }
         return;
       }
       if (p.stop) {
@@ -1054,7 +1062,7 @@
       if (this.phase === 'presnap') this.hint('TAP THE FIELD TO SNAP');
       else if (this.phase === 'live' && this.passing() && !this.aim) this.hint('DRAG BACK TO THROW · SWIPE TOWARD THE END ZONE TO RUN');
       else if (this.phase === 'kick' && !this.kick.done) this.hint('TAP WHEN THE MARKER IS IN THE GREEN');
-      else if (this.phase === 'live' && this.running(this.carrier)) this.hint('UP/DOWN: CUT · TAP+SWIPE: JUKE · FORWARD: LUNGE · BACK: STOP');
+      else if (this.phase === 'live' && this.running(this.carrier)) this.hint(`UP/DOWN: CUT · TAP+SWIPE: JUKE · FORWARD: ${this.carrier === this.qb ? 'SLIDE' : 'LUNGE'} · BACK: STOP`);
       if (this.popup && this.carrier) {
         const c = this.carrier, w = Px.width(this.popup.text);
         const x = clamp(this.ax(c.x), Math.ceil(w / 2) + 2, AW - Math.ceil(w / 2) - 2);
@@ -1086,7 +1094,8 @@
       if (Math.abs(p.vx) > 0.6) p.face = p.vx > 0 ? 0 : 1; else if (p.face == null) p.face = p.team === 'O' ? 0 : 1;
       const down = p.stun > 0 || p === this.downed || !!p.lunge;
       const moving = (this.phase === 'live' || this.phase === 'tackling') && hyp(p.vx, p.vy) > 0.8;
-      const pose = down ? 'down' : moving ? (Math.floor(this.animT * 9 + (p.skin || 0)) % 2 ? 'run1' : 'run2') : 'stand';
+      const sliding = p.lunge && p.lunge.slide || (p === this.downed && p.slid);
+      const pose = sliding ? 'slide' : down ? 'down' : moving ? (Math.floor(this.animT * 9 + (p.skin || 0)) % 2 ? 'run1' : 'run2') : 'stand';
       const img = this.kits[p.team][p.skin || 0][pose][p.face];
       g.fillStyle = 'rgba(0,0,0,.28)'; g.fillRect(X - 4, Y + 1, 9, 2); g.fillRect(X - 3, Y + 3, 7, 1);
       if (p === this.carrier && !down) {
@@ -1095,7 +1104,7 @@
         Px.ring(g, X, Y + 1, 9, 4, live ? '#ffd84a' : '#ffffff');
         if (live) Px.ring(g, X, Y + 1, 10, 5, '#ffd84a');
       }
-      if (down) g.drawImage(img, X - 8, Y - 8); else g.drawImage(img, X - 6, Y - 13);
+      if (sliding) g.drawImage(img, X - 8, Y - 9); else if (down) g.drawImage(img, X - 8, Y - 8); else g.drawImage(img, X - 6, Y - 13);
       if (p === this.carrier && !down && this.ball.state === 'held') {
         const bx = X + (p.face ? -6 : 3);
         g.fillStyle = '#10182a'; g.fillRect(bx - 1, Y - 7, 5, 4);
