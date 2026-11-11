@@ -40,6 +40,14 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
   - *Two deep* — corners 9 yards off and bailing, safety walked up. Flats and the deep middle are open.
   - *Three deep* — both corners and the safety deep. Throw underneath.
   - *Blitz* — both linebackers creep up and nobody is deep. Get the ball out fast.
+- **Stars and stats:** every player has a 0–5★ rating fixed for life. Stars set the general level
+  of his ceilings (about 52 at 0★ to 94 at 5★), and each stat has its own cap scattered around that
+  level, so two 3★ players can have different strengths. Upgrades stop at the cap; the bar's tick
+  marks it. Retiring players are replaced by rookies with fresh stars.
+- **Quarterback stats:** arm strength (range and ball speed), accuracy (how close throws land),
+  speed (scramble pace), agility (juking on scrambles) and stamina. His overall is computed from
+  these. Every snap drains his energy, faster with low stamina: a tired QB throws shorter and less
+  accurately and scrambles slower. The bar over his head shows it; he is fresh each new drive.
 - **Franchise:** 32 teams in two conferences (American, National), each with four divisions of four.
   14-game season: 6 division games, 4 against another division in your conference, 4 against a
   division in the other conference (pairings rotate each season). Six teams per conference make

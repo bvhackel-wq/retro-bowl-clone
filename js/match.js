@@ -62,8 +62,13 @@
       this.hudCache = {};
 
       const r = cfg.roster;
-      this.maxRange = 30 + (r.QB.ovr - 60) * 0.6;
-      this.scatter = Math.max(0.015, 0.085 - (r.QB.ovr - 60) * 0.0015);
+      // QB stats (older rosters without them fall back to his overall)
+      const qs = r.QB.stats || {}, qv = (k) => (qs[k] != null ? qs[k] : r.QB.ovr);
+      this.qbs = { arm: qv('arm'), acc: qv('acc'), spd: qv('spd'), agi: qv('agi'), sta: qv('sta') };
+      this.maxRange = 30 + (this.qbs.arm - 60) * 0.6;                       // arm: how far
+      this.ballSpeed = 26 + this.qbs.arm * 0.09;                            // arm: how fast (yards/second)
+      this.scatter = Math.max(0.015, 0.085 - (this.qbs.acc - 60) * 0.0015); // accuracy
+      this.energy = 100;
 
       this.q = 1; this.clock = QLEN;
       this.score = { me: 0, opp: 0 };
@@ -115,7 +120,9 @@
     running(c) { return !!c && (c !== this.qb || this.scramble); }
     tuck() {
       if (this.phase !== 'live' || !this.passing() || this.ball.state !== 'held') return;
-      this.scramble = true; this.aim = null; this.qb.spd = 6.3;
+      // speed sets scramble pace; fatigue takes a little off it
+      this.scramble = true; this.aim = null; this.qb.spd = (5.9 + (this.qbs.spd - 60) * 0.03) * (1 - this.fatigue() * 0.15);
+      this.energy = Math.max(0, this.energy - 3);
       this.pop('SCRAMBLE!');
     }
 
@@ -189,8 +196,8 @@
     aimTarget() {
       const a = this.aim, qb = this.qb;
       let vx = ((a.sx - a.cx) / PPY) * 2.2, vy = ((a.sy - a.cy) / PPY) * 2.2;
-      const d = hyp(vx, vy);
-      if (d > this.maxRange) { vx *= this.maxRange / d; vy *= this.maxRange / d; }
+      const d = hyp(vx, vy), max = this.maxRange * (1 - this.fatigue() * 0.3);   // tired arm: less range
+      if (d > max) { vx *= max / d; vy *= max / d; }
       return { x: qb.x + vx, y: qb.y + vy };
     }
 
@@ -215,7 +222,10 @@
     hidePanel() { this.el.panel.hidden = true; }
 
     // ---------- drive / down flow ----------
+    // Stamina: every snap drains the QB's energy (faster with low stamina); he's fresh each drive.
+    fatigue() { return (100 - this.energy) / 100; }
     startDrive(x) {
+      this.energy = 100;
       this.los = clamp(x, 11, 105); this.down = 1; this.fdx = Math.min(this.los + 10, 110);
       this.toChoose();
     }
@@ -245,6 +255,7 @@
     snap() {
       if (this.play.type === 'run') for (const d of this.def) { d.shed *= 1.7; d.react = (d.react || 0) + 0.25; }
       this.phase = 'live'; this.t = 0; this.caught = false; this.scramble = false; this.gesture = null; this.aim = null;
+      this.energy = Math.max(0, this.energy - (3 + (100 - this.qbs.sta) * 0.07));
     }
 
     mk(team, role, x, y, spd) {
@@ -253,7 +264,7 @@
     setupFormation() {
       const L = this.los, r = this.cfg.roster, d = this.cfg.oppDef, M = (...a) => this.mk(...a);
       const wr = (o) => 6.6 + (o - 60) * 0.035;
-      this.qb = M('O', 'QB', L - 5, MID, 5.5); this.qb.agi = 50;
+      this.qb = M('O', 'QB', L - 5, MID, 5.5); this.qb.agi = this.qbs.agi;
       // on a run the back sets up in the off-tackle gap, so running straight hits a lane, not a lineman
       const rb = M('O', 'RB', L - 5, MID + (this.play && this.play.type === 'run' ? 4.4 : 3), wr(r.RB.ovr) + 0.1); rb.ovr = r.RB.ovr;
       rb.agi = r.RB.agi != null ? r.RB.agi : 65;
@@ -325,9 +336,9 @@
 
     throwBall(tx, ty) {
       const qb = this.qb;
-      const d = hyp(tx - qb.x, ty - qb.y), sd = d * this.scatter;
+      const d = hyp(tx - qb.x, ty - qb.y), sd = d * this.scatter * (1 + this.fatigue() * 0.9);  // tired: less accurate
       tx += gauss() * sd; ty += gauss() * sd;
-      this.ball = { state: 'air', sx: qb.x, sy: qb.y, tx, ty, u: 0, dur: 0.3 + d / 32, t0: this.t, dist: d };
+      this.ball = { state: 'air', sx: qb.x, sy: qb.y, tx, ty, u: 0, dur: 0.3 + d / this.ballSpeed, t0: this.t, dist: d };
       this.carrier = null; this.stats.att++;
       let best = null, bd = 12;
       for (const p of this.off) {
@@ -449,7 +460,7 @@
         const tkl = d.info.tkl;
         if (c === qb && !this.scramble) {
           if (Math.random() > clamp(0.86 + (tkl - 70) * 0.006, 0.75, 0.97)) { d.stun = 1; this.pop('Slipped the sack!'); continue; }
-          this.stats.sack++; d.info.tk++;
+          this.stats.sack++; d.info.tk++; this.energy = Math.max(0, this.energy - 4);
           return this.gainResult(c.x, `SACKED by #${d.info.num} — loss of ${Math.max(0, Math.round(L - c.x))}`);
         }
         if (c.juke && c.juke.t > 0 && !c.juke.read) {
@@ -823,6 +834,12 @@
       if (X < -20 || X > W + 20) return;
       const t = p.team === 'O' ? this.cfg.me : this.cfg.opp;
       g.fillStyle = 'rgba(0,0,0,.25)'; g.beginPath(); g.ellipse(X + 2, Y + 4, R, R * 0.8, 0, 0, 7); g.fill();
+      if (p === this.qb && (this.phase === 'presnap' || this.phase === 'live' || this.phase === 'choose')) {
+        // stamina bar above the QB's head (nothing else is drawn there)
+        const e = this.energy / 100, w = 30, by = Y - R - 12;
+        g.fillStyle = 'rgba(12,18,30,.8)'; g.fillRect(X - w / 2 - 1.5, by - 1.5, w + 3, 8);
+        g.fillStyle = e > 0.6 ? '#4fd18b' : e > 0.3 ? '#ffd84a' : '#ff6b6b'; g.fillRect(X - w / 2, by, w * e, 5);
+      }
       if (p === this.carrier) {
         const live = p.juke && p.juke.t > 0;
         g.strokeStyle = live ? '#ffd84a' : '#fff'; g.lineWidth = live ? 4 : 2;

@@ -85,16 +85,56 @@
     return shuffle(weeks);
   }
 
+  // Per-position stats. A QB has five real stats and a derived overall; other positions have a single
+  // overall stat for now (plus agility for the running back).
+  GP.STATS = {
+    QB: [['arm', 'Arm strength', 'How far and how fast he throws'], ['acc', 'Accuracy', 'How close throws land to the target'],
+         ['spd', 'Speed', 'Scrambling speed'], ['agi', 'Agility', 'Juke window and recovery when scrambling'],
+         ['sta', 'Stamina', 'How slowly he tires during a drive']],
+    RB: [['ovr', 'Overall', ''], ['agi', 'Agility', 'Juke window, recovery, beating tacklers']],
+  };
+  GP.statsFor = (key) => GP.STATS[key] || [['ovr', 'Overall', '']];
+  GP.derived = (key) => key === 'QB';               // overall is computed from the stats
+  const PHYSICAL = { spd: 1, agi: 1, sta: 1 };      // fade from 29; skills (and overall) from 31
+
+  // Stars (0-5, fixed for life) set the general level of a player's caps; each stat gets its own cap
+  // scattered around that level, so two players with the same stars can have different strengths.
+  GP.capLevel = (stars) => 52 + stars * 8.5;
+  GP.refresh = function (r, key) {
+    if (GP.derived(key)) {
+      const t = r.stats;
+      r.ovr = Math.round(t.arm * 0.3 + t.acc * 0.35 + t.spd * 0.1 + t.agi * 0.05 + t.sta * 0.2);
+    } else r.ovr = r.stats.ovr;
+    if (r.stats.agi != null) r.agi = r.stats.agi;
+    return r;
+  };
+  function genPlayer(key, stars, age, unit) {
+    const r = { name: unit ? 'Unit' : GP.pick(FIRST) + ' ' + GP.pick(LAST), age: unit ? null : age, stars, stats: {}, caps: {} };
+    for (const [k] of GP.statsFor(key)) {
+      const cap = GP.clamp(Math.round(GP.capLevel(stars) + GP.rnd(-7, 7)), 40, 99);
+      r.caps[k] = cap;
+      const young = age != null && age <= 24;      // young players start further below their caps
+      r.stats[k] = GP.clamp(cap - GP.rint(young ? 6 : 2, young ? 16 : 10), 35, cap);
+    }
+    return GP.refresh(r, key);
+  }
+  // Older saves: give each player stars and caps that fit his current ratings, never lowering them.
+  function migratePlayer(r, key) {
+    if (r.stats) return false;
+    const base = r.ovr, stars = GP.clamp(Math.round((base - 52) / 8.5) + 1, 0, 5);
+    r.stars = stars; r.stats = {}; r.caps = {};
+    for (const [k] of GP.statsFor(key)) {
+      const v = k === 'agi' && r.agi != null ? r.agi : k === 'ovr' ? base : GP.clamp(base + GP.rint(-6, 6), 35, 99);
+      r.stats[k] = v;
+      r.caps[k] = GP.clamp(Math.max(Math.round(GP.capLevel(stars) + GP.rnd(-7, 7)), v + GP.rint(0, 4)), v, 99);
+    }
+    GP.refresh(r, key);
+    return true;
+  }
+
   GP.newCareer = function (teamId) {
     const roster = {};
-    for (const p of GP.POS) {
-      roster[p.key] = {
-        name: p.unit ? 'Unit' : GP.pick(FIRST) + ' ' + GP.pick(LAST),
-        age: p.unit ? null : GP.rint(22, 29),
-        ovr: GP.rint(63, 72),
-      };
-    }
-    roster.RB.agi = GP.rint(60, 74);   // agility: juke window, recovery, and beating tacklers
+    for (const p of GP.POS) roster[p.key] = genPlayer(p.key, GP.pick([2, 2, 3, 3, 3]), GP.rint(22, 29), p.unit);
     const s = {
       v: 2, teamId, season: 1, week: 0, credits: 4, roster, phase: 'regular', playoff: null, champion: null, history: [],
       teams: GP.TEAMS.map((t) => ({ id: t.id, off: GP.rint(64, 84), def: GP.rint(64, 84), w: 0, l: 0, pf: 0, pa: 0 })),
@@ -222,16 +262,17 @@
       const r = s.roster[p.key];
       if (r.age == null) continue;
       r.age++;
-      if (r.age <= 26) r.ovr += GP.rint(0, 2);
-      else if (r.age >= 31) r.ovr -= GP.rint(1, 4);
-      if (r.age >= 36) { // retirement: a rookie takes over
-        r.name = GP.pick(FIRST) + ' ' + GP.pick(LAST); r.age = 22; r.ovr = GP.rint(60, 68); r.rookie = true;
-        if (r.agi != null) r.agi = GP.rint(60, 76);
-      } else if (r.agi != null) {          // agility peaks early and fades faster than strength
-        if (r.age <= 25) r.agi += GP.rint(0, 2); else if (r.age >= 29) r.agi -= GP.rint(1, 3);
+      if (r.age >= 36) {                     // retirement: a rookie with fresh stars takes over
+        const kid = genPlayer(p.key, GP.pick([0, 1, 1, 2, 2, 2, 3, 3, 4, 5]), 22);
+        kid.rookie = true; s.roster[p.key] = kid; continue;
       }
-      r.ovr = GP.clamp(r.ovr, 50, 99);
-      if (r.agi != null) r.agi = GP.clamp(r.agi, 40, 99);
+      for (const [k] of GP.statsFor(p.key)) {
+        let v = r.stats[k];
+        if (r.age <= 26) v += GP.rint(0, 2);
+        else if (r.age >= (PHYSICAL[k] ? 29 : 31)) v -= GP.rint(1, PHYSICAL[k] ? 3 : 4);
+        r.stats[k] = GP.clamp(v, 35, r.caps[k]);
+      }
+      GP.refresh(r, p.key);
     }
     for (const t of s.teams) {
       t.w = t.l = t.pf = t.pa = 0;
@@ -241,12 +282,12 @@
     GP.syncUser(s); GP.save(s);
   };
 
-  GP.upgradeCost = (ovr) => (ovr >= 99 ? Infinity : ovr >= 85 ? 2 : 1);
+  // Cost of +1 to a stat; Infinity once it reaches the player's cap for that stat.
+  GP.upgradeCost = (val, cap) => (val >= (cap == null ? 99 : cap) ? Infinity : val >= 85 ? 2 : 1);
   GP.upgrade = function (s, key, stat) {
-    stat = stat || 'ovr';
-    const r = s.roster[key], c = GP.upgradeCost(r[stat]);
+    const r = s.roster[key], c = GP.upgradeCost(r.stats[stat], r.caps[stat]);
     if (s.credits < c) return false;
-    s.credits -= c; r[stat]++; GP.syncUser(s); GP.save(s);
+    s.credits -= c; r.stats[stat]++; GP.refresh(r, key); GP.syncUser(s); GP.save(s);
     return true;
   };
 
@@ -257,7 +298,11 @@
       const s = JSON.parse(localStorage.getItem(KEY));
       if (!s || s.v !== 2) return null;
       // saves from before agility existed: give the current back a rating near his overall
-      if (s.roster.RB.agi == null) { s.roster.RB.agi = GP.clamp(s.roster.RB.ovr + GP.rint(-6, 6), 40, 99); GP.save(s); }
+      if (s.roster.RB.agi == null && !s.roster.RB.stats) s.roster.RB.agi = GP.clamp(s.roster.RB.ovr + GP.rint(-6, 6), 40, 99);
+      // saves from before stars and per-stat caps
+      let changed = false;
+      for (const p of GP.POS) changed = migratePlayer(s.roster[p.key], p.key) || changed;
+      if (changed) { GP.syncUser(s); GP.save(s); }
       return s;
     } catch (e) { return null; }
   };

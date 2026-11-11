@@ -47,14 +47,19 @@
     show('title');
   }
 
-  // A secondary rating shown under a player's main bar, with its own upgrade button.
-  function statRow(label, val, buy) {
-    const cost = GP.upgradeCost(val);
-    return h('div', { class: 'substat' },
+  const starText = (n) => '★'.repeat(n) + '☆'.repeat(5 - n);
+  // A stat bar with a marker at the player's cap for it.
+  const capBar = (val, cap, color) => h('div', { class: 'bar capbar' },
+    h('i', { style: `width:${val}%` + (color ? `;background:${color}` : '') }),
+    h('u', { style: `left:${cap}%`, title: `Max ${cap}` }));
+  // One upgradable stat under a player's name.
+  function statRow(key, stat, label, hint) {
+    const r = S.roster[key], val = r.stats[stat], cap = r.caps[stat], cost = GP.upgradeCost(val, cap);
+    return h('div', { class: 'substat', title: hint || '' },
       h('span', { class: 'dim' }, label),
-      h('div', { class: 'bar' }, h('i', { style: `width:${val}%;background:var(--accent)` })),
-      h('b', null, String(val)),
-      h('button', { class: 'btn small ghost', disabled: S.credits < cost, onclick: () => { if (buy()) renderHub(); } },
+      capBar(val, cap, 'var(--accent)'),
+      h('b', null, String(val), h('small', { class: 'dim' }, '/' + cap)),
+      h('button', { class: 'btn small ghost', disabled: S.credits < cost, onclick: () => { if (GP.upgrade(S, key, stat)) renderHub(); } },
         cost === Infinity ? 'MAX' : `+1 (${cost})`));
   }
 
@@ -99,18 +104,20 @@
     // roster
     const roster = h('div', { class: 'card' });
     for (const p of GP.POS) {
-      const r = S.roster[p.key], cost = GP.upgradeCost(r.ovr);
+      const r = S.roster[p.key], stats = GP.statsFor(p.key), derived = GP.derived(p.key);
+      const cost = derived ? null : GP.upgradeCost(r.stats.ovr, r.caps.ovr);
       roster.append(h('div', { class: 'rost' },
         h('span', { class: 'pos' }, p.key.replace(/\d/, '')),
         h('div', null,
-          h('div', null, p.unit ? p.label : r.name, p.unit ? null : h('span', { class: 'dim' }, `  age ${r.age}`)),
-          h('div', { class: 'dim', style: 'font-size:13px' }, p.desc),
-          h('div', { class: 'bar' }, h('i', { style: `width:${r.ovr}%` })),
-          r.agi != null ? statRow('Agility', r.agi, () => GP.upgrade(S, p.key, 'agi')) : null),
+          h('div', null, p.unit ? p.label : r.name, p.unit ? null : h('span', { class: 'dim' }, `  age ${r.age}`),
+            h('span', { class: 'stars', title: `${r.stars}-star ceiling` }, ' ' + starText(r.stars))),
+          h('div', { class: 'dim', style: 'font-size:13px' }, derived ? 'Overall comes from his stats' : p.desc),
+          derived ? null : capBar(r.stats.ovr, r.caps.ovr),
+          ...stats.filter(([k]) => k !== 'ovr').map(([k, label, hint]) => statRow(p.key, k, label, hint))),
         h('span', { class: 'ovr' }, String(r.ovr)),
-        h('button', {
+        derived ? h('span') : h('button', {
           class: 'btn small', disabled: S.credits < cost,
-          onclick: () => { if (GP.upgrade(S, p.key)) renderHub(); },
+          onclick: () => { if (GP.upgrade(S, p.key, 'ovr')) renderHub(); },
         }, cost === Infinity ? 'MAX' : `+1 (${cost})`)));
     }
 

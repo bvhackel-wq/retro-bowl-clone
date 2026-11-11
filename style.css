@@ -56,7 +56,12 @@ tr.me td{color:var(--accent);font-weight:800}
 .rost:last-child{border:0}
 .rost .pos{font-weight:900;color:var(--accent)}
 .rost .ovr{font-weight:900;font-size:20px;width:34px;text-align:right}
-.substat{display:grid;grid-template-columns:auto 1fr auto auto;gap:8px;align-items:center;margin-top:8px;font-size:13px}
+.capbar{position:relative;overflow:visible}
+.capbar i{border-radius:3px}
+.capbar u{position:absolute;top:-3px;width:2px;height:11px;background:var(--ink);opacity:.55;transform:translateX(-1px)}
+.stars{color:var(--accent);letter-spacing:1px;font-size:13px;white-space:nowrap}
+.substat b small{font-weight:400}
+.substat{display:grid;grid-template-columns:5.5em 1fr 3.6em auto;gap:8px;align-items:center;margin-top:8px;font-size:13px}
 .substat .bar{margin:0}
 .substat .btn.small{padding:3px 9px;font-size:12px}
 .bar{height:5px;background:var(--line);border-radius:3px;margin-top:4px;overflow:hidden}
