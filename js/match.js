@@ -194,9 +194,11 @@
       if (this.aim) { this.aim.cx = p.x; this.aim.cy = p.y; return; }
       const g = this.gesture;
       if (!g || g.done) return;
-      // a vertical swipe of 22px+ counts as soon as it happens, no need to lift the finger
-      const dy = p.y - g.y;
-      if (Math.abs(dy) > 22 && Math.abs(dy) > Math.abs(p.x - g.x) * 0.8) { g.done = true; this.swipe(Math.sign(dy)); }
+      // a swipe of 22px+ counts as soon as it happens, no need to lift the finger:
+      // up/down cuts (or jukes after a tap), forward lunges, back stops for a moment
+      const dy = p.y - g.y, dx = p.x - g.x;
+      if (Math.abs(dy) > 22 && Math.abs(dy) > Math.abs(dx) * 0.8) { g.done = true; this.swipe(Math.sign(dy)); }
+      else if (Math.abs(dx) > 22 && Math.abs(dx) > Math.abs(dy) * 1.2) { g.done = true; dx > 0 ? this.lunge() : this.hesitate(); }
     }
     pUp() {
       if (this.aim && this.phase === 'live' && this.passing()) {
@@ -213,8 +215,24 @@
       const c = this.carrier;
       if (this.phase !== 'live' || !this.running(c)) return;
       const now = performance.now();
+      if (c.lunge) return;
+      c.stop = null;                                  // any move ends a stop
       if (now - (this.lastTap || -1e9) < TAP_WINDOW) { this.lastTap = -1e9; this.juke(c, dir); }
       else if (!c.juke || c.juke.t <= -JUKE_RECOVER) c.cut = { dir, t: CUT_TIME };
+    }
+    // Lunge: dive forward about two yards and go down where he lands. Tacklers can't stop the dive itself.
+    lunge() {
+      const c = this.carrier;
+      if (this.phase !== 'live' || !this.running(c) || c.lunge) return;
+      c.lunge = { t: 0.3 }; c.stop = null; c.cut = null; c.juke = null;
+      this.pop('LUNGE!', '#ffd84a');
+    }
+    // Stop: plant and wait about a second (blockers set up, a defender may overrun him).
+    hesitate() {
+      const c = this.carrier;
+      if (this.phase !== 'live' || !this.running(c) || c.lunge || c.stop) return;
+      c.stop = { t: 1.0 }; c.cut = null;
+      this.pop('Hold up…');
     }
     juke(c, dir) {
       if (c.jukeCd > 0) return;                 // still recovering from the last one
@@ -238,7 +256,9 @@
           else if (this.phase === 'kick') this.doKick();
           else this.lastTap = performance.now();       // space then up/down = juke
         } else if (k === 'arrowright' || k === 'd') {
-          this.tuck();
+          if (this.passing()) this.tuck(); else this.lunge();
+        } else if (k === 'arrowleft' || k === 'a') {
+          this.hesitate();
         } else if (k === 'arrowup' || k === 'w' || k === 'arrowdown' || k === 's') {
           if (performance.now() - (this.lastTap || -1e9) < TAP_WINDOW) this.swipe(k === 'arrowup' || k === 'w' ? -1 : 1);
         }
@@ -629,8 +649,8 @@
         return;
       }
 
-      // tackles
-      for (const d of this.def) {
+      // tackles (none while he's in the air on a lunge)
+      for (const d of (runPhase && c.lunge ? [] : this.def)) {
         if (d.stun > 0 || d.held || hyp(d.x - c.x, d.y - c.y) > 1.15) continue;
         const tkl = d.info.tkl;
         if (c === qb && !this.scramble) {
@@ -658,6 +678,7 @@
       if (runPhase) {
         if (c.x >= 110) return this.touchdown();
         if (c.y <= 0.3 || c.y >= FW - 0.3) return this.finishRun(c.x, true);
+        if (c.landed) { this.downed = c; return this.finishRun(c.x, false); }
       }
     }
 
@@ -714,6 +735,16 @@
     }
 
     steerRunner(p, dt) {
+      if (p.lunge) {                                  // diving: straight ahead, fast, then down
+        p.lunge.t -= dt; go(p, p.x + 5, p.y, p.spd * 1.25, dt, 30);
+        if (p.lunge.t <= 0) p.landed = true;
+        return;
+      }
+      if (p.stop) {
+        p.stop.t -= dt;
+        if (p.stop.t > 0) { go(p, p.x, p.y, 0, dt, 14); return; }
+        p.stop = null;
+      }
       const k = this.keys;
       let dy = 0, sp = p.spd * 0.97, acc = 10;       // a touch slower with the ball
       const f = this.runFade(p, dt);
@@ -911,7 +942,14 @@
       }
       const target = clamp(fx - VIEW * 0.36, -3, 123 - VIEW);
       this.camX += (target - this.camX) * Math.min(1, dt * 5);
-      this.hud(); this.chip();
+      this.hud(); this.chip(); this.placePause();
+    }
+    // keep the (invisible) pause button over the icon drawn in the scoreboard strip
+    placePause() {
+      if (!this.pz || this.pauseX == null) return;
+      const b = this.pz.btn, k = this.cv.getBoundingClientRect().width / AW;
+      const left = Math.round((this.pauseX - 4) * k) + 'px';
+      if (b.style.left !== left) { b.style.left = left; b.style.width = Math.round(20 * k) + 'px'; }
     }
     hud() {
       const c = this.clock, set = (id, v) => { if (this.hudCache[id] !== v) { this.hudCache[id] = v; this.el[id].textContent = v; } };
@@ -963,6 +1001,13 @@
         Px.text(g, label, x0 + 4, 3, '#ffffff', 1, { shadow: '#10182a' });
       };
       side(me, this.score.me, 4, false); side(opp, this.score.opp, AW - 4, true);
+      // pause icon, just left of the opponent's score
+      const oppW = Px.width(`${opp.abbr} ${this.score.opp}`) + 8, px = AW - 4 - oppW - 16;
+      if (this.pz && !this.pz.btn.hidden) {
+        g.fillStyle = 'rgba(255,255,255,.18)'; g.fillRect(px, 2, 12, 10);
+        g.fillStyle = '#ffffff'; g.fillRect(px + 3, 4, 2, 6); g.fillRect(px + 7, 4, 2, 6);
+      }
+      this.pauseX = px;
       const clock = c === Infinity ? '-:--' : Math.floor(Math.ceil(c) / 60) + ':' + String(Math.ceil(c) % 60).padStart(2, '0');
       const q = this.q === 5 ? 'OT' : 'Q' + this.q;
       const down = this.phase === 'opp' || this.phase === 'final' ? '' : '   ' + this.downText().replace(' · ', '  ');
@@ -1009,7 +1054,7 @@
       if (this.phase === 'presnap') this.hint('TAP THE FIELD TO SNAP');
       else if (this.phase === 'live' && this.passing() && !this.aim) this.hint('DRAG BACK TO THROW · SWIPE TOWARD THE END ZONE TO RUN');
       else if (this.phase === 'kick' && !this.kick.done) this.hint('TAP WHEN THE MARKER IS IN THE GREEN');
-      else if (this.phase === 'live' && this.running(this.carrier)) this.hint('SWIPE UP/DOWN TO CUT · TAP THEN SWIPE TO JUKE');
+      else if (this.phase === 'live' && this.running(this.carrier)) this.hint('UP/DOWN: CUT · TAP+SWIPE: JUKE · FORWARD: LUNGE · BACK: STOP');
       if (this.popup && this.carrier) {
         const c = this.carrier, w = Px.width(this.popup.text);
         const x = clamp(this.ax(c.x), Math.ceil(w / 2) + 2, AW - Math.ceil(w / 2) - 2);
@@ -1039,7 +1084,7 @@
       const g = this.ag, Px = GP.Pixel, X = this.ax(p.x), Y = this.ay(p.y);
       if (X < -12 || X > AW + 12) return;
       if (Math.abs(p.vx) > 0.6) p.face = p.vx > 0 ? 0 : 1; else if (p.face == null) p.face = p.team === 'O' ? 0 : 1;
-      const down = p.stun > 0 || p === this.downed;
+      const down = p.stun > 0 || p === this.downed || !!p.lunge;
       const moving = (this.phase === 'live' || this.phase === 'tackling') && hyp(p.vx, p.vy) > 0.8;
       const pose = down ? 'down' : moving ? (Math.floor(this.animT * 9 + (p.skin || 0)) % 2 ? 'run1' : 'run2') : 'stand';
       const img = this.kits[p.team][p.skin || 0][pose][p.face];

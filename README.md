@@ -18,6 +18,9 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
 - **Running:** anyone with the ball except a quarterback still in the pocket (the back, a receiver
   after the catch, a scrambling quarterback) runs straight ahead automatically. Swipe up or down
   to cut toward a sideline, or hold W/S or the up/down arrows.
+- **Lunge and stop:** any ball carrier (not a quarterback still in the pocket) can swipe forward to
+  lunge, diving about two yards and going down where he lands (tacklers can't stop the dive itself),
+  or swipe back to stop for about a second. Keyboard: right arrow / D and left arrow / A.
 - **Juke:** tap, then swipe (keyboard: space, then up/down). For a third of a second the runner
   slips any tackle; time it just before contact. A juke into empty space costs speed, and there is a
   short cooldown, so spamming it gains less than running straight.
