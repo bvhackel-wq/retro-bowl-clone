@@ -104,8 +104,15 @@
     ['hands', 'Catching', 'Catch chance on every throw to him'], ['spd', 'Speed', 'Route and open-field speed'],
     ['agi', 'Agility', 'Sharper route cuts and jukes after the catch'], ['sta', 'Stamina', 'How little he slows on deep routes and long runs'],
     ['pow', 'Strength', 'Contested catches, breaking tackles, falling forward']];
+  GP.STATS.WR = GP.STATS.WR1;
   GP.statsFor = (key) => GP.STATS[key] || [['ovr', 'Overall', '']];
-  GP.derived = (key) => ['QB', 'RB', 'WR1', 'WR2', 'TE'].includes(key);   // overall is computed from the stats
+  GP.derived = (key) => ['QB', 'RB', 'WR', 'WR1', 'WR2', 'TE'].includes(key);   // overall is computed from the stats
+
+  // The roster: up to 12 players at these positions. The line and defense are team-wide units.
+  GP.ROSTER_MAX = 12;
+  GP.PLAYER_POS = { QB: 'Quarterback', RB: 'Running Back', WR: 'Wide Receiver', TE: 'Tight End', K: 'Kicker' };
+  GP.SLOTS = [['QB', 'QB'], ['RB', 'RB'], ['WR1', 'WR'], ['WR2', 'WR'], ['TE', 'TE'], ['K', 'K']];   // a game's starters
+  GP.UNITS = [['OL', 'Offensive Line', 'Time in the pocket'], ['DEF', 'Defense', 'Stops simulated enemy drives']];
   const PHYSICAL = { spd: 1, agi: 1, sta: 1 };      // fade from 29; skills (and overall) from 31
 
   // Stars (0-5, fixed for life) set the general level of a player's caps; each stat gets its own cap
@@ -133,6 +140,38 @@
     }
     return GP.refresh(r, key);
   }
+  function newPlayer(s, pos, stars, age) {
+    const r = genPlayer(pos, stars, age);
+    r.id = s.nextId++; r.pos = pos;
+    return r;
+  }
+  GP.newPlayer = newPlayer;
+  // A nameless reserve fielded when no one on the roster plays a starting spot: 0-1 stars, stats
+  // 40-55, at his caps so he can't be upgraded. A fresh one each season.
+  function genFiller(pos) {
+    const r = genPlayer(pos, GP.pick([0, 1]), 30);
+    for (const k in r.stats) { r.stats[k] = GP.rint(40, 55); r.caps[k] = r.stats[k]; }
+    r.name = 'Reserve ' + GP.PLAYER_POS[pos].toLowerCase(); r.filler = true; r.pos = pos;
+    return GP.refresh(r, pos);
+  }
+  GP.depth = (s, pos) => s.players.filter((p) => p.pos === pos).sort((a, b) => b.ovr - a.ovr);
+  // The starters for a game: the best players at each position, a reserve wherever there is none.
+  GP.lineup = function (s) {
+    const L = { OL: s.units.OL, DEF: s.units.DEF }, used = new Set();
+    s.fillers = s.fillers || {};
+    for (const [slot, pos] of GP.SLOTS) {
+      const best = GP.depth(s, pos).find((p) => !used.has(p.id));
+      if (best) { L[slot] = best; used.add(best.id); }
+      else L[slot] = s.fillers[slot] || (s.fillers[slot] = genFiller(pos));
+    }
+    return L;
+  };
+  GP.findPlayer = (s, id) => s.units[id] || s.players.find((p) => p.id === id);
+  GP.release = function (s, id) {
+    s.players = s.players.filter((p) => p.id !== id);
+    GP.syncUser(s); GP.save(s);
+  };
+
   // Older saves: give each player stars and caps that fit his current ratings, never lowering them.
   function migratePlayer(r, key) {
     if (r.stats) return false;
@@ -164,20 +203,24 @@
   }
 
   GP.newCareer = function (teamId) {
-    const roster = {};
-    for (const p of GP.POS) roster[p.key] = genPlayer(p.key, GP.pick([2, 2, 3, 3, 3]), GP.rint(22, 29), p.unit);
     const s = {
-      v: 2, teamId, season: 1, week: 0, credits: 4, roster, phase: 'regular', playoff: null, champion: null, history: [],
+      v: 3, teamId, season: 1, week: 0, credits: 4, phase: 'regular', playoff: null, champion: null, history: [],
+      players: [], nextId: 1, fillers: {}, news: [],
+      units: { OL: genPlayer('OL', GP.pick([2, 2, 3, 3, 3]), null, true), DEF: genPlayer('DEF', GP.pick([2, 2, 3, 3, 3]), null, true) },
       teams: GP.TEAMS.map((t) => ({ id: t.id, off: GP.rint(64, 84), def: GP.rint(64, 84), w: 0, l: 0, pf: 0, pa: 0 })),
       schedule: buildSchedule(1),
     };
+    // a full set of starters, minus one (back, receiver or tight end) that you'll need to find
+    const starters = ['QB', 'RB', 'WR', 'WR', 'TE', 'K'];
+    starters.splice(GP.rint(1, 4), 1);
+    for (const pos of starters) s.players.push(newPlayer(s, pos, GP.pick([2, 2, 3, 3, 3]), GP.rint(22, 29)));
     GP.syncUser(s);
     return s;
   };
 
   // Keep the user's league entry in step with their roster.
   GP.syncUser = function (s) {
-    const r = s.roster, me = GP.rec(s, s.teamId);
+    const r = GP.lineup(s), me = GP.rec(s, s.teamId);
     me.off = Math.round((r.QB.ovr + r.RB.ovr + r.WR1.ovr + r.WR2.ovr + r.TE.ovr + r.OL.ovr) / 6);
     me.def = r.DEF.ovr;
   };
@@ -289,22 +332,20 @@
 
   GP.newSeason = function (s) {
     s.season++; s.week = 0; s.phase = 'regular'; s.playoff = null; s.champion = null;
-    for (const p of GP.POS) {
-      const r = s.roster[p.key];
-      if (r.age == null) continue;
+    s.news = [];
+    s.players = s.players.filter((r) => {
       r.age++;
-      if (r.age >= 36) {                     // retirement: a rookie with fresh stars takes over
-        const kid = genPlayer(p.key, GP.pick([0, 1, 1, 2, 2, 2, 3, 3, 4, 5]), 22);
-        kid.rookie = true; s.roster[p.key] = kid; continue;
-      }
-      for (const [k] of GP.statsFor(p.key)) {
+      if (r.age >= 36) { s.news.push(`${r.name} (${r.pos}) retired.`); return false; }   // his spot opens up
+      for (const [k] of GP.statsFor(r.pos)) {
         let v = r.stats[k];
         if (r.age <= 26) v += GP.rint(0, 2);
         else if (r.age >= (PHYSICAL[k] ? 29 : 31)) v -= GP.rint(1, PHYSICAL[k] ? 3 : 4);
         r.stats[k] = GP.clamp(v, 35, r.caps[k]);
       }
-      GP.refresh(r, p.key);
-    }
+      GP.refresh(r, r.pos);
+      return true;
+    });
+    s.fillers = {};                          // new reserves each season
     for (const t of s.teams) {
       t.w = t.l = t.pf = t.pa = 0;
       if (t.id !== s.teamId) { t.off = GP.clamp(t.off + GP.rint(-3, 3), 60, 92); t.def = GP.clamp(t.def + GP.rint(-3, 3), 60, 92); }
@@ -315,10 +356,12 @@
 
   // Cost of +1 to a stat; Infinity once it reaches the player's cap for that stat.
   GP.upgradeCost = (val, cap) => (val >= (cap == null ? 99 : cap) ? Infinity : val >= 85 ? 2 : 1);
-  GP.upgrade = function (s, key, stat) {
-    const r = s.roster[key], c = GP.upgradeCost(r.stats[stat], r.caps[stat]);
+  GP.upgrade = function (s, id, stat) {
+    const r = GP.findPlayer(s, id);
+    if (!r || r.filler) return false;
+    const c = GP.upgradeCost(r.stats[stat], r.caps[stat]);
     if (s.credits < c) return false;
-    s.credits -= c; r.stats[stat]++; GP.refresh(r, key); GP.syncUser(s); GP.save(s);
+    s.credits -= c; r.stats[stat]++; GP.refresh(r, r.pos || id); GP.syncUser(s); GP.save(s);
     return true;
   };
 
@@ -327,13 +370,23 @@
   GP.load = () => {
     try {
       const s = JSON.parse(localStorage.getItem(KEY));
-      if (!s || s.v !== 2) return null;
+      if (!s || (s.v !== 2 && s.v !== 3)) return null;
       // saves from before agility existed: give the current back a rating near his overall
-      if (s.roster.RB.agi == null && !s.roster.RB.stats) s.roster.RB.agi = GP.clamp(s.roster.RB.ovr + GP.rint(-6, 6), 40, 99);
+      if (s.v === 2 && s.roster.RB.agi == null && !s.roster.RB.stats) s.roster.RB.agi = GP.clamp(s.roster.RB.ovr + GP.rint(-6, 6), 40, 99);
       // saves from before stars and per-stat caps
       let changed = false;
-      for (const p of GP.POS) changed = migratePlayer(s.roster[p.key], p.key) || changed;
-      for (const p of GP.POS) changed = addMissingStats(s.roster[p.key], p.key) || changed;
+      if (s.v === 2) {
+        for (const p of GP.POS) changed = migratePlayer(s.roster[p.key], p.key) || changed;
+        for (const p of GP.POS) addMissingStats(s.roster[p.key], p.key);
+        // version 3: the fixed roster becomes a list of players plus the two units
+        s.units = { OL: s.roster.OL, DEF: s.roster.DEF };
+        s.players = []; s.nextId = 1; s.fillers = {}; s.news = [];
+        for (const key of ['QB', 'RB', 'WR1', 'WR2', 'TE', 'K']) {
+          const r = s.roster[key]; r.pos = key.startsWith('WR') ? 'WR' : key; r.id = s.nextId++; s.players.push(r);
+        }
+        delete s.roster; s.v = 3; changed = true;
+      }
+      for (const r of s.players) changed = addMissingStats(r, r.pos) || changed;
       if (changed) { GP.syncUser(s); GP.save(s); }
       return s;
     } catch (e) { return null; }

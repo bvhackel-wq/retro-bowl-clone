@@ -100,3 +100,11 @@ tr.me td{color:var(--accent);font-weight:800}
   #panel .opt{padding:8px 7px;font-size:12px;min-width:0}
   #hud{padding:2px 6px} #hud .side b{font-size:22px}
 }
+
+.rhead{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);margin:14px 0 2px}
+.rhead:first-child{margin-top:0}
+.rost.reserve{opacity:.6}
+.rost.reserve i{font-style:normal;font-weight:700}
+button.link{background:none;color:var(--dim);font-size:12px;margin-left:8px;padding:0;text-decoration:underline}
+button.link:hover{color:var(--bad)}
+.news{margin-top:12px;border-left:4px solid var(--accent)}

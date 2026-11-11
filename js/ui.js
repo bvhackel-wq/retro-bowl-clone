@@ -52,15 +52,44 @@
   const capBar = (val, cap, color) => h('div', { class: 'bar capbar' },
     h('i', { style: `width:${val}%` + (color ? `;background:${color}` : '') }),
     h('u', { style: `left:${cap}%`, title: `Max ${cap}` }));
-  // One upgradable stat under a player's name.
-  function statRow(key, stat, label, hint) {
-    const r = S.roster[key], val = r.stats[stat], cap = r.caps[stat], cost = GP.upgradeCost(val, cap);
+  // One upgradable stat under a player's name (id is a player id or a unit key).
+  function statRow(r, id, stat, label, hint) {
+    const val = r.stats[stat], cap = r.caps[stat], cost = GP.upgradeCost(val, cap);
     return h('div', { class: 'substat', title: hint || '' },
       h('span', { class: 'dim' }, label),
       capBar(val, cap, 'var(--accent)'),
       h('b', null, String(val), h('small', { class: 'dim' }, '/' + cap)),
-      h('button', { class: 'btn small ghost', disabled: S.credits < cost, onclick: () => { if (GP.upgrade(S, key, stat)) renderHub(); } },
+      h('button', { class: 'btn small ghost', disabled: S.credits < cost, onclick: () => { if (GP.upgrade(S, id, stat)) renderHub(); } },
         cost === Infinity ? 'MAX' : `+1 (${cost})`));
+  }
+  // A roster row: a player (stats and upgrades), a unit, or the reserve filling an empty spot.
+  function playerRow(r, posLabel, opts) {
+    opts = opts || {};
+    const key = opts.unit || r.pos, derived = GP.derived(key), id = opts.unit || r.id;
+    if (r.filler) {
+      return h('div', { class: 'rost reserve' },
+        h('span', { class: 'pos' }, posLabel),
+        h('div', null, h('div', null, h('i', null, `No ${GP.PLAYER_POS[r.pos].toLowerCase()} on the roster`)),
+          h('div', { class: 'dim', style: 'font-size:13px' }, `A ${r.stars}★ reserve fills in. Draft or trade for a real one.`)),
+        h('span', { class: 'ovr' }, String(r.ovr)), h('span'));
+    }
+    const cost = derived ? null : GP.upgradeCost(r.stats.ovr, r.caps.ovr);
+    return h('div', { class: 'rost' },
+      h('span', { class: 'pos' }, posLabel),
+      h('div', null,
+        h('div', null, opts.unit ? opts.label : r.name, opts.unit ? null : h('span', { class: 'dim' }, `  age ${r.age}`),
+          h('span', { class: 'stars', title: `${r.stars}-star ceiling` }, ' ' + starText(r.stars)),
+          opts.unit ? null : h('button', { class: 'link', title: 'Release him to open a roster spot', onclick: () => {
+            if (confirm(`Release ${r.name}? He leaves the team for good.`)) { GP.release(S, r.id); renderHub(); }
+          } }, 'Release')),
+        h('div', { class: 'dim', style: 'font-size:13px' }, derived ? 'Overall comes from his stats' : opts.desc || ''),
+        derived ? null : capBar(r.stats.ovr, r.caps.ovr),
+        ...GP.statsFor(key).filter(([k]) => k !== 'ovr').map(([k, label, hint]) => statRow(r, id, k, label, hint))),
+      h('span', { class: 'ovr' }, String(r.ovr)),
+      derived ? h('span') : h('button', {
+        class: 'btn small', disabled: S.credits < cost,
+        onclick: () => { if (GP.upgrade(S, id, 'ovr')) renderHub(); },
+      }, cost === Infinity ? 'MAX' : `+1 (${cost})`));
   }
 
   function renderHub() {
@@ -73,6 +102,8 @@
       h('span', { class: 'pill' }, `Season ${S.season} · ${rec.w}-${rec.l}`),
       h('span', { class: 'pill' }, 'Coaching points ', h('b', null, String(S.credits))),
       h('button', { class: 'btn ghost small', onclick: renderTitle }, 'Menu')));
+
+    if (S.news && S.news.length) hub.append(h('div', { class: 'card news' }, ...S.news.map((n) => h('div', null, n))));
 
     // next game / offseason
     if (game && game.bye) {
@@ -101,25 +132,20 @@
         h('button', { class: 'btn', onclick: () => { GP.newSeason(S); renderHub(); } }, 'Start next season')));
     }
 
-    // roster
+    // roster: starters (a reserve wherever a spot is empty), bench, then the two units
+    const lineup = GP.lineup(S), starterIds = new Set();
     const roster = h('div', { class: 'card' });
-    for (const p of GP.POS) {
-      const r = S.roster[p.key], stats = GP.statsFor(p.key), derived = GP.derived(p.key);
-      const cost = derived ? null : GP.upgradeCost(r.stats.ovr, r.caps.ovr);
-      roster.append(h('div', { class: 'rost' },
-        h('span', { class: 'pos' }, p.key.replace(/\d/, '')),
-        h('div', null,
-          h('div', null, p.unit ? p.label : r.name, p.unit ? null : h('span', { class: 'dim' }, `  age ${r.age}`),
-            h('span', { class: 'stars', title: `${r.stars}-star ceiling` }, ' ' + starText(r.stars))),
-          h('div', { class: 'dim', style: 'font-size:13px' }, derived ? 'Overall comes from his stats' : p.desc),
-          derived ? null : capBar(r.stats.ovr, r.caps.ovr),
-          ...stats.filter(([k]) => k !== 'ovr').map(([k, label, hint]) => statRow(p.key, k, label, hint))),
-        h('span', { class: 'ovr' }, String(r.ovr)),
-        derived ? h('span') : h('button', {
-          class: 'btn small', disabled: S.credits < cost,
-          onclick: () => { if (GP.upgrade(S, p.key, 'ovr')) renderHub(); },
-        }, cost === Infinity ? 'MAX' : `+1 (${cost})`)));
+    roster.append(h('h3', { class: 'rhead' }, 'Starters'));
+    for (const [slot, pos] of GP.SLOTS) {
+      const r = lineup[slot];
+      if (!r.filler) starterIds.add(r.id);
+      roster.append(playerRow(r, pos));
     }
+    const bench = S.players.filter((p) => !starterIds.has(p.id)).sort((a, b) => a.pos.localeCompare(b.pos) || b.ovr - a.ovr);
+    roster.append(h('h3', { class: 'rhead' }, 'Bench', h('span', { class: 'dim' }, bench.length ? '' : '  nobody yet')));
+    for (const r of bench) roster.append(playerRow(r, r.pos));
+    roster.append(h('h3', { class: 'rhead' }, 'Units'));
+    for (const [key, label, desc] of GP.UNITS) roster.append(playerRow(S.units[key], key, { unit: key, label, desc }));
 
     // standings: one table per division, with a conference switcher
     const seeds = S.phase === 'regular' ? GP.seeds(S, viewConf) : S.playoff.seeds[viewConf];
@@ -141,7 +167,7 @@
     const table = tables;
 
     hub.append(h('div', { class: 'grid2' },
-      h('div', null, h('h2', null, 'Roster'), roster),
+      h('div', null, h('h2', null, `Roster ${S.players.length}/${GP.ROSTER_MAX}`), roster),
       h('div', null, h('h2', null, 'Standings — numbered teams hold a playoff seed'), table,
         S.history.length ? h('h2', null, 'History') : null,
         S.history.length ? h('div', { class: 'card' }, ...S.history.map((x) => h('div', { class: 'dim' }, `Season ${x.season}: ${x.w}-${x.l} — ${x.note}`))) : null)));
@@ -152,7 +178,7 @@
     const or = GP.rec(S, game.oppId);
     show('match');
     GP.match = new GP.Match($('#field'), {
-      me: GP.team(S.teamId), opp: GP.team(game.oppId), roster: S.roster,
+      me: GP.team(S.teamId), opp: GP.team(game.oppId), roster: GP.lineup(S),
       oppOff: or.off, oppDef: or.def, label: game.label,
       onEnd: (my, opp) => { GP.match = null; GP.advance(S, my, opp); renderHub(); },
     });
