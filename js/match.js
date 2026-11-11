@@ -1177,8 +1177,9 @@
       const tol = punt ? clamp(0.065 + u * 0.075, 0.065, 0.14) : clamp(0.035 + u * 0.07 - (dist - 20) * 0.0012, 0.035, 0.1);
       const yel = tol + Math.max(0.035, tol * 0.9);                               // and of the yellow around it
       const sx = punt ? Math.max(this.los - 13, 2) : 120 - dist;
-      // punt reach: 30 yards at 40 kick distance, 45 at 70, about 60 at 99
-      const range = punt ? Math.round(clamp(30 + (this.ks.leg - 40) * 0.5, 25, 60)) : this.kickRange;
+      // punt reach from the punter's spot: 61 yards at 71 kick distance (a 3-star punter), so a full punt
+      // travels about 47 yards past the line, the NFL average; about 46 at 40 and 73 at 99
+      const range = punt ? Math.round(clamp(61 + (this.ks.leg - 71) * 0.45, 40, 75)) : this.kickRange;
       this.kick = { type, dist, tol, yel, range, speed: 1.1 + (1 - u) * 1.1, pos: 0, dir: 1, stage: 'set', sx, sy: MID, target: null, rt: 0, started: false };
       this.phase = 'kick'; this.kaim = null; this.carrier = null; this.ball = { state: 'held' };
       this.setupKickFormation();
@@ -1284,9 +1285,9 @@
       if (res.punt) {
         this.puntSetup();
         // hang time: long enough that the fastest gunner gets within 2-14 yards of the catch (a good punt
-        // hangs; a line drive outkicks the coverage), held to 2.2-4.6 seconds
+        // hangs; a line drive outkicks the coverage), held to 2.2-5 seconds
         const run = Math.max(0, res.ex - this.los - rnd(2, 14)), g = Math.max(...this.kick.cover.map((c) => c.spd));
-        this.ball.dur = clamp(run / g + 0.45, 2.2, 4.6);
+        this.ball.dur = clamp(run / g + 0.45, 2.2, 5);
       }
     }
     // A clean punt lands where you aimed; a shank falls short (45-70% of the way) and veers sideways.
@@ -1307,8 +1308,8 @@
       k.ret.spd = 6.7 + (d - 70) * 0.03; k.lead.spd = 6.4;
       k.cover = this.off.filter((p) => p !== this.kicker);
       // jammers hold the gunners up at the line for a moment; the interior men release sooner
-      for (const c of k.cover) { c.spd = c.role === 'WR' ? 7.3 : c.role === 'RB' ? 6.8 : 6.1; c.lane = c.y - MID; c.stun = 0; c.hold = c.role === 'WR' ? rnd(0, 1.1) : rnd(0, 0.5); }
-      k.fairAt = rnd(5.5, 11);                                    // how close the coverage gets before he calls for a fair catch
+      for (const c of k.cover) { c.spd = c.role === 'WR' ? 8 : c.role === 'RB' ? 7.2 : 6.5; c.lane = c.y - MID; c.stun = 0; c.hold = c.role === 'WR' ? rnd(0, 1.1) : rnd(0, 0.5); }
+      k.fairAt = rnd(7, 14);                                    // how close the coverage gets before he calls for a fair catch
       this.kicker.spd = 6.2; this.kicker.lane = 0; this.kicker.hold = 0;
       for (const p of this.def) if (!p.idle) p.spd = 6;
       k.retX = r.ex >= 100 ? Math.min(r.ex, 100) - 3 : r.ex;    // deep in his own end he backs off and lets it go

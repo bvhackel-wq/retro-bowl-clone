@@ -108,7 +108,7 @@
     ['pow', 'Strength', 'Contested catches, breaking tackles, falling forward']];
   GP.STATS.WR = GP.STATS.WR1;
   GP.STATS.K = [
-    ['leg', 'Kick distance', 'How far he can aim: 30 yards at 40, about 45 at 70, 60 at 99'],
+    ['leg', 'Kick distance', 'Field goals: 30 yards at 40, about 45 at 70, 60 at 99. Punts travel about 47 yards past the line at 71'],
     ['acc', 'Kick accuracy', 'Size of the green zone on the kick meter, and how slowly the marker moves']];
   GP.STATS.OL = [
     ['pow', 'Strength', 'Holding his ground: a weak lineman gets driven back into the quarterback'],
