@@ -59,7 +59,7 @@
     constructor(canvas, cfg) {
       this.cv = canvas; this.g = canvas.getContext('2d'); this.cfg = cfg;
       this.el = {};
-      for (const id of ['hud-me', 'hud-opp', 'hud-q', 'hud-clock', 'hud-down', 'hud-me-name', 'hud-opp-name', 'panel'])
+      for (const id of ['hud-me', 'hud-opp', 'hud-q', 'hud-clock', 'hud-down', 'hud-me-name', 'hud-opp-name', 'panel', 'chip'])
         this.el[id] = document.getElementById(id);
       this.el['hud-me-name'].textContent = cfg.me.abbr;
       this.el['hud-opp-name'].textContent = cfg.opp.abbr;
@@ -72,6 +72,7 @@
       this.maxRange = 30 + (this.qbs.arm - 60) * 0.6;                       // arm: how far
       this.ballSpeed = 26 + this.qbs.arm * 0.09;                            // arm: how fast (yards/second)
       this.scatter = Math.max(0.015, 0.085 - (this.qbs.acc - 60) * 0.0015); // accuracy
+      if (GP.hasSkill(cfg.staff, 'OC', 'airraid')) this.scatter *= 0.85;   // OC skill: Air Raid
       this.energy = 100;
 
       this.q = 1; this.clock = QLEN;
@@ -97,6 +98,7 @@
       window.addEventListener('keyup', this.onKeyUp);
 
       this.paused = false; this.initPause();
+      this.el.chip.onclick = () => { if (this.phase === 'presnap' && !this.paused) this.playList('Change the play — ' + this.downText()); };
       this.onResize = () => this.resize();
       window.addEventListener('resize', this.onResize);
       window.addEventListener('orientationchange', this.onResize);
@@ -149,6 +151,7 @@
     destroy() {
       this.dead = true; cancelAnimationFrame(this.raf);
       if (this.pz) { this.pz.box.hidden = true; this.pz.btn.hidden = true; document.removeEventListener('visibilitychange', this.onHide); }
+      this.el.chip.hidden = true;
       this.cv.removeEventListener('pointerdown', this.onDown);
       this.cv.removeEventListener('pointermove', this.onMove);
       window.removeEventListener('pointerup', this.onUp);
@@ -180,7 +183,7 @@
     pDown(e) {
       e.preventDefault();
       const p = this.pos(e);
-      if (this.phase === 'presnap') return this.snap();
+      if (this.phase === 'presnap') { this.hidePanel(); return this.snap(); }
       if (this.phase === 'kick') return this.doKick();
       if (this.phase !== 'live') return;
       if (this.passing()) this.aim = { sx: p.x, sy: p.y, cx: p.x, cy: p.y };
@@ -259,9 +262,9 @@
       const row = document.createElement('div'); row.className = 'opts'; p.appendChild(row);
       for (const o of opts) {
         const b = document.createElement('button');
-        b.className = modal ? 'btn' : 'opt' + (o.kick ? ' kick' : '');
+        b.className = modal ? 'btn' : 'opt' + (o.kick ? ' kick' : '') + (o.rec ? ' rec' : '');
         if (modal) b.textContent = o.label;
-        else { const n = document.createElement('b'); n.textContent = o.label; const s = document.createElement('small'); s.textContent = o.sub || ''; b.append(n, s); }
+        else { const n = document.createElement('b'); n.textContent = o.label; const s = document.createElement('small'); s.textContent = o.rec ? "OC's call" : o.sub || ''; b.append(n, s); }
         b.onclick = () => { this.hidePanel(); o.fn(); };
         row.appendChild(b);
       }
@@ -283,22 +286,74 @@
       const on = yl === 50 ? '50' : yl < 50 ? 'own ' + yl : 'opp ' + (100 - yl);
       return `${ord(this.down)} & ${togo} · ${on}`;
     }
+    // ---------- offensive coordinator ----------
+    // Which plays beat which looks (from testing): quick throws beat the blitz, curls and runs beat
+    // three-deep, verticals beat press, slants beat man and two-deep.
+    ocCall() {
+      const st = this.cfg.staff, stars = st ? st.OC.stars : 1;
+      const togo = this.fdx >= 110 ? 110 - this.los : this.fdx - this.los, diff = this.score.me - this.score.opp;
+      const late = (this.q === 2 || this.q === 4) && this.clock < 60;
+      const fit = {
+        man: { slants: 3, verts: 1, post: 2, curls: 1, run: 2 }, press: { slants: 1, verts: 3, post: 2, curls: 2, run: 2 },
+        cover2: { slants: 3, verts: 2, post: 1, curls: 2, run: 2 }, cover3: { slants: 2, verts: 0, post: 2, curls: 3, run: 3 },
+        blitz: { slants: 4, verts: -3, post: 2, curls: -3, run: 1 },
+      };
+      const score = { slants: 0, verts: 0, post: 0, curls: 0, run: 0 };
+      // the situation: distance, field position, clock and score
+      // (1st & 10 is a normal down: no push either way)
+      if (togo <= 2) { score.run += 3; score.slants += 1; }
+      else if ((this.down >= 2 && togo >= 7) || togo >= 13) { score.verts += 2; score.post += 2; score.run -= 2; }   // long yardage
+      else if (this.down >= 2) { score.curls += 1; score.slants += 1; }                                                // medium
+      if (this.los >= 90) { score.verts -= 3; score.slants += 1; score.curls += 1; score.run += 1; }   // red zone: no room deep
+      if (late && diff < 0) { score.run -= 3; score.verts += 1; score.post += 1; }                       // need to move fast
+      if (this.q >= 4 && diff > 0 && !late) score.run += 3;                                              // protect the lead, burn clock
+      // the defense's look: a better coordinator reads it more often
+      if (Math.random() < 0.1 + stars * 0.18) for (const k in score) score[k] += fit[this.dcall.type][k] * 1.5;
+      // and a worse one is simply less consistent
+      for (const k in score) score[k] += gauss() * (5.2 - stars) * 0.9;
+      const best = Object.keys(score).sort((a, b) => score[b] - score[a])[0];
+      let call = { play: PLAYS.find((p) => p.id === best) };
+      if (this.down === 4) {
+        const fg = Math.round(110 - this.los + 17), desperate = this.q >= 4 && this.clock < 120 && diff < 0 && diff >= -8;
+        if (desperate || (togo <= 1 && this.los >= 55)) call.kick = null;
+        else if (fg <= 52) call.kick = 'fg';
+        else if (this.los < 75) call.kick = 'punt';
+      }
+      return call;
+    }
+    // the "Play: ... · Change" button over the field before the snap
+    chip() {
+      const c = this.el.chip, show = this.phase === 'presnap' && this.el.panel.hidden && !this.paused;
+      if (c.hidden === !show && c.dataset.play === (this.play && this.play.id)) return;
+      c.hidden = !show; c.dataset.play = this.play ? this.play.id : '';
+      if (show) c.innerHTML = `<small>${this.play === this.ocPick ? "OC's call" : 'Your call'}</small><b>${this.play.name}</b><span>Change</span>`;
+    }
+    playList(title) {
+      const call = this.ocLast;
+      const opts = PLAYS.map((p) => ({ label: p.name, sub: p.desc, rec: !call.kick && call.play === p, fn: () => this.pickPlay(p) }));
+      if (this.down === 4) {
+        const dist = Math.round(110 - this.los + 17);
+        if (dist <= 57) opts.push({ label: `Field Goal`, sub: `${dist} yards`, kick: true, rec: call.kick === 'fg', fn: () => this.startKick('fg') });
+        opts.push({ label: 'Punt', sub: 'Flip the field', kick: true, rec: call.kick === 'punt', fn: () => this.punt() });
+      }
+      this.showPanel(title, '', opts);
+    }
+
     toChoose() {
       this.phase = 'choose'; this.kick = null; this.play = null;
       let r = Math.random() * 100, type = 'man';
       for (const [t, w] of CALLS) { if ((r -= w) < 0) { type = t; break; } }
       this.dcall = { type, lbBlitz: type === 'man' && Math.random() < 0.15 };
       this.setupFormation();
-      const opts = PLAYS.map((p) => ({ label: p.name, sub: p.desc, fn: () => this.pickPlay(p) }));
-      if (this.down === 4) {
-        const dist = Math.round(110 - this.los + 17);
-        if (dist <= 57) opts.push({ label: `Field Goal`, sub: `${dist} yards`, kick: true, fn: () => this.startKick('fg') });
-        opts.push({ label: 'Punt', sub: 'Flip the field', kick: true, fn: () => this.punt() });
-      }
-      this.showPanel('Call a play — ' + this.downText(), '', opts);
+      // the offensive coordinator calls the play; on 4th down he only recommends (you decide)
+      const call = this.ocLast = this.ocCall();
+      this.ocPick = call.play;
+      if (this.down === 4) return this.playList('4th down — your call');
+      this.pickPlay(call.play);
     }
     pickPlay(p) {
       this.play = p; this.setupFormation(); this.phase = 'presnap';
+      this.hidePanel();
     }
     snap() {
       // on runs the second level reacts a beat late; linemen's hold times are already set by run blocking
@@ -349,7 +404,8 @@
         const p = M('D', 'DL', L + 1, MID + o, dls); p.job = 'rush'; p.pow = d + rnd(-6, 6);
         // how long the lineman across from him holds him. Passes: his pass-block stat. Runs are decided in
         // about 1.5s, so there run block (with a quarter strength) sets a hold of ~1-3s that varies block to block.
-        if (isRun) p.shed = clamp(2.2 + ((ol[i].blk * 0.75 + ol[i].pow * 0.25) - d) * 0.06, 0.4, 4) * rnd(0.5, 1.5);
+        if (isRun) p.shed = clamp(2.2 + ((ol[i].blk * 0.75 + ol[i].pow * 0.25) - d) * 0.06, 0.4, 4) * rnd(0.5, 1.5)
+          * (GP.hasSkill(this.cfg.staff, 'OC', 'ground') ? 1.2 : 1);                              // OC skill: Ground Game
         else p.shed = clamp(2.6 + rnd(0, 2.4) + (ol[i].blk - d) * 0.05, 1.5, 7);
         ol[i].mark = p; return p;
       });
@@ -730,7 +786,10 @@
       this.los = Math.min(x, 109.5);
       let msg = label || (gain > 0 ? `Gain of ${gain}` : gain < 0 ? `Loss of ${-gain}` : 'No gain');
       if (oob) msg += ' (out of bounds)';
-      else if (this.clock !== Infinity) this.clock = Math.max(0, this.clock - RUNOFF);
+      else if (this.clock !== Infinity) {
+        const hurry = GP.hasSkill(this.cfg.staff, 'OC', 'twomin') && (this.q === 2 || this.q === 4) && this.clock < 60;   // OC skill
+        this.clock = Math.max(0, this.clock - RUNOFF * (hurry ? 0.5 : 1));
+      }
       if (this.los >= this.fdx) {
         this.down = 1; this.fdx = Math.min(this.los + 10, 110);
         this.endPlay(msg + ' — FIRST DOWN', () => this.checkClock(() => this.toChoose()));
@@ -777,17 +836,21 @@
     // ---------- opponent possession (simulated) ----------
     oppDrive(dist, lead) {
       this.phase = 'opp'; this.kick = null;
-      const o = this.cfg.opp, myDef = this.cfg.roster.DEF.ovr;
-      const pTD = clamp(0.24 + (this.cfg.oppOff - myDef) * 0.008 + (75 - dist) * 0.004, 0.08, 0.75);
-      const pFG = dist < 45 ? 0.25 : 0.14;
+      // the defense: its unit rating plus the defensive coordinator's stars and skills
+      const st = this.cfg.staff, dc = (s) => GP.hasSkill(st, 'DC', s);
+      const o = this.cfg.opp, myDef = this.cfg.roster.DEF.ovr + (st ? st.DC.stars * 1.5 : 0);
+      let pTD = clamp(0.24 + (this.cfg.oppOff - myDef) * 0.008 + (75 - dist) * 0.004, 0.08, 0.75);
+      let pFG = dist < 45 ? 0.25 : 0.14;
+      if (dc('bend')) { pTD *= 0.75; pFG += 0.12; }
+      const pTO = dc('ballhawk') ? 0.2 : 0.13;
       let need = (25 + rnd(0, 30)) * clamp(dist / 75, 0.35, 1.1);
       let text, nextX;
       const r = Math.random();
       if (this.q <= 4 && this.clock < 12) { text = 'The clock runs out on their drive.'; need = this.clock; nextX = 35; }
       else if (r < pTD) { this.score.opp += 7; text = `TOUCHDOWN ${o.name}. They march ${Math.round(dist)} yards and kick the extra point.`; nextX = 35; }
       else if (r < pTD + pFG) { this.score.opp += 3; text = `${o.name} settle for a field goal.`; nextX = 35; }
-      else if (r < pTD + pFG + 0.13) { text = Math.random() < 0.5 ? 'Your defense forces a fumble!' : 'Your defense picks it off!'; nextX = rnd(45, 65); }
-      else { text = 'Your defense holds. They punt it away.'; nextX = rnd(28, 40); }
+      else if (r < pTD + pFG + pTO) { text = Math.random() < 0.5 ? 'Your defense forces a fumble!' : 'Your defense picks it off!'; nextX = rnd(45, 65); }
+      else { text = 'Your defense holds. They punt it away.'; nextX = rnd(28, 40) + (dc('flip') ? 8 : 0); }
       if (this.q <= 4) this.clock = Math.max(0, this.clock - need);
       this.showPanel(`${o.city} ${o.name} possession`, `${lead}\n${text}\n\n${this.cfg.me.abbr} ${this.score.me} — ${this.score.opp} ${o.abbr}`,
         [{ label: 'Continue', fn: () => this.checkClock(() => this.startDrive(nextX)) }], true);
@@ -845,7 +908,7 @@
       }
       const target = clamp(fx - VIEW * 0.36, -3, 123 - VIEW);
       this.camX += (target - this.camX) * Math.min(1, dt * 5);
-      this.hud();
+      this.hud(); this.chip();
     }
     hud() {
       const c = this.clock, set = (id, v) => { if (this.hudCache[id] !== v) { this.hudCache[id] = v; this.el[id].textContent = v; } };

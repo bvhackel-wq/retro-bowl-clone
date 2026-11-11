@@ -220,6 +220,7 @@
     const s = {
       v: 3, teamId, season: 1, week: 0, credits: 4, phase: 'regular', playoff: null, champion: null, history: [],
       players: [], nextId: 1, fillers: {}, news: [],
+      staff: { OC: genCoach('OC', 1), DC: genCoach('DC', 1) },
       units: { DEF: genPlayer('DEF', GP.pick([2, 2, 3, 3, 3]), null, true) },
       teams: GP.TEAMS.map((t) => ({ id: t.id, off: GP.rint(64, 84), def: GP.rint(64, 84), w: 0, l: 0, pf: 0, pa: 0 })),
       schedule: buildSchedule(1),
@@ -236,7 +237,7 @@
   GP.syncUser = function (s) {
     const r = GP.lineup(s), me = GP.rec(s, s.teamId);
     me.off = Math.round((r.QB.ovr + r.RB.ovr + r.WR1.ovr + r.WR2.ovr + r.TE.ovr + r.OL.ovr) / 6);
-    me.def = r.DEF.ovr;
+    me.def = r.DEF.ovr + Math.round(((s.staff && s.staff.DC.stars) || 0) * 1.5);
   };
   GP.rec = (s, id) => s.teams.find((t) => t.id === id);
   const byRecord = (a, b) => b.w - a.w || (b.pf - b.pa) - (a.pf - a.pa);
@@ -314,6 +315,47 @@
     s.history.push({ season: s.season, w: me.w, l: me.l, note });
     GP.startDraft(s);
   }
+
+  // ---------- coaching staff ----------
+  // An offensive and a defensive coordinator, each with 0-5 stars and special skills (one, or two at 4+
+  // stars) drawn from a small set. Add new skills here and give them an effect in match.js.
+  GP.SKILLS = {
+    OC: {
+      airraid: ['Air Raid', 'Throws land 15% closer to where you aim'],
+      ground: ['Ground Game', 'Run blocks hold 20% longer'],
+      twomin: ['Two-Minute Drill', 'Half the clock runs off between plays in the last minute of each half'],
+    },
+    DC: {
+      ballhawk: ['Ball Hawk', 'Opponent drives end in a turnover more often'],
+      bend: ["Bend Don't Break", 'Fewer touchdowns allowed; more drives end in field goals'],
+      flip: ['Field Flipper', 'After a stop, your drive starts 8 yards further up the field'],
+    },
+  };
+  GP.ROLES = { OC: 'Offensive Coordinator', DC: 'Defensive Coordinator' };
+  GP.STAFF_COST = [0, 2, 4, 7, 10, 14];     // coaching points to hire, by stars
+  function genCoach(role, stars) {
+    const keys = Object.keys(GP.SKILLS[role]).sort(() => Math.random() - 0.5);
+    return { role, name: GP.pick(FIRST) + ' ' + GP.pick(LAST), age: GP.rint(34, 63), stars, skills: keys.slice(0, stars >= 4 ? 2 : 1) };
+  }
+  GP.hasSkill = (staff, role, key) => !!(staff && staff[role] && staff[role].skills.includes(key));
+  // three candidates for each job, new every season
+  GP.staffPool = function (s) {
+    if (!s.staffPool) {
+      s.staffPool = { OC: [], DC: [] };
+      for (const role of ['OC', 'DC']) for (let i = 0; i < 3; i++) s.staffPool[role].push(genCoach(role, GP.pick([0, 1, 1, 2, 2, 3, 3, 4, 5])));
+      GP.save(s);
+    }
+    return s.staffPool;
+  };
+  GP.hire = function (s, role, i) {
+    const pool = GP.staffPool(s)[role], c = pool[i];
+    if (!c || s.credits < GP.STAFF_COST[c.stars]) return false;
+    s.credits -= GP.STAFF_COST[c.stars];
+    s.news = (s.news || []).concat(`You hired ${c.name} (${c.stars}★) as ${GP.ROLES[role].toLowerCase()}, replacing ${s.staff[role].name}.`);
+    s.staff[role] = c; pool.splice(i, 1);
+    GP.syncUser(s); GP.save(s);
+    return true;
+  };
 
   // ---------- trades ----------
   // Open in the offseason and during the regular season up to the deadline (after week 9 of 14).
@@ -518,6 +560,7 @@
     });
     s.fillers = {};                          // new reserves each season
     s.blocks = {};                           // and new trade blocks
+    s.staffPool = null;                      // and new coaching candidates
     for (const t of s.teams) {
       t.w = t.l = t.pf = t.pa = 0;
       if (t.id !== s.teamId) { t.off = GP.clamp(t.off + GP.rint(-3, 3), 60, 92); t.def = GP.clamp(t.def + GP.rint(-3, 3), 60, 92); }
@@ -572,6 +615,7 @@
         s.news = (s.news || []).concat('Your offensive line is now three individual linemen on the roster.');
         changed = true;
       }
+      if (!s.staff) { s.staff = { OC: genCoach('OC', 1), DC: genCoach('DC', 1) }; changed = true; }
       for (const r of s.players) changed = addMissingStats(r, r.pos) || changed;
       if (changed) { GP.syncUser(s); GP.save(s); }
       return s;

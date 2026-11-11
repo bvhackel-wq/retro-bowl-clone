@@ -162,6 +162,13 @@
           } }, 'Start next season'))));
     }
 
+    // coaching staff
+    const coachLine = (c) => h('div', null, h('b', null, `${c.role} `), c.name, h('span', { class: 'stars' }, ' ' + starText(c.stars)),
+      h('span', { class: 'dim' }, ' · ' + c.skills.map((k) => GP.SKILLS[c.role][k][0]).join(', ')));
+    hub.append(h('div', { class: 'card next tradecard' },
+      h('div', null, h('b', null, 'Coaching staff'), coachLine(S.staff.OC), coachLine(S.staff.DC)),
+      h('span', { style: 'flex:1' }),
+      h('button', { class: 'btn ghost small', onclick: renderStaff }, 'Hire coordinators')));
     const ts = GP.tradeStatus(S);
     hub.append(h('div', { class: 'card next tradecard' },
       h('div', null, h('b', null, 'Trades'), h('div', { class: 'dim' }, ts.note)),
@@ -207,6 +214,39 @@
       h('div', null, h('h2', null, 'Standings — numbered teams hold a playoff seed'), table,
         S.history.length ? h('h2', null, 'History') : null,
         S.history.length ? h('div', { class: 'card' }, ...S.history.map((x) => h('div', { class: 'dim' }, `Season ${x.season}: ${x.w}-${x.l} — ${x.note}`))) : null)));
+    show('hub');
+  }
+
+  // ---------- coaching staff ----------
+  function renderStaff() {
+    const hub = $('#hub'); hub.innerHTML = '';
+    const pool = GP.staffPool(S);
+    hub.append(h('div', { class: 'hub-head' },
+      h('h1', null, 'Coaching staff'), h('span', { class: 'sp' }),
+      h('span', { class: 'pill' }, 'Coaching points ', h('b', null, String(S.credits))),
+      h('button', { class: 'btn ghost small', onclick: renderHub }, 'Back to team')));
+    const coachCard = (c, buy) => h('div', { class: 'coach' },
+      h('div', null,
+        h('div', null, h('b', null, c.name), h('span', { class: 'dim' }, `  age ${c.age}`), h('span', { class: 'stars' }, ' ' + starText(c.stars))),
+        ...c.skills.map((k) => h('div', { class: 'skill' }, h('b', null, GP.SKILLS[c.role][k][0]), h('span', { class: 'dim' }, ' — ' + GP.SKILLS[c.role][k][1])))),
+      buy || h('span', { class: 'dim' }, 'Current'));
+    const what = {
+      OC: 'Calls your plays before every snap; more stars means he reads the defense and the situation better. You can always change his call.',
+      DC: 'Runs your defense while the other team has the ball; more stars means more stops and turnovers.',
+    };
+    const cols = ['OC', 'DC'].map((role) => {
+      const card = h('div', { class: 'card' }, h('div', { class: 'dim', style: 'margin-bottom:8px' }, what[role]), coachCard(S.staff[role]),
+        h('h3', { class: 'rhead' }, 'Available this season'));
+      pool[role].forEach((c, i) => {
+        const cost = GP.STAFF_COST[c.stars];
+        card.append(coachCard(c, h('button', { class: 'btn small', disabled: S.credits < cost, onclick: () => {
+          if (confirm(`Hire ${c.name} for ${cost} coaching point${cost === 1 ? '' : 's'}? ${S.staff[role].name} will leave.`) && GP.hire(S, role, i)) renderStaff();
+        } }, cost ? `Hire (${cost})` : 'Hire (free)')));
+      });
+      if (!pool[role].length) card.append(h('div', { class: 'dim' }, 'Nobody else is available until next season.'));
+      return h('div', null, h('h2', null, GP.ROLES[role]), card);
+    });
+    hub.append(h('div', { class: 'grid2' }, ...cols));
     show('hub');
   }
 
@@ -306,7 +346,7 @@
     const or = GP.rec(S, game.oppId);
     show('match');
     GP.match = new GP.Match($('#field'), {
-      me: GP.team(S.teamId), opp: GP.team(game.oppId), roster: GP.lineup(S),
+      me: GP.team(S.teamId), opp: GP.team(game.oppId), roster: GP.lineup(S), staff: S.staff,
       oppOff: or.off, oppDef: or.def, label: game.label,
       onEnd: (my, opp, st, info) => {
         GP.match = null; GP.advance(S, my, opp);

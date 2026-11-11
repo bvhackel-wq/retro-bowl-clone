@@ -77,6 +77,13 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
 - **Offensive line stats:** strength (holding ground against the pass rush), pass block (how long he
   holds his man on passes), run block (how long he holds on runs), speed (a faster rusher gets around
   a slow lineman sooner) and stamina (blocking fades up to 25% over a long drive; fresh each drive).
+- **Coordinators:** an offensive and a defensive coordinator, each with 0-5★ and one special skill
+  (two at 4★+) from a small set (`GP.SKILLS` in `js/data.js`). Hire them with coaching points from three
+  candidates per job that change each season (free at 0★ up to 14 points at 5★). The offensive
+  coordinator calls a play before every snap from the down, distance, field position, clock, score and
+  the defense's look; more stars means he reads the coverage more often (about 25% at 0-1★, 50% at 3★,
+  90% at 5★). You can change his call with the button over the field. On 4th down he only recommends.
+  The defensive coordinator's stars and skills improve your simulated defense.
 - **Franchise:** 32 teams in two conferences (American, National), each with four divisions of four.
   14-game season: 6 division games, 4 against another division in your conference, 4 against a
   division in the other conference (pairings rotate each season). Six teams per conference make
