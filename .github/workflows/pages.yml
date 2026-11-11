@@ -27,6 +27,11 @@ jobs:
           cp index.html style.css _site/
           cp -r js _site/
           touch _site/.nojekyll
+          # cache-busting: give every script and stylesheet a new URL per deploy, so phones that cached
+          # an older copy (Safari holds them well past GitHub's 10-minute cache) load the new one
+          V="${GITHUB_SHA::7}"
+          sed -i -E "s#(src=\"js/[a-z]+\.js)\"#\1?v=$V\"#g; s#(href=\"style\.css)\"#\1?v=$V\"#" _site/index.html
+          grep -E 'v=[0-9a-f]{7}' _site/index.html
           cd _site
           git init -q
           git checkout -q -b gh-pages
