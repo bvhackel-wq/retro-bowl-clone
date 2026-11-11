@@ -49,7 +49,7 @@
     { key: 'RB', label: 'Running Back', desc: 'Speed, agility, catching, power, stamina' },
     { key: 'WR1', label: 'Wide Receiver', desc: 'Speed and hands' },
     { key: 'WR2', label: 'Wide Receiver', desc: 'Speed and hands' },
-    { key: 'TE', label: 'Tight End', desc: 'Hands and power' },
+    { key: 'TE', label: 'Tight End', desc: 'Catching, strength, blocking, speed, stamina' },
     { key: 'OL', label: 'Offensive Line', desc: 'Time in the pocket', unit: true },
     { key: 'DEF', label: 'Defense', desc: 'Stops simulated enemy drives', unit: true },
     { key: 'K', label: 'Kicker', desc: 'Wider sweet spot on kicks' },
@@ -96,12 +96,16 @@
          ['sta', 'Stamina', 'How little he slows down on long runs']],
   };
   // both wide receivers share one stat list
+  GP.STATS.TE = [
+    ['hands', 'Catching', 'Catch chance on throws to him'], ['pow', 'Strength', 'Contested catches, breaking tackles, falling forward'],
+    ['blk', 'Blocking', 'How long he holds his man on run plays'], ['spd', 'Speed', 'Route and open-field speed'],
+    ['sta', 'Stamina', 'How little he slows on long routes and runs']];
   GP.STATS.WR1 = GP.STATS.WR2 = [
     ['hands', 'Catching', 'Catch chance on every throw to him'], ['spd', 'Speed', 'Route and open-field speed'],
     ['agi', 'Agility', 'Sharper route cuts and jukes after the catch'], ['sta', 'Stamina', 'How little he slows on deep routes and long runs'],
     ['pow', 'Strength', 'Contested catches, breaking tackles, falling forward']];
   GP.statsFor = (key) => GP.STATS[key] || [['ovr', 'Overall', '']];
-  GP.derived = (key) => key === 'QB' || key === 'RB' || key === 'WR1' || key === 'WR2';   // overall is computed from the stats
+  GP.derived = (key) => ['QB', 'RB', 'WR1', 'WR2', 'TE'].includes(key);   // overall is computed from the stats
   const PHYSICAL = { spd: 1, agi: 1, sta: 1 };      // fade from 29; skills (and overall) from 31
 
   // Stars (0-5, fixed for life) set the general level of a player's caps; each stat gets its own cap
@@ -113,6 +117,7 @@
       r.ovr = Math.round(key === 'QB'
         ? t.arm * 0.3 + t.acc * 0.35 + t.spd * 0.1 + t.agi * 0.05 + t.sta * 0.2
         : key === 'RB' ? t.spd * 0.3 + t.pow * 0.25 + t.agi * 0.2 + t.sta * 0.15 + t.hands * 0.1
+        : key === 'TE' ? t.hands * 0.3 + t.blk * 0.25 + t.pow * 0.2 + t.spd * 0.15 + t.sta * 0.1
         : t.hands * 0.3 + t.spd * 0.3 + t.agi * 0.15 + t.sta * 0.15 + t.pow * 0.1);
     } else r.ovr = r.stats.ovr;
     if (r.stats.agi != null) r.agi = r.stats.agi;

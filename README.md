@@ -24,7 +24,7 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
 - **Agility (AGI):** a running back's agility lengthens the juke window, shortens the recovery between jukes, and is matched against the
   tackler's TKL when a juke connects: an even matchup works 75% of the time, an agile back against
   a poor tackler almost always. Quarterbacks use their own agility stat when scrambling. Receivers use their
-  own agility stat; tight ends (55) juke with fixed agility for now.
+  own agility stat; tight ends juke with a fixed 55.
 - **Tackling:** each opposing defender has a jersey number and a tackling rating (TKL) built from
   his team's defense (linebackers highest, corners lowest). Whether a tackle lands depends on TKL,
   the runner's rating, the angle (head-on lands about 97% of the time; from the side or behind
@@ -56,6 +56,11 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
   after the catch), stamina (he slows after about two seconds of running, so it shows on deep routes)
   and strength (winning contested catches, breaking tackles, falling forward). His overall is
   computed from these.
+- **Tight end stats:** catching, strength, blocking, speed and stamina. On run plays he lines up on
+  the run side and climbs to block a linebacker or safety; blocking sets how long he holds him (about
+  half a second at 50, over two seconds at 90, varying block to block). A poor blocker loses his man
+  and hurts the run game; above about 70 the unblocked safety becomes the limit. His overall is
+  computed from these. Agility stays fixed at 55 for now.
 - **Franchise:** 32 teams in two conferences (American, National), each with four divisions of four.
   14-game season: 6 division games, 4 against another division in your conference, 4 against a
   division in the other conference (pairings rotate each season). Six teams per conference make

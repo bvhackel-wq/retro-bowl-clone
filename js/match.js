@@ -276,7 +276,11 @@
         return p;
       };
       const w1 = recv('WR1', 3), w2 = recv('WR2', FW - 3);
-      const te = M('O', 'TE', L - 0.6, MID - 7, 6.2 + (r.TE.ovr - 60) * 0.03); te.ovr = r.TE.ovr + 6; te.agi = 55;
+      const ts = r.TE.stats || {}, tv = (k) => (ts[k] != null ? ts[k] : r.TE.ovr);
+      // on runs the tight end lines up on the run side, just outside the hole, and leads the way
+      const te = M('O', 'TE', L - 0.6, MID + (this.play && this.play.type === 'run' ? 6.6 : -7), 6.2 + (tv('spd') - 60) * 0.03);
+      Object.assign(te, { ovr: r.TE.ovr, hands: tv('hands') + (ts.hands != null ? 0 : 6), pow: tv('pow') + (ts.pow != null ? 0 : 6),
+                          blk: tv('blk'), sta: tv('sta'), agi: 55 });
       const ol = [-2.6, 0, 2.6].map((o) => M('O', 'OL', L - 0.6, MID + o, 5));
       this.off = [...ol, this.qb, rb, w1, w2, te];
       this.rb = rb;
@@ -364,7 +368,15 @@
         if (!o.blocking) continue;
         const line = o.role === 'OL' || (o.role === 'TE' && this.play.type === 'run');
         if (hyp(o.x - d.x, o.y - d.y) < (line ? 1.5 : 1.2)) {
-          if (line) { d.eng += dt; d.held = true; return 0.15; }
+          if (line) {
+            // a tight end's blocking stat sets how long he holds the man he engages, on average about
+            // 0.5s at 50, 1.4s at 70, 2.3s at 90, varying from block to block (40%-160% of that).
+            // Runs are decided in about 1.5s, so better blockers lose their man less often.
+            if (o.blk != null && d.blockedBy !== o) {
+              d.blockedBy = o; d.shed = d.eng + clamp(0.5 + (o.blk - 50) * 0.045, 0.3, 2.5) * rnd(0.4, 1.6);
+            }
+            d.eng += dt; d.held = true; return 0.15;
+          }
           f = 0.5;
         }
       }
@@ -379,7 +391,7 @@
     runFade(p, dt) {
       p.runT = (p.runT || 0) + dt;
       const rate = Math.max(0.004, 0.05 - ((p.sta != null ? p.sta : 70) - 50) * 0.001);
-      const start = p.role === 'WR1' || p.role === 'WR2' ? 2 : 3;   // receivers run all play long
+      const start = p.role === 'WR1' || p.role === 'WR2' || p.role === 'TE' ? 2 : 3;   // receivers run all play long
       return 1 - clamp((p.runT - start) * rate, 0, 0.1);
     }
     followRoute(p, dt) {
@@ -402,12 +414,19 @@
     }
 
     blockTarget(p, ref) {
+      const lineman = p.role === 'OL';
+      // backs, tight ends and receivers stick with the man they picked, and look for defenders who are
+      // free and still in front of the ball carrier instead of doubling a lineman who is already blocked
+      // (the line handles the defensive linemen; everyone else climbs to linebackers and safeties)
+      const ok = (d) => d.stun <= 0 && d.eng < d.shed && (lineman || (d.role !== 'DL' && d.x > ref.x - 1));
+      if (!lineman && p.btarget && ok(p.btarget)) return p.btarget;
       let best = null, bs = 1e9;
       for (const d of this.def) {
-        if (d.stun > 0 || d.eng >= d.shed) continue;
+        if (!ok(d) || (!lineman && d.held)) continue;
         const s = hyp(d.x - p.x, d.y - p.y) + 0.5 * hyp(d.x - ref.x, d.y - ref.y);
         if (s < bs) { bs = s; best = d; }
       }
+      if (!lineman) p.btarget = best;
       return best;
     }
 
