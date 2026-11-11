@@ -9,6 +9,8 @@
   const TOP = (H - FW * PPY) / 2;
   const VIEW = W / PPY;            // yards visible horizontally
   const MID = FW / 2;
+  // pixel-art canvas: half the logical size, so one art pixel is 2 logical pixels
+  const AW = W / 2, AH = H / 2, YA = PPY / 2, TOPA = TOP / 2, PAD = 4;
   const QLEN = 120;                // seconds per quarter
   const RUNOFF = 8;                // extra clock burned after an in-bounds play
   const CUT_TIME = 0.5;            // seconds a swipe angles the runner toward a sideline
@@ -327,7 +329,9 @@
       }
       for (const p of dl) p.react = 0;
       this.def = [...dl, lb1, lb2, c1, c2, s];
-      this.def.forEach((p, i) => { p.info = this.dRoster[DSLOTS[i][0]]; });
+      this.def.forEach((p, i) => { p.info = this.dRoster[DSLOTS[i][0]]; p.skin = (i * 5 + 1) % 3; });
+      this.off.forEach((p, i) => { p.skin = (i * 7 + 2) % 3; });
+      this.downed = null;
 
       if (this.play && this.play.type === 'pass') {
         for (const p of this.off) {
@@ -502,7 +506,7 @@
         const tkl = d.info.tkl;
         if (c === qb && !this.scramble) {
           if (Math.random() > clamp(0.86 + (tkl - 70) * 0.006, 0.75, 0.97)) { d.stun = 1; this.pop('Slipped the sack!'); continue; }
-          this.stats.sack++; d.info.tk++; this.energy = Math.max(0, this.energy - 4);
+          this.stats.sack++; d.info.tk++; this.downed = c; this.energy = Math.max(0, this.energy - 4);
           return this.gainResult(c.x, `SACKED by #${d.info.num} — loss of ${Math.max(0, Math.round(L - c.x))}`);
         }
         if (c.juke && c.juke.t > 0 && !c.juke.read) {
@@ -552,7 +556,7 @@
       fall = clamp(fall + rnd(-0.2, 0.3), 0, 2.6);
       const fumble = hit.big && Math.random() < clamp(0.012 + (d.info.tkl - 70) * 0.0006 - (hit.power - 65) * 0.0006, 0.005, 0.02);
       d.info.tk++;
-      this.phase = 'tackling';
+      this.phase = 'tackling'; this.downed = c;
       this.tk = { d, c, x0: c.x, fall, t: 0, ox: d.x - c.x, oy: d.y - c.y, fumble };
       this.pop(hit.big ? `BIG HIT by #${d.info.num}!` : `Tackled by #${d.info.num} ${d.info.pos}`, hit.big ? '#ff8a5c' : '#fff');
     }
@@ -752,6 +756,7 @@
     update(dt) {
       if (this.banner && (this.banner.t -= dt) <= 0) this.banner = null;
       if (this.popup && (this.popup.t -= dt) <= 0) this.popup = null;
+      this.animT = (this.animT || 0) + dt;
       if (this.phase === 'live') this.updateLive(dt);
       else if (this.phase === 'tackling') { this.tick(dt); this.updateTackle(dt); }
       else if (this.phase === 'dead') {
@@ -780,68 +785,50 @@
       set('hud-down', this.phase === 'opp' || this.phase === 'final' ? '' : this.downText());
     }
 
-    // ---------- rendering ----------
-    sx(x) { return (x - this.camX) * PPY; }
-    sy(y) { return TOP + y * PPY; }
+    // ---------- rendering (pixel art) ----------
+    // Everything is drawn in whole "art pixels" on a 480x270 canvas, then scaled up without smoothing.
+    ax(x) { return Math.round(x * YA) - this.camPx; }
+    ay(y) { return TOPA + Math.round(y * YA); }
+    initArt() {
+      const me = this.cfg.me, opp = this.cfg.opp;
+      this.art = document.createElement('canvas'); this.art.width = AW; this.art.height = AH;
+      this.ag = this.art.getContext('2d');
+      this.fieldImg = GP.Pixel.field(me, opp, YA, TOPA, FW, PAD);
+      // home kit: team-colour helmet and jersey, pants in the second colour. Away kit: white jersey, coloured pants.
+      this.kits = {
+        O: GP.Pixel.sprites({ helmet: me.c1, decal: me.c2, jersey: me.c1, number: me.c2, pants: me.c2, sock: me.c1 }),
+        D: GP.Pixel.sprites({ helmet: opp.c1, decal: opp.c2, jersey: '#f4f6f8', number: opp.c1, pants: opp.c1, sock: '#f4f6f8' }),
+      };
+    }
 
     draw() {
-      const g = this.g, me = this.cfg.me, opp = this.cfg.opp;
-      g.setTransform(this.cv.width / W, 0, 0, this.cv.height / H, 0, 0);
-      g.fillStyle = '#16303a'; g.fillRect(0, 0, W, H);
-      // turf
-      for (let i = 0; i < 24; i++) {
-        const x0 = this.sx(i * 5);
-        if (x0 > W || x0 + 5 * PPY < 0) continue;
-        g.fillStyle = i < 2 ? me.c1 : i >= 22 ? opp.c1 : i % 2 ? '#2e8f5c' : '#288352';
-        g.fillRect(x0, TOP, 5 * PPY + 1, FW * PPY);
-      }
-      g.strokeStyle = 'rgba(255,255,255,.55)'; g.lineWidth = 1.5;
-      g.fillStyle = 'rgba(255,255,255,.5)'; g.font = '700 18px ui-rounded, system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
-      for (let x = 10; x <= 110; x += 5) {
-        const X = this.sx(x); if (X < -20 || X > W + 20) continue;
-        g.beginPath(); g.moveTo(X, TOP); g.lineTo(X, TOP + FW * PPY); g.stroke();
-        if (x % 10 === 0 && x > 10 && x < 110) {
-          const n = 50 - Math.abs(60 - x);
-          g.fillText(n, X, TOP + 3.2 * PPY); g.fillText(n, X, TOP + (FW - 3.2) * PPY);
-        }
-      }
-      g.lineWidth = 3; g.strokeStyle = '#f4f6f8';
-      g.strokeRect(this.sx(0), TOP, 120 * PPY, FW * PPY);
-      // end zone lettering
-      for (const [x, t] of [[5, me], [115, opp]]) {
-        g.save(); g.translate(this.sx(x), TOP + MID * PPY); g.rotate(x < 60 ? -Math.PI / 2 : Math.PI / 2);
-        g.fillStyle = t.c2; g.font = '900 44px ui-rounded, system-ui, sans-serif'; g.fillText(t.name.toUpperCase(), 0, 0); g.restore();
-      }
-      // goal posts
-      g.fillStyle = '#ffd84a';
-      for (const x of [0, 120]) g.fillRect(this.sx(x) - 2, this.sy(MID - 3), 4, 6 * PPY);
+      if (!this.art) this.initArt();
+      const g = this.ag, Px = GP.Pixel, FH = Math.round(FW * YA);
+      this.camPx = Math.round(this.camX * YA);
+      g.drawImage(this.fieldImg, -(this.camPx + Math.round(PAD * YA)), 0);
 
-      const showLines = this.phase !== 'opp' && this.phase !== 'final';
-      if (showLines) {
-        g.lineWidth = 3;
-        g.strokeStyle = 'rgba(80,170,255,.9)'; g.beginPath(); g.moveTo(this.sx(this.los), TOP); g.lineTo(this.sx(this.los), TOP + FW * PPY); g.stroke();
-        if (this.fdx < 110) { g.strokeStyle = 'rgba(255,216,74,.95)'; g.beginPath(); g.moveTo(this.sx(this.fdx), TOP); g.lineTo(this.sx(this.fdx), TOP + FW * PPY); g.stroke(); }
+      const show = this.phase !== 'opp' && this.phase !== 'final';
+      if (show) {
+        g.fillStyle = '#58b0ff'; g.fillRect(this.ax(this.los), TOPA, 2, FH);
+        if (this.fdx < 110) { g.fillStyle = '#ffd84a'; g.fillRect(this.ax(this.fdx), TOPA, 2, FH); }
       }
 
       // route preview
       if (this.phase === 'presnap' && this.play.type === 'pass') {
-        g.lineWidth = 3; g.strokeStyle = 'rgba(255,255,255,.8)'; g.setLineDash([7, 6]);
         for (const p of this.off) {
           if (!p.route) continue;
-          g.beginPath(); g.moveTo(this.sx(p.x), this.sy(p.y));
-          let lx = p.x, ly = p.y, px = p.x, py = p.y;
-          for (const [x, y] of p.route.pts) { g.lineTo(this.sx(x), this.sy(y)); px = lx; py = ly; lx = x; ly = y; }
-          g.stroke();
-          const a = Math.atan2(ly - py, lx - px), X = this.sx(lx), Y = this.sy(ly);
-          g.setLineDash([]); g.fillStyle = '#fff'; g.beginPath();
-          if (p.route.stop) g.arc(X, Y, 5, 0, 7);
-          else { g.moveTo(X + Math.cos(a) * 10, Y + Math.sin(a) * 10); g.lineTo(X + Math.cos(a + 2.5) * 9, Y + Math.sin(a + 2.5) * 9); g.lineTo(X + Math.cos(a - 2.5) * 9, Y + Math.sin(a - 2.5) * 9); }
-          g.fill(); g.setLineDash([7, 6]);
+          let lx = this.ax(p.x), ly = this.ay(p.y) - 3;
+          for (const [x, y] of p.route.pts) {
+            const nx = this.ax(x), ny = this.ay(y) - 3;
+            Px.dots(g, lx, ly, nx, ny, '#ffffff', 3); lx = nx; ly = ny;
+          }
+          g.fillStyle = '#ffffff';
+          if (p.route.stop) g.fillRect(lx - 1, ly - 1, 3, 3);
+          else { g.fillRect(lx - 2, ly, 5, 1); g.fillRect(lx, ly - 2, 1, 5); }
         }
-        g.setLineDash([]);
       }
 
-      if (showLines) {
+      if (show) {
         const all = [...this.def, ...this.off].sort((a, b) => a.y - b.y);
         for (const p of all) this.drawPlayer(p);
         this.drawBall();
@@ -849,96 +836,94 @@
       if (this.aim && this.passing()) this.drawAim();
       if (this.kick) this.drawKick();
 
-      g.textAlign = 'center'; g.textBaseline = 'middle';
       if (this.phase === 'presnap') this.hint('TAP THE FIELD OR PRESS SPACE TO SNAP');
       else if (this.phase === 'live' && this.passing() && !this.aim) this.hint('DRAG BACK TO THROW · SWIPE TOWARD THE END ZONE TO RUN');
       else if (this.phase === 'kick' && !this.kick.done) this.hint('TAP WHEN THE MARKER IS IN THE GREEN');
       else if (this.phase === 'live' && this.running(this.carrier)) this.hint('SWIPE UP/DOWN TO CUT · TAP THEN SWIPE TO JUKE');
       if (this.popup && this.carrier) {
-        const c = this.carrier, a = Math.min(1, this.popup.t * 2.5);
-        g.globalAlpha = a; g.font = '900 18px ui-rounded, system-ui, sans-serif';
-        g.fillStyle = 'rgba(12,18,30,.8)'; g.fillText(this.popup.text, this.sx(c.x) + 1, this.sy(c.y) - 30 + 1);
-        g.fillStyle = this.popup.color; g.fillText(this.popup.text, this.sx(c.x), this.sy(c.y) - 30);
+        const c = this.carrier, w = Px.width(this.popup.text);
+        const x = clamp(this.ax(c.x), Math.ceil(w / 2) + 2, AW - Math.ceil(w / 2) - 2);
+        g.globalAlpha = Math.min(1, this.popup.t * 2.5);
+        Px.text(g, this.popup.text, x, this.ay(c.y) - 33, this.popup.color, 1, { center: true, shadow: '#10182a' });
         g.globalAlpha = 1;
       }
       if (this.banner) {
-        g.font = '900 30px ui-rounded, system-ui, sans-serif';
-        const w = g.measureText(this.banner.text).width + 44;
-        g.fillStyle = 'rgba(12,18,30,.88)'; this.rr(W / 2 - w / 2, 58, w, 52, 12); g.fill();
-        g.fillStyle = '#ffb43a'; g.fillText(this.banner.text, W / 2, 85);
+        const t = this.banner.text, sc = Px.width(t, 2) > AW - 24 ? 1 : 2, w = Px.width(t, sc) + 14, h = 7 * sc + 10;
+        Px.box(g, Math.round(AW / 2 - w / 2), 26, w, h, '#10182a', '#ffb43a');
+        Px.text(g, t, AW / 2, 31, '#ffb43a', sc, { center: true });
       }
+
+      const m = this.g;
+      m.setTransform(1, 0, 0, 1, 0, 0); m.imageSmoothingEnabled = false;
+      m.drawImage(this.art, 0, 0, this.cv.width, this.cv.height);
     }
-    rr(x, y, w, h, r) { const g = this.g; g.beginPath(); g.roundRect ? g.roundRect(x, y, w, h, r) : g.rect(x, y, w, h); }
     hint(t) {
-      const g = this.g; g.font = '800 15px ui-rounded, system-ui, sans-serif';
-      const w = g.measureText(t).width + 28;
-      g.fillStyle = 'rgba(12,18,30,.75)'; this.rr(W / 2 - w / 2, 8, w, 26, 13); g.fill();
-      g.fillStyle = '#fff'; g.fillText(t, W / 2, 21.5);
+      const g = this.ag, Px = GP.Pixel, w = Px.width(t) + 10;
+      Px.box(g, Math.round(AW / 2 - w / 2), 3, w, 13, 'rgba(16,24,42,.85)');
+      Px.text(g, t, AW / 2, 6, '#ffffff', 1, { center: true });
     }
     drawPlayer(p) {
-      const g = this.g, X = this.sx(p.x), Y = this.sy(p.y), R = 9.5;
-      if (X < -20 || X > W + 20) return;
-      const t = p.team === 'O' ? this.cfg.me : this.cfg.opp;
-      g.fillStyle = 'rgba(0,0,0,.25)'; g.beginPath(); g.ellipse(X + 2, Y + 4, R, R * 0.8, 0, 0, 7); g.fill();
-      if (p === this.qb && (this.phase === 'presnap' || this.phase === 'live' || this.phase === 'choose')) {
-        // stamina bar above the QB's head (nothing else is drawn there)
-        const e = this.energy / 100, w = 30, by = Y - R - 12;
-        g.fillStyle = 'rgba(12,18,30,.8)'; g.fillRect(X - w / 2 - 1.5, by - 1.5, w + 3, 8);
-        g.fillStyle = e > 0.6 ? '#4fd18b' : e > 0.3 ? '#ffd84a' : '#ff6b6b'; g.fillRect(X - w / 2, by, w * e, 5);
-      }
-      if (p === this.carrier) {
+      const g = this.ag, Px = GP.Pixel, X = this.ax(p.x), Y = this.ay(p.y);
+      if (X < -12 || X > AW + 12) return;
+      if (Math.abs(p.vx) > 0.6) p.face = p.vx > 0 ? 0 : 1; else if (p.face == null) p.face = p.team === 'O' ? 0 : 1;
+      const down = p.stun > 0 || p === this.downed;
+      const moving = (this.phase === 'live' || this.phase === 'tackling') && hyp(p.vx, p.vy) > 0.8;
+      const pose = down ? 'down' : moving ? (Math.floor(this.animT * 9 + (p.skin || 0)) % 2 ? 'run1' : 'run2') : 'stand';
+      const img = this.kits[p.team][p.skin || 0][pose][p.face];
+      g.fillStyle = 'rgba(0,0,0,.28)'; g.fillRect(X - 4, Y + 1, 9, 2); g.fillRect(X - 3, Y + 3, 7, 1);
+      if (p === this.carrier && !down) {
+        // ring at the ball carrier's feet; yellow and doubled while a juke is live
         const live = p.juke && p.juke.t > 0;
-        g.strokeStyle = live ? '#ffd84a' : '#fff'; g.lineWidth = live ? 4 : 2;
-        g.beginPath(); g.arc(X, Y, R + (live ? 7 : 5), 0, 7); g.stroke();
+        Px.ring(g, X, Y + 1, 9, 4, live ? '#ffd84a' : '#ffffff');
+        if (live) Px.ring(g, X, Y + 1, 10, 5, '#ffd84a');
       }
-      g.globalAlpha = p.stun > 0 ? 0.45 : 1;
-      g.fillStyle = p.team === 'O' ? t.c1 : '#f1f3f5';
-      g.strokeStyle = p.team === 'O' ? t.c2 : t.c1; g.lineWidth = 3.5;
-      g.beginPath(); g.arc(X, Y, R, 0, 7); g.fill(); g.stroke();
-      // helmet stripe facing downfield
-      g.fillStyle = p.team === 'O' ? t.c2 : t.c1;
-      g.fillRect(X - 5, Y - 1.5, 10, 3);
-      g.globalAlpha = 1;
-      if (p.team === 'O' && p.route && this.phase !== 'dead') {
-        g.font = '800 11px ui-rounded, system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
-        g.fillStyle = 'rgba(12,18,30,.7)'; g.fillText(p.role.replace(/\d/, ''), X + 1, Y - 17 + 1);
-        g.fillStyle = '#fff'; g.fillText(p.role.replace(/\d/, ''), X, Y - 17);
+      if (down) g.drawImage(img, X - 8, Y - 8); else g.drawImage(img, X - 6, Y - 13);
+      if (p === this.carrier && !down && this.ball.state === 'held') {
+        const bx = X + (p.face ? -6 : 3);
+        g.fillStyle = '#10182a'; g.fillRect(bx - 1, Y - 7, 5, 4);
+        g.fillStyle = '#8a4b22'; g.fillRect(bx, Y - 6, 3, 2); g.fillStyle = '#ffffff'; g.fillRect(bx + 1, Y - 6, 1, 1);
       }
+      if (p === this.qb && (this.phase === 'presnap' || this.phase === 'live' || this.phase === 'choose')) {
+        // stamina bar above the QB's head
+        const e = this.energy / 100;
+        g.fillStyle = '#10182a'; g.fillRect(X - 8, Y - 19, 17, 4);
+        g.fillStyle = e > 0.6 ? '#4fd18b' : e > 0.3 ? '#ffd84a' : '#ff6b6b'; g.fillRect(X - 7, Y - 18, Math.round(15 * e), 2);
+      }
+      if (p.team === 'O' && p.route && this.phase !== 'dead')
+        Px.text(g, p.role.replace(/\d/, ''), X, Y - 23, '#ffffff', 1, { center: true, shadow: '#10182a' });
     }
     drawBall() {
-      const g = this.g, b = this.ball;
-      let x, y, z = 0;
-      if (b.state === 'air' || b.state === 'dead') {
-        const u = Math.min(1, b.u); x = b.sx + (b.tx - b.sx) * u; y = b.sy + (b.ty - b.sy) * u;
-        z = b.state === 'air' ? Math.sin(Math.PI * u) * b.dist * 0.22 : 0;
-      } else if (this.carrier) { x = this.carrier.x + 0.45; y = this.carrier.y + 0.35; }
-      else return;
-      const X = this.sx(x), Y = this.sy(y);
-      if (z > 0) { g.fillStyle = 'rgba(0,0,0,.3)'; g.beginPath(); g.ellipse(X, Y, 5, 3, 0, 0, 7); g.fill(); }
-      g.fillStyle = '#8a4b22'; g.strokeStyle = '#fff'; g.lineWidth = 1;
-      g.beginPath(); g.ellipse(X, Y - z * PPY * 0.5, 5.5 + z * 0.25, 3.6 + z * 0.15, 0, 0, 7); g.fill(); g.stroke();
+      const g = this.ag, b = this.ball;
+      if (b.state !== 'air' && b.state !== 'dead') return;      // a held ball is drawn with its carrier
+      const u = Math.min(1, b.u), x = b.sx + (b.tx - b.sx) * u, y = b.sy + (b.ty - b.sy) * u;
+      const z = b.state === 'air' ? Math.sin(Math.PI * u) * b.dist * 0.22 : 0;
+      const X = this.ax(x), Y = this.ay(y), lift = Math.round(z * YA * 0.5);
+      g.fillStyle = 'rgba(0,0,0,.3)'; g.fillRect(X - 1, Y + 1, 3, 1);
+      g.fillStyle = '#8a4b22'; g.fillRect(X - 1, Y - lift - 2, 3, 2); g.fillRect(X - 2, Y - lift - 1, 5, 1);
+      g.fillStyle = '#ffffff'; g.fillRect(X, Y - lift - 2, 1, 1);
     }
     drawAim() {
-      const g = this.g, t = this.aimTarget(), qb = this.qb;
-      const X0 = this.sx(qb.x), Y0 = this.sy(qb.y), X1 = this.sx(t.x), Y1 = this.sy(t.y);
-      const d = hyp(t.x - qb.x, t.y - qb.y);
-      g.strokeStyle = 'rgba(255,255,255,.9)'; g.lineWidth = 2.5; g.setLineDash([6, 7]);
-      g.beginPath(); g.moveTo(X0, Y0); g.quadraticCurveTo((X0 + X1) / 2, (Y0 + Y1) / 2 - d * PPY * 0.22, X1, Y1); g.stroke();
-      g.setLineDash([]);
-      g.strokeStyle = '#ffd84a'; g.lineWidth = 3; g.beginPath(); g.arc(X1, Y1, 1.9 * PPY * 0.6, 0, 7); g.stroke();
-      g.fillStyle = 'rgba(255,216,74,.25)'; g.fill();
+      const g = this.ag, Px = GP.Pixel, t = this.aimTarget(), qb = this.qb;
+      const X0 = this.ax(qb.x), Y0 = this.ay(qb.y) - 8, X1 = this.ax(t.x), Y1 = this.ay(t.y);
+      const peak = hyp(t.x - qb.x, t.y - qb.y) * YA * 0.11, n = Math.max(5, Math.floor(hyp(X1 - X0, Y1 - Y0) / 5));
+      g.fillStyle = '#ffffff';
+      for (let i = 1; i < n; i++) {
+        const u = i / n;
+        g.fillRect(Math.round(X0 + (X1 - X0) * u), Math.round(Y0 + (Y1 - Y0) * u - 4 * peak * u * (1 - u)), 2, 2);
+      }
+      Px.ring(g, X1, Y1, 7, 7, '#ffd84a'); Px.ring(g, X1, Y1, 6, 6, '#ffd84a');
+      g.fillStyle = '#ffd84a'; g.fillRect(X1, Y1, 1, 1);
       // pull-back line
-      const a = this.aim; g.strokeStyle = 'rgba(255,255,255,.35)'; g.lineWidth = 4;
-      g.beginPath(); g.moveTo(a.sx, a.sy); g.lineTo(a.cx, a.cy); g.stroke();
+      const a = this.aim;
+      Px.dots(g, a.sx / 2, a.sy / 2, a.cx / 2, a.cy / 2, 'rgba(255,255,255,.55)', 4);
     }
     drawKick() {
-      const g = this.g, k = this.kick, bw = 420, bx = W / 2 - bw / 2, by = H - 96;
-      g.fillStyle = 'rgba(12,18,30,.88)'; this.rr(bx - 20, by - 44, bw + 40, 100, 14); g.fill();
-      g.fillStyle = '#fff'; g.font = '800 16px ui-rounded, system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
-      g.fillText(k.type === 'pat' ? 'EXTRA POINT' : `${k.dist}-YARD FIELD GOAL`, W / 2, by - 22);
-      g.fillStyle = '#3a455c'; this.rr(bx, by, bw, 26, 8); g.fill();
-      g.fillStyle = '#4fd18b'; this.rr(bx + (0.5 - k.tol) * bw, by, k.tol * 2 * bw, 26, 8); g.fill();
-      g.fillStyle = '#fff'; g.fillRect(bx + k.pos * bw - 3, by - 6, 6, 38);
+      const g = this.ag, Px = GP.Pixel, k = this.kick, bw = 210, bx = Math.round(AW / 2 - bw / 2), by = AH - 44;
+      Px.box(g, bx - 10, by - 20, bw + 20, 44, '#10182a', '#3a455c');
+      Px.text(g, k.type === 'pat' ? 'EXTRA POINT' : `${k.dist}-YARD FIELD GOAL`, AW / 2, by - 14, '#ffffff', 1, { center: true });
+      g.fillStyle = '#3a455c'; g.fillRect(bx, by, bw, 12);
+      g.fillStyle = '#4fd18b'; g.fillRect(bx + Math.round((0.5 - k.tol) * bw), by, Math.round(k.tol * 2 * bw), 12);
+      g.fillStyle = '#ffffff'; g.fillRect(bx + Math.round(k.pos * bw) - 1, by - 3, 3, 18);
     }
   }
 

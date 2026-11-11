@@ -78,7 +78,7 @@ tr.me td{color:var(--accent);font-weight:800}
 #hud-down{color:var(--accent)!important;font-weight:700}
 #match{--strip:100px}
 #stage{position:relative;margin:0 auto;max-width:calc((100vh - var(--hud, 70px) - var(--strip)) * 16 / 9);padding-bottom:var(--strip)}
-#field{display:block;width:100%;aspect-ratio:16/9;border-radius:10px;touch-action:none;user-select:none;-webkit-user-select:none}
+#field{image-rendering:crisp-edges;image-rendering:pixelated;display:block;width:100%;aspect-ratio:16/9;border-radius:10px;touch-action:none;user-select:none;-webkit-user-select:none}
 #panel{position:absolute;left:0;right:0;bottom:0;height:calc(var(--strip) - 4px);padding:6px 0;overflow:hidden}
 #panel.modal{top:0;height:auto;bottom:var(--strip);background:rgba(12,18,30,.9);padding:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:10px;text-align:center}
 #panel h3{font-size:15px;margin-bottom:8px}

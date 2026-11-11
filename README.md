@@ -81,8 +81,15 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
   Wild Card, Divisional, Conference Championship and the Championship Game. Wins earn coaching
   points for roster upgrades; players age between seasons. Progress saves to `localStorage`.
 
+## Art
+
+The field is drawn as pixel art: everything is rendered in whole pixels on a 480x270 canvas and scaled
+up without smoothing. Sprites, the 5x7 font and the field are original and generated in code
+(`js/pixel.js`); there are no image files.
+
 ## Layout
 
 - `js/data.js` — teams, career state, schedule, season simulation, save/load
+- `js/pixel.js` — pixel font, player sprites and the pre-rendered field
 - `js/match.js` — on-field game (plays, player AI, passing, kicking, clock, rendering)
 - `js/ui.js` — title, franchise hub, match launch
