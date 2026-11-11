@@ -170,8 +170,10 @@
     P.ring(g, X(60), top + Math.round(fh / 2), 17, 17, 'rgba(255,255,255,.45)');
     P.text(g, 'PG', X(60) + 1, top + Math.round(fh / 2) - 7, 'rgba(255,255,255,.5)', 2, { center: true });
     const mid = top + Math.round(fh / 2);
-    P.text(g, me.name, X(5) - 10, mid, me.c2, 3, { rot: -1, center: true, shadow: 'rgba(0,0,0,.35)' });
-    P.text(g, opp.name, X(115) + 11, mid, opp.c2, 3, { rot: 1, center: true, shadow: 'rgba(0,0,0,.35)' });
+    // end-zone lettering: big, or smaller when a long city name wouldn't fit between the sidelines
+    const ez = (t) => (P.width(t.name.toUpperCase(), 3) <= fh - 12 ? 3 : 2);
+    P.text(g, me.name, X(5) - 10 + (ez(me) === 2 ? 3 : 0), mid, me.c2, ez(me), { rot: -1, center: true, shadow: 'rgba(0,0,0,.35)' });
+    P.text(g, opp.name, X(115) + 11 - (ez(opp) === 2 ? 3 : 0), mid, opp.c2, ez(opp), { rot: 1, center: true, shadow: 'rgba(0,0,0,.35)' });
     // boundary lines and goal posts
     g.fillStyle = '#f4f6f8';
     g.fillRect(X(0), top - 1, X(120) - X(0) + 1, 2); g.fillRect(X(0), top + fh - 1, X(120) - X(0) + 1, 2);

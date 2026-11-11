@@ -38,7 +38,7 @@
     return e;
   }
   const badge = (t) => h('span', { class: 'badge', style: `background:${t.c1};border-color:${t.c2};color:${t.c2}` });
-  const full = (t) => `${t.city} ${t.name}`;
+  const full = (t) => t.name;                 // teams go by their city
 
   function renderTitle() {
     const saved = GP.load();
@@ -71,7 +71,7 @@
       GP.DIVS.forEach((dn, d) => {
         row.append(h('div', { class: 'card' }, h('h2', null, dn),
           ...GP.TEAMS.filter((t) => t.conf === c && t.div === d).map((t) =>
-            h('button', { class: 'team-card', onclick: () => start(t) }, badge(t), h('span', null, h('b', null, t.name), h('br'), h('small', null, t.city))))));
+            h('button', { class: 'team-card', onclick: () => start(t) }, badge(t), h('span', null, h('b', null, t.name), h('br'), h('small', null, t.abbr))))));
       });
       grid.append(row);
     });
@@ -280,7 +280,7 @@
     const ev = GP.evaluateTrade(S, offer);
     const pct = ev.need > 0 ? Math.min(100, (ev.give / ev.need) * 100) : 0;
     const select = h('select', { class: 'teampick', onchange: (e) => renderTrade(e.target.value) },
-      ...others.map((t) => h('option', { value: t.id, selected: t.id === offer.partner }, `${t.city} ${t.name}`)));
+      ...others.map((t) => h('option', { value: t.id, selected: t.id === offer.partner }, t.name)));
 
     hub.append(h('div', { class: 'hub-head' },
       h('h1', null, 'Make a trade'), h('span', { class: 'sp' }),
