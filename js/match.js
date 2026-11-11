@@ -327,6 +327,9 @@
       if (c.hidden === !show && c.dataset.play === (this.play && this.play.id)) return;
       c.hidden = !show; c.dataset.play = this.play ? this.play.id : '';
       if (show) c.innerHTML = `<small>${this.play === this.ocPick ? "OC's call" : 'Your call'}</small><b>${this.play.name}</b><span>Change</span>`;
+      // where the button ends, in art pixels, so the bottom hint can sit to its right
+      const bw = this.cv.getBoundingClientRect().width;
+      this.chipEnd = show && bw ? Math.ceil(((c.offsetLeft + c.offsetWidth) / bw) * AW) + 6 : 0;
     }
     playList(title) {
       const call = this.ocLast;
@@ -1003,7 +1006,7 @@
       if (this.aim && this.passing()) this.drawAim();
       if (this.kick) this.drawKick();
 
-      if (this.phase === 'presnap') this.hint('TAP THE FIELD OR PRESS SPACE TO SNAP');
+      if (this.phase === 'presnap') this.hint('TAP THE FIELD TO SNAP');
       else if (this.phase === 'live' && this.passing() && !this.aim) this.hint('DRAG BACK TO THROW · SWIPE TOWARD THE END ZONE TO RUN');
       else if (this.phase === 'kick' && !this.kick.done) this.hint('TAP WHEN THE MARKER IS IN THE GREEN');
       else if (this.phase === 'live' && this.running(this.carrier)) this.hint('SWIPE UP/DOWN TO CUT · TAP THEN SWIPE TO JUKE');
@@ -1027,8 +1030,10 @@
     }
     hint(t) {
       const g = this.ag, Px = GP.Pixel, w = Px.width(t) + 10;
-      Px.box(g, Math.round(AW / 2 - w / 2), AH - 15, w, 13, 'rgba(16,24,42,.85)');
-      Px.text(g, t, AW / 2, AH - 12, '#ffffff', 1, { center: true });
+      // centred, or in the space right of the play button when it's showing
+      const cx = this.chipEnd ? Math.max(AW / 2, this.chipEnd + w / 2) : AW / 2;
+      Px.box(g, Math.round(cx - w / 2), AH - 15, w, 13, 'rgba(16,24,42,.85)');
+      Px.text(g, t, Math.round(cx), AH - 12, '#ffffff', 1, { center: true });
     }
     drawPlayer(p) {
       const g = this.ag, Px = GP.Pixel, X = this.ax(p.x), Y = this.ay(p.y);
