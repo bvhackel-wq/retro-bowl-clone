@@ -562,11 +562,11 @@
     // Their 4th down: go for it when it's short enough or they're desperate, otherwise a field goal in range
     // or a punt. Kicks are quick and simulated. Returns true if they kicked.
     cpuKick() {
-      const togo = this.fdx - this.los, fg = Math.round(127 - this.los), o = this.cfg.opp.name;
-      const desperate = (this.q >= 4 && this.clock < 150 && this.score.opp <= this.score.me) || (this.q === 5 && fg > 50);
-      if (desperate || (togo <= 1 && this.los >= 45) || (togo <= 3 && this.los >= 62 && fg > 52)) return false;
-      if (fg <= 52) {
-        const good = Math.random() < clamp(1.02 - (fg - 18) * 0.014, 0.35, 0.98);
+      const togo = this.fdx - this.los, fg = this.fgDist(), o = this.cfg.opp.name;
+      const desperate = (this.q >= 4 && this.clock < 150 && this.score.opp <= this.score.me) || (this.q === 5 && fg > 44);
+      if (desperate || (togo <= 1 && this.los >= 45) || (togo <= 3 && this.los >= 62 && fg > 46)) return false;
+      if (fg <= 46) {
+        const good = Math.random() < clamp(1.02 - (fg - 12) * 0.014, 0.35, 0.98);
         if (good) { this.score.opp += 3; this.endPlay(`${o}: ${fg}-yard field goal is GOOD`, () => this.checkClock(() => this.startDrive(35)), 2); }
         else this.endPlay(`${o}: ${fg}-yard field goal NO GOOD`, () => this.checkClock(() => this.startDrive(clamp(120 - (this.los - 7), 30, 105))), 2);
         return true;
@@ -687,7 +687,7 @@
       const best = PLAYS.slice().sort((a, b) => this.ocScores[b.id] - this.ocScores[a.id])[0];
       let call = { play: best };
       if (this.down === 4) {
-        const fg = Math.round(110 - this.los + 17), desperate = this.q >= 4 && this.clock < 120 && diff < 0 && diff >= -8;
+        const fg = this.fgDist(), desperate = this.q >= 4 && this.clock < 120 && diff < 0 && diff >= -8;
         if (desperate || (togo <= 1 && this.los >= 55)) call.kick = null;
         else if (fg <= this.kickRange - 1) call.kick = 'fg';
         else if (this.los < 75) call.kick = 'punt';
@@ -724,7 +724,7 @@
         rec: !call.kick && call.play.cat === cat, fn: () => this.pickType(cat) }));
       // a field goal on any down once you're past midfield; a punt on 4th down
       if (this.los > 60 && !this.conv) {
-        const dist = Math.round(110 - this.los + 17), far = dist > this.kickRange;
+        const dist = this.fgDist(), far = dist > this.kickRange;
         opts.push({ label: 'Field Goal', sub: `${dist} yds · range ${this.kickRange}${far ? ' · a long shot' : ''}`, kick: true, rec: call.kick === 'fg', fn: () => this.startKick('fg') });
       }
       if (this.down === 4) opts.push({ label: 'Punt', sub: 'Flip the field', kick: true, rec: call.kick === 'punt', fn: () => this.punt() });
@@ -1591,17 +1591,20 @@
     // ---------- kicking ----------
     // ---------- kicking ----------
     // Stages: 'set' (tap to start) -> 'aim' (drag back like a pass; reach limited by kick distance)
+    // A field goal is held a yard behind the line of scrimmage; its distance is that spot to the uprights.
+    fgDist() { return Math.round(121 - this.los); }
     // -> 'meter' (accuracy sets the green zone and marker speed) -> 'flight' -> result.
     startKick(type) {
       if (type === 'pat') { this.los = 95; this.fdx = 110; }
       const punt = type === 'punt';
-      // field goals: from the hold spot to the uprights. Punts: from 13 yards behind the line, judged at about 40 yards.
-      const dist = punt ? 40 : Math.round(127 - this.los);
+      // field goals: snapped and kicked from the line of scrimmage, so the distance is the line to the uprights.
+      // Punts: from 13 yards behind the line, judged at about 40 yards.
+      const dist = punt ? 40 : this.fgDist();
       const acc = this.ks.acc, u = clamp((acc - 40) / 59, 0, 1);
       // half-width of the green zone: the same forgiving meter for every kick, wider for an accurate kicker
       const tol = clamp(0.065 + u * 0.075, 0.065, 0.14);
       const yel = tol + Math.max(0.035, tol * 0.9);                               // and of the yellow around it
-      const sx = punt ? Math.max(this.los - 13, 2) : 120 - dist;
+      const sx = punt ? Math.max(this.los - 13, 2) : this.los - 1;   // the hold: right behind the snapper
       // punt reach from the punter's spot: 61 yards at 71 kick distance (a 3-star punter), so a full punt
       // travels about 47 yards past the line, the NFL average; about 46 at 40 and 73 at 99
       const range = punt ? Math.round(clamp(61 + (this.ks.leg - 71) * 0.45, 40, 75)) : this.kickRange;
@@ -1632,8 +1635,8 @@
         this.kicker = M('O', 'K', k.sx - 0.8, k.sy + 0.3, 5); this.kicker.skin = 0; this.holder = null;
         this.off.push(this.kicker); this.qb = this.kicker;
       } else {
-        this.holder = M('O', 'QB', k.sx + 0.3, k.sy - 0.7, 5); this.holder.pose = 'kneel'; this.holder.skin = 2;
-        this.kicker = M('O', 'K', k.sx - 2.6, k.sy + 1.1, 5); this.kicker.skin = 0;
+        this.holder = M('O', 'QB', k.sx - 0.2, k.sy - 0.7, 5); this.holder.pose = 'kneel'; this.holder.skin = 2;
+        this.kicker = M('O', 'K', k.sx - 2.4, k.sy + 1.1, 5); this.kicker.skin = 0;
         this.off.push(this.holder, this.kicker); this.qb = this.holder;
       }
       this.downed = null;
@@ -2225,7 +2228,8 @@
       // before the snap and while the quarterback reads the field, only close enough to crop the stands, so
       // every receiver stays on screen; once someone's running with it, all the way in on him
       const fit = AH / (FW * YA + 18), close = this.phase === 'tackling' || (this.phase === 'live' && this.running(c)) || (this.phase === 'dead' && (this.zf || 1) > fit + 0.05);
-      this.zf = (this.zf || 1) + ((on ? (close ? 1.6 : fit) : 1) - (this.zf || 1)) * 0.1;
+      // a kick is aimed on the unzoomed overlay, so it needs the whole field at once: no easing out
+      this.zf = this.kick && this.phase === 'kick' ? 1 : (this.zf || 1) + ((on ? (close ? 1.6 : fit) : 1) - (this.zf || 1)) * 0.1;
       const f = b.state === 'air' ? { x: b.sx + (b.tx - b.sx) * Math.min(1, b.u), y: b.sy + (b.ty - b.sy) * Math.min(1, b.u) }
         : c ? { x: c.x, y: c.y } : this.qb ? { x: this.qb.x, y: this.qb.y } : { x: this.los, y: MID };
       const sw = AW / this.zf, sh = AH / this.zf, wy = sw / YA;          // the view's width in yards

@@ -43,8 +43,9 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
 - **4th down:** go for it, punt, or kick a field goal. Past midfield, Change also offers a field goal on
   any down (marked "a long shot" beyond your kicker's range).
 - **Kicking:** tap the field to start the kick, drag back to aim (like a pass), and release to open the
-  timing meter. Kick distance sets how far you can aim: 30 yards at 40, about 45 at 70, 60 at 99 (a kick
-  from the 40). Kick accuracy sets the meter's zones and how fast the marker moves: green (about 13% of the bar
+  timing meter. A field goal is snapped and kicked from the line of scrimmage (held a yard behind it), so its
+  distance is the line plus the 10-yard end zone, plus one. Kick distance sets how far you can aim: 30 yards at 40, about 45 at 70, 60 at 99 (a kick
+  from the 41). Kick accuracy sets the meter's zones and how fast the marker moves: green (about 13% of the bar
   for a weak kicker up to 28% for a maxed one, the same for every kick and distance) goes where you aimed; the yellow
   around it does so about half the time; outside it the kick is pushed wide.
   Tapping to start is the snap: seven rushers fight the kick unit's blockers (your line's pass block
