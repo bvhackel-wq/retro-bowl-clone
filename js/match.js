@@ -295,6 +295,8 @@
     // Anyone else with the ball (including a scrambling QB) follows the run rules.
     passing() { return this.carrier === this.qb && this.play && this.play.type === 'pass' && !this.scramble; }
     running(c) { return !!c && (c !== this.qb || this.scramble); }
+    // can the ball carrier take your moves: a live run, or your punt return
+    canMove(c) { return (this.phase === 'live' && this.running(c)) || (!!this.kick && this.kick.cpu && this.kick.stage === 'return' && c === this.carrier); }
     tuck() {
       if (this.phase !== 'live' || !this.passing() || this.ball.state !== 'held') return;
       // speed sets scramble pace; fatigue takes a little off it
@@ -312,6 +314,12 @@
       e.preventDefault();
       const p = this.pos(e);
       if (this.phase === 'presnap') { this.hidePanel(); return this.snap(); }
+      if (this.phase === 'kick' && this.kick && this.kick.cpu) {
+        const k = this.kick;
+        if (k.stage === 'flight' && !k.fairCall) { k.fairCall = true; this.pop('Fair catch!'); }
+        else if (k.stage === 'return') this.gesture = { x: p.x, y: p.y, t: performance.now(), done: false };
+        return;
+      }
       if (this.phase === 'kick') return this.kickTap(p);
       if (this.phase !== 'live') return;
       if (this.defending) { this.gesture = { x: p.x, y: p.y, t: performance.now(), done: false }; return; }   // on defense: swipe up to go for the ball
@@ -324,12 +332,13 @@
       if (this.aim) { this.aim.cx = p.x; this.aim.cy = p.y; return; }
       const g = this.gesture;
       if (!g || g.done) return;
-      if (this.defending) { if (p.y - g.y < -22 && Math.abs(p.y - g.y) > Math.abs(p.x - g.x)) { g.done = true; this.intSwipe(); } return; }
+      if (this.defending && !this.kick) { if (p.y - g.y < -22 && Math.abs(p.y - g.y) > Math.abs(p.x - g.x)) { g.done = true; this.intSwipe(); } return; }
+      const fw = this.kick && this.kick.cpu ? -1 : 1;     // on a punt return, forward is to the left
       // a swipe of 22px+ counts as soon as it happens, no need to lift the finger:
       // up/down cuts (or jukes after a tap), forward lunges, back stops for a moment
       const dy = p.y - g.y, dx = p.x - g.x;
       if (Math.abs(dy) > 22 && Math.abs(dy) > Math.abs(dx) * 0.8) { g.done = true; this.swipe(Math.sign(dy)); }
-      else if (Math.abs(dx) > 22 && Math.abs(dx) > Math.abs(dy) * 1.2) { g.done = true; dx > 0 ? this.lunge() : this.hesitate(); }
+      else if (Math.abs(dx) > 22 && Math.abs(dx) > Math.abs(dy) * 1.2) { g.done = true; dx * fw > 0 ? this.lunge() : this.hesitate(); }
     }
     pUp() {
       if (this.kaim) return this.kickRelease();
@@ -345,7 +354,7 @@
     // Swipe toward a sideline: a juke if it closely follows a tap, otherwise a cut.
     swipe(dir) {
       const c = this.carrier;
-      if (this.phase !== 'live' || !this.running(c)) return;
+      if (!this.canMove(c)) return;
       const now = performance.now();
       if (c.lunge) return;
       c.stop = null;                                  // any move ends a stop
@@ -362,7 +371,7 @@
     // 1 yard at 50 up to 2 yards at 90+; quarterbacks slide feet first, 0.75 up to 1.5 yards.
     lunge() {
       const c = this.carrier;
-      if (this.phase !== 'live' || !this.running(c) || c.lunge) return;
+      if (!this.canMove(c) || c.lunge) return;
       const best = Math.max(c.sStat || 60, c.pow || 0, c.agi || 0), u = clamp((best - 50) / 40, 0, 1);
       const slide = c === this.qb;
       c.lunge = { x0: c.x, dist: slide ? 0.75 + 0.75 * u : 1 + u, t: 0.5, slide };
@@ -372,7 +381,7 @@
     // Stop: plant and wait about a second (blockers set up, a defender may overrun him).
     hesitate() {
       const c = this.carrier;
-      if (this.phase !== 'live' || !this.running(c) || c.lunge || c.stop) return;
+      if (!this.canMove(c) || c.lunge || c.stop) return;
       c.stop = { t: 1.0 }; c.cut = null;
       this.pop('Hold up…');
     }
@@ -392,6 +401,18 @@
       if (this.paused) return;
       if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' '].includes(k)) e.preventDefault();
       this.keys[k] = down;
+      if (this.kick && this.kick.cpu) {                     // their punt: space calls the fair catch, then runner keys
+        if (down && !e.repeat) {
+          if (this.kick.stage === 'flight' && k === ' ' && !this.kick.fairCall) { this.kick.fairCall = true; this.pop('Fair catch!'); }
+          else if (this.kick.stage === 'return') {
+            if (k === ' ') this.lastTap = performance.now();
+            else if (k === 'arrowleft' || k === 'a') this.lunge();
+            else if (k === 'arrowright' || k === 'd') this.hesitate();
+            else if ((k === 'arrowup' || k === 'w' || k === 'arrowdown' || k === 's') && performance.now() - (this.lastTap || -1e9) < TAP_WINDOW) this.swipe(k === 'arrowup' || k === 'w' ? -1 : 1);
+          }
+        }
+        return;
+      }
       if (this.defending) {                                 // on defense: space snaps, up goes for the ball
         if (down && !e.repeat && this.phase === 'presnap' && k === ' ') { this.hidePanel(); this.snap(); }
         else if (down && !e.repeat && this.phase === 'live' && (k === 'arrowup' || k === 'w' || k === ' ')) this.intSwipe();
@@ -526,6 +547,7 @@
         else this.endPlay(`${o}: ${fg}-yard field goal NO GOOD`, () => this.checkClock(() => this.startDrive(clamp(120 - (this.los - 7), 30, 105))), 2);
         return true;
       }
+      if (this.cfg.playDefense !== false) { this.cpuPunt(); return true; }      // you return it
       const land = this.los + rnd(36, 47), x = land >= 110 ? 30 : clamp(120 - land, 11, 95);
       const spot = Math.round(x - 10);
       this.endPlay(land >= 110 ? `${o} punt — touchback` : `${o} punt — your ball at your ${spot}`, () => this.checkClock(() => this.startDrive(x)), 2);
@@ -1301,12 +1323,13 @@
     }
 
     steerRunner(p, dt) {
+      const fwd = p.runDir || 1;                      // a punt returner runs the other way
       if (p.lunge) {                                  // diving or sliding straight ahead, then down
-        const L = p.lunge, end = L.x0 + L.dist;
+        const L = p.lunge, end = L.x0 + L.dist * fwd;
         L.t -= dt;
         go(p, end, p.y, L.slide ? 7 : 9, dt, 40);
         p.vy = 0;
-        if (p.x >= end - 0.05 || L.t <= 0) { if (p.x >= end - 0.05) p.x = end; p.landed = true; }   // lands at the full distance
+        if ((p.x - end) * fwd >= -0.05 || L.t <= 0) { if ((p.x - end) * fwd >= -0.05) p.x = end; p.landed = true; }   // lands at the full distance
         return;
       }
       if (p.stop) {
@@ -1314,7 +1337,7 @@
         if (p.stop.t > 0) { go(p, p.x, p.y, 0, dt, 14); return; }
         p.stop = null;
       }
-      const k = this.defending ? {} : this.keys;               // their runner isn't yours to steer
+      const k = this.defending && !this.kick ? {} : this.keys;   // their runner isn't yours to steer (your punt returner is)
       let dy = 0, sp = p.spd * 0.97, acc = 10;       // a touch slower with the ball
       const f = this.runFade(p, dt);
       if (f < 0.94 && !p.tired) { p.tired = true; this.pop('Running out of gas…', '#ffb43a'); }
@@ -1332,7 +1355,7 @@
         if (!dy && p.sweep && (p.runT || 0) < 0.9) dy = p.sweep * 0.85;      // outside run: to the edge, then up
       }
       const dx = Math.sqrt(1 - dy * dy);
-      go(p, p.x + dx * 5, p.y + dy * 5, sp, dt, acc);
+      go(p, p.x + dx * 5 * fwd, p.y + dy * 5, sp, dt, acc);
     }
 
     resolvePass() {
@@ -1522,7 +1545,7 @@
     // The kicking unit: seven blockers on the line, the holder kneeling at the spot, the kicker behind him;
     // seven rushers, each across from a blocker, and two returners deep.
     setupKickFormation() {
-      const k = this.kick, L = this.los, r = this.cfg.roster, d = this.cfg.oppDef, M = (...a) => this.mk(...a);
+      const k = this.kick, L = this.los, r = this.roster(), d = this.defRating(), M = (...a) => this.mk(...a);
       const blk = (key, stat) => { const p = r[key]; return p && p.stats && p.stats[stat] != null ? p.stats[stat] : 55; };
       // the edges of a kick unit are filled by backs and receivers: half as good as the line, half a flat 55
       const olAvg = (blk('OL1', 'pblk') + blk('OL2', 'pblk') + blk('OL3', 'pblk')) / 3, edge = (olAvg + 55) / 2;
@@ -1637,6 +1660,23 @@
       if (!clean) { const f = rnd(0.45, 0.7); ex = k.sx + (t.x - k.sx) * f; ey = k.sy + (t.y - k.sy) * f + side * rnd(2, 7); }
       k.res = { punt: true, clean, ex, ey }; k.stage = 'approach'; k.ap = 0.2;
     }
+    // Their punt, played out with your return team: their punter (his own leg and accuracy) aims for distance,
+    // or to pin you deep when he's close; their unit covers; you return it.
+    cpuPunt() {
+      const ks = this.ks, kr = this.oppRoster.K.stats || {};
+      this.ks = { leg: kr.leg || 70, acc: kr.acc || 70 };
+      this.startKick('punt');
+      this.ks = ks;
+      const k = this.kick; k.cpu = true; k.started = true;
+      let tx = k.sx + k.range * rnd(0.88, 1);
+      if (tx > 104) tx = rnd(98, 105);                                  // close in: try to pin you inside the 10
+      k.target = { x: tx, y: clamp(MID + rnd(-8, 8), 4, FW - 4) };
+      this.puntResult(Math.random() < clamp(0.9 + ((kr.acc || 70) - 70) * 0.005, 0.8, 0.97), Math.random() < 0.5 ? -1 : 1);   // shanks are rare
+      this.banner = { text: `${this.cfg.opp.name.toUpperCase()} PUNT`, t: 1.4 };
+    }
+    // a spot named from your side of the field (on their punt the kicking team's frame is theirs)
+    spotK(x) { return this.kick && this.kick.cpu ? this.spot(120 - x) : this.spot(x); }
+
     // ---------- the punt after the kick: coverage, the catch, bounces and the return ----------
     // At the kick the punting team releases downfield (gunners fastest), the return team peels back to
     // block, and the returner drifts under the ball. Where it lands decides what happens next.
@@ -1646,6 +1686,10 @@
       rets.sort((a, b) => hyp(a.x - r.ex, a.y - r.ey) - hyp(b.x - r.ex, b.y - r.ey));
       k.ret = rets[0]; k.lead = rets[1];
       k.ret.spd = 6.7 + (d - 70) * 0.03; k.lead.spd = 6.4;
+      if (k.cpu) {                                                       // returning their punt: your back returns it
+        const rs = this.cfg.roster.RB.stats || {}, rv = (x) => (rs[x] != null ? rs[x] : this.cfg.roster.RB.ovr);
+        k.ret.spd = 6.6 + (rv('spd') - 60) * 0.035 + 0.1; k.ret.agi = rv('agi'); k.ret.pow = rv('pow'); k.ret.sStat = rv('spd'); k.ret.runDir = -1;
+      }
       k.cover = this.off.filter((p) => p !== this.kicker);
       // jammers hold the gunners up at the line for a moment; the interior men release sooner
       for (const c of k.cover) { c.spd = c.role === 'WR' ? 8 : c.role === 'RB' ? 7.2 : 6.5; c.lane = c.y - MID; c.stun = 0; c.hold = c.role === 'WR' ? rnd(0, 1.1) : rnd(0, 0.5); }
@@ -1694,11 +1738,11 @@
     puntLand() {
       const k = this.kick, r = k.res, R = k.ret;
       this.ball = { state: 'held' };
-      if (r.ey < 0 || r.ey > FW) return this.puntOver(clamp(r.ex, 11, 109), `Punt out of bounds at ${this.spot(clamp(r.ex, 11, 109))}`);
+      if (r.ey < 0 || r.ey > FW) return this.puntOver(clamp(r.ex, 11, 109), `Punt out of bounds at ${this.spotK(clamp(r.ex, 11, 109))}`);
       if (r.ex >= 110) return this.puntOver(100, 'Punt into the end zone — touchback');
       if (hyp(R.x - r.ex, R.y - r.ey) < 1.8 && r.ex < 100) {
         const near = Math.min(...k.cover.map((c) => hyp(c.x - R.x, c.y - R.y)));
-        if (near < k.fairAt) { R.pose = null; return this.puntOver(r.ex, `Punt — fair catch at ${this.spot(r.ex)}`); }
+        if (k.cpu ? k.fairCall : near < k.fairAt) { R.pose = null; return this.puntOver(r.ex, `Punt — fair catch at ${this.spotK(r.ex)}`); }
         this.carrier = R; R.x = r.ex; R.y = r.ey; k.stage = 'return'; k.rt0 = 0;
         // he picks a lane: toward the side of the field with fewer cover men, a few yards over
         const side = k.cover.reduce((a, c) => a + Math.sign(c.y - R.y), 0) > 0 ? -1 : 1;
@@ -1735,10 +1779,10 @@
       this.returnBlocks(dt);
       go(k.ret, Math.min(b.x + 6, 108), k.ret.y, k.ret.spd * 0.6, dt, 8);   // the returner stays away from it
       if (b.x >= 110) return this.puntOver(100, 'Punt bounces into the end zone — touchback');
-      if (b.y < 0 || b.y > FW) { const x = clamp(b.x, 11, 109); return this.puntOver(x, `Punt rolls out of bounds at ${this.spot(x)}`); }
+      if (b.y < 0 || b.y > FW) { const x = clamp(b.x, 11, 109); return this.puntOver(x, `Punt rolls out of bounds at ${this.spotK(x)}`); }
       const x = clamp(b.x, 11, 109);
-      if (b.z < 0.5 && b.t > 0.3 && [...k.cover, this.kicker].some((c) => hyp(c.x - b.x, c.y - b.y) < 0.9)) return this.puntOver(x, `Punt downed at ${this.spot(x)}`);
-      if (b.z === 0 && hyp(b.vx, b.vy) < 0.25) return this.puntOver(x, `Punt rolls dead at ${this.spot(x)}`);
+      if (b.z < 0.5 && b.t > 0.3 && [...k.cover, this.kicker].some((c) => hyp(c.x - b.x, c.y - b.y) < 0.9)) return this.puntOver(x, `Punt downed at ${this.spotK(x)}`);
+      if (b.z === 0 && hyp(b.vx, b.vy) < 0.25) return this.puntOver(x, `Punt rolls dead at ${this.spotK(x)}`);
     }
     // The return: the returner heads upfield (toward your end zone) and slides away from the nearest
     // cover man, his blockers take on the coverage, and the coverage tries to bring him down.
@@ -1751,7 +1795,10 @@
         if (d < 7 && c.x < R.x + 1) push += (Math.sign(ay) || 1) / Math.max(d, 1);
       }
       const ty = clamp(R.y + (k.laneY - R.y) * 0.5 + clamp(push * 6, -5, 5) + (R.y < 4 ? 2 : R.y > FW - 4 ? -2 : 0), 1.5, FW - 1.5);
-      go(R, R.x - 5, ty, R.spd, dt, 9);
+      if (k.cpu) {                                                       // you're returning it: your controls
+        this.steerRunner(R, dt);
+        if (R.landed) return this.puntOver(R.x, `Punt — returned ${Math.max(0, Math.round(k.res.ex - R.x))} to ${this.spotK(R.x)}`);
+      } else go(R, R.x - 5, ty, R.spd, dt, 9);
       for (const c of [...k.cover, this.kicker]) {
         if (c.hold > 0) { c.hold -= dt; go(c, c.x, c.y, 0, dt, 8); continue; }
         if (c.stun > 0) { c.stun -= dt; continue; }
@@ -1762,15 +1809,21 @@
       }
       this.returnBlocks(dt);
       if (R.x <= 10) {
-        this.score.opp += 7; this.carrier = null;
+        this.carrier = null;
+        if (k.cpu) return this.puntOver(null, 'PUNT RETURN TOUCHDOWN!');
+        this.score.opp += 7;
         return this.puntOver(null, `Punt returned for a TOUCHDOWN by ${this.cfg.opp.name}`);
       }
-      if (R.y <= 0.4 || R.y >= FW - 0.4) return this.puntOver(R.x, `Punt — returned ${Math.round(k.res.ex - R.x)} out of bounds at ${this.spot(R.x)}`);
-      for (const c of [...k.cover, this.kicker]) {
+      if (R.y <= 0.4 || R.y >= FW - 0.4) return this.puntOver(R.x, `Punt — returned ${Math.round(k.res.ex - R.x)} out of bounds at ${this.spotK(R.x)}`);
+      for (const c of (R.lunge ? [] : [...k.cover, this.kicker])) {
         if (c.hold > 0 || c.stun > 0 || hyp(c.x - R.x, c.y - R.y) > 1.15) continue;
+        if (k.cpu && R.juke && R.juke.t > 0 && !R.juke.read) {        // your juke against him
+          if (Math.random() < clamp(0.75 + ((R.agi || 60) - 70) * 0.02, 0.3, 0.95)) { c.stun = 1; R.juke.hit = true; this.pop('BROKEN TACKLE!', '#ffd84a'); continue; }
+          R.juke.read = true;
+        }
         if (Math.random() < (c === this.kicker ? 0.5 : 0.76)) {
           this.downed = R;
-          return this.puntOver(R.x, `Punt — returned ${Math.max(0, Math.round(k.res.ex - R.x))} to ${this.spot(R.x)}`);
+          return this.puntOver(R.x, `Punt — returned ${Math.max(0, Math.round(k.res.ex - R.x))} to ${this.spotK(R.x)}`);
         }
         c.stun = 0.6; this.pop('Missed tackle!');
       }
@@ -1781,6 +1834,12 @@
     puntOver(startX, msg) {
       const k = this.kick, r = k.res;
       if (!r.clean) msg = 'Shanked! ' + msg;
+      if (k.cpu) {                                                       // their punt: your ball where it ended (their frame flipped)
+        this.kick = null; this.carrier = null; this.ball = { state: 'held' };
+        if (startX == null) { this.setSide(false); this.score.me += 6; return this.endPlay(msg, () => (this.q === 5 ? this.final() : this.afterTD()), 2.4); }
+        const x = clamp(120 - startX, 11, 105);
+        return this.endPlay(msg, () => this.checkClock(() => this.startDrive(x)), 2);
+      }
       this.kick = null; this.carrier = null; this.ball = { state: 'held' };
       if (startX == null) return this.endPlay(msg, () => this.checkClock(() => this.startDrive(35)), 2.4);
       const net = Math.round(Math.min(startX, 110) - this.los), dist = Math.round(startX - 10);
@@ -1793,6 +1852,7 @@
       if (r.blocked) {
         this.kick = null;
         if (k.type === 'pat') return this.endPlay('Extra point BLOCKED', after);
+        if (k.type === 'punt' && k.cpu) return this.endPlay('PUNT BLOCKED — your ball!', () => this.checkClock(() => this.startDrive(clamp(120 - k.sx, 11, 105))), 2);
         if (k.type === 'punt') return this.endPlay('Punt BLOCKED', () => this.checkClock(() => this.oppDrive(clamp(k.sx - 10, 5, 95), 'They recovered the blocked punt.')));
         const dist = clamp(k.sx - 10, 5, 95);                     // they take over at the spot
         return this.endPlay('Field goal BLOCKED', () => this.checkClock(() => this.oppDrive(dist, 'They recovered the blocked kick.')));
@@ -2064,6 +2124,8 @@
       if (this.phase === 'presnap') this.hint(this.defending ? 'DEFENSE · TAP THE FIELD WHEN READY' : 'TAP THE FIELD TO SNAP');
       else if (this.phase === 'live' && this.defending) this.hint('SWIPE UP AS THE BALL ARRIVES TO GO FOR THE PICK');
       else if (this.phase === 'live' && this.passing() && !this.aim) this.hint('DRAG BACK TO THROW · SWIPE TOWARD THE END ZONE TO RUN');
+      else if (this.phase === 'kick' && this.kick && this.kick.cpu) this.hint({ flight: this.kick.fairCall ? 'FAIR CATCH CALLED' : 'TAP TO CALL A FAIR CATCH',
+        return: 'UP/DOWN: CUT · TAP+SWIPE: JUKE · SWIPE LEFT: LUNGE · RIGHT: STOP' }[this.kick.stage] || '');
       else if (this.phase === 'kick' && this.kick) this.hint({ set: 'TAP THE FIELD TO START THE KICK', aim: 'DRAG BACK TO AIM · RELEASE TO KICK',
         meter: 'TAP WHEN THE MARKER IS IN THE GREEN', flight: '' }[this.kick.stage] || '');
       else if (this.phase === 'live' && this.running(this.carrier)) this.hint(`UP/DOWN: CUT · TAP+SWIPE: JUKE · FORWARD: ${this.carrier === this.qb ? 'SLIDE' : 'LUNGE'} · BACK: STOP`);
@@ -2188,6 +2250,7 @@
     }
     drawKick() {
       const g = this.ug, Px = GP.Pixel, k = this.kick, X0 = this.ax(k.sx), Y0 = this.ay(k.sy);
+      if (k.cpu) return;                                  // their punt: nothing of yours to aim
       if (k.stage === 'flight' || k.stage === 'bounce' || k.stage === 'return') return;   // the ball's away: just watch
       const title = k.type === 'punt' ? `PUNT · RANGE ${k.range}` : `${k.type === 'pat' ? 'EXTRA POINT' : k.dist + '-YARD FIELD GOAL'} · RANGE ${this.kickRange}`;
       Px.box(g, Math.round(AW / 2 - Px.width(title) / 2) - 6, 18, Px.width(title) + 12, 12, 'rgba(16,24,42,.85)');

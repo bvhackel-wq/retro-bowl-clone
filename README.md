@@ -92,6 +92,13 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
   follows him to the run side. In Cover 0 the blitzing linebacker comes off the tight end's edge and keeps
   the runner inside; on outside runs the tight end kicks out the edge defender, and on inside runs he blocks
   the man covering him. Cover 0 is a real all-out blitz: quick throws beat it, slow ones get sacked.
+- **Punt returns.** When the opponent punts (with playable defense on), it's played out with your return
+  team: their punter aims for distance, or to pin you inside your 10 when he's close, and rarely shanks
+  one. Tap during the flight to call a fair catch; otherwise your returner (your running back's speed and
+  agility) catches it and you steer with the runner controls, with forward to the left: swipe up/down to
+  cut, tap then swipe to juke (a timed juke can break a tackle), swipe left to lunge, right to stop. If he
+  can't get to it, or it's inside your 10, he lets it bounce. A return touchdown goes to your extra point or
+  two-point choice; a blocked punt is your ball. Keyboard: space calls the fair catch, then arrows.
 - **Go for the interception.** On defense, swipe up (or press up/space) as their pass arrives. The
   defender nearest where it will come down plays the ball, and his coverage sets the timing window (about
   0.17s at 60 coverage, 0.34s at 90). On time and close enough: he goes for the pick (an interception or a
