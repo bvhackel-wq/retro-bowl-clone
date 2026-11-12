@@ -87,8 +87,11 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
   receiver steps back behind blockers) and Play action (PA Post, PA Crossers, PA Deep Shot: linebackers
   and safeties bite on the fake, less if they cover well, more the more you've run that game). The
   play list opens before every snap with the six types; the offensive coordinator's call is marked (with the
-  play's name), and picking a type gives his best play of that type for the situation. The play you picked is
-  named in the hint at the bottom until you snap. His read of each coverage
+  play's name), and picking a type gives his best play of that type for the situation. Shortcut: with the list
+  open, a tap on the field runs his call and snaps at once (1st to 3rd down; on 4th down his call may be a
+  punt or a field goal, so you pick). The play you picked is named in the hint at the bottom with a CHANGE
+  button that reopens the list until you snap. Defense works the same way (the field-tap shortcut runs your
+  defensive coordinator's call on any down). His read of each coverage
   comes from measured results of every play against every call.
 - **Defenders have jobs, and make mistakes.** Man defenders play leverage: they shade a yard inside or
   outside and give up the other way (inside in Cover 0, 2-Man and press; outside in Cover 1, where help

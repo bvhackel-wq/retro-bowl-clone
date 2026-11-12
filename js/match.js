@@ -344,7 +344,12 @@
     pDown(e) {
       e.preventDefault();
       const p = this.pos(e);
-      if (this.phase === 'presnap') { this.hidePanel(); return this.snap(); }
+      if (this.phase === 'presnap') {
+        const cb = this.changeBox, ax = p.x / 2, ay = p.y / 2;     // canvas units are twice the art's
+        if (cb && ax >= cb.x - 6 && ax <= cb.x + cb.w + 6 && ay >= cb.y - 8 && ay <= AH) return this.reopenCalls();
+        this.hidePanel(); return this.snap();
+      }
+      if (this.phase === 'choose' && !this.el.panel.hidden && this.el.panel.className !== 'modal') return this.takeCall();
       if (this.phase === 'kick' && this.kick && this.kick.cpu) {
         const k = this.kick;
         if (k.stage === 'flight' && !k.fairCall) { k.fairCall = true; this.pop('Fair catch!'); }
@@ -757,6 +762,22 @@
     pickPlay(p) {
       this.play = p; this.setupFormation(); this.phase = 'presnap';
       this.hidePanel();
+    }
+    // A tap on the field with the call list open: the coordinator's call, snapped at once. Not on 4th down on
+    // offense, where his call may be a punt or a field goal and a stray tap shouldn't decide that.
+    takeCall() {
+      if (this.defending) {
+        this.dcall = this.dcRec; this.typePick = null; this.setupFormation(); this.phase = 'presnap'; this.hidePanel();
+        return this.snap();
+      }
+      if (this.down === 4 || !this.ocPick) return;
+      this.pickPlay(this.ocPick); this.snap();
+    }
+    // CHANGE in the hint before the snap: the call list again
+    reopenCalls() {
+      this.phase = 'choose'; this.changeBox = null; this.typePick = null;
+      if (this.defending) this.defList('Call the defense — ' + this.downText());
+      else this.playList(this.down === 4 ? '4th down — your call' : 'Call the play — ' + this.downText());
     }
     snap() {
       // on runs the second level reacts a beat late; linemen's hold times are already set by run blocking
@@ -2436,8 +2457,15 @@
       const u = this.ug; u.clearRect(0, 0, AW, AH);
       if (this.kick) this.drawKick();
 
+      this.changeBox = null;
+      // with the call list open: the field-tap shortcut
+      if (this.phase === 'choose' && this.el.panel && !this.el.panel.hidden && this.el.panel.className !== 'modal' && (this.defending || this.down < 4)) {
+        const t = `TAP THE FIELD FOR THE ${this.defending ? "DC'S" : "OC'S"} CALL`, w = Px.width(t) + 10;
+        Px.box(u, Math.round(AW / 2 - w / 2), 17, w, 12, 'rgba(16,24,42,.8)');
+        Px.text(u, t, AW / 2, 20, '#ffd84a', 1, { center: true });
+      }
       if (this.phase === 'presnap') this.hint(this.defending ? `${callName(this.dcall).toUpperCase()} · ` + (this.ringD ? `RINGED #${this.ringD.info.num}: SWIPE LEFT TO DIVE · TAP TO SNAP` : 'TAP THE FIELD WHEN READY')
-        : `${this.play ? this.play.name.toUpperCase() + ' · ' : ''}TAP THE FIELD TO SNAP`);
+        : `${this.play ? this.play.name.toUpperCase() + ' · ' : ''}TAP THE FIELD TO SNAP`, 'CHANGE');
       else if (this.phase === 'live' && this.defending) this.hint(this.ringOn() && !this.ringD.dove ? `SWIPE LEFT: #${this.ringD.info.num} DIVES AT THE BALL CARRIER` : 'SWIPE UP AS THE BALL ARRIVES TO GO FOR THE PICK');
       else if (this.phase === 'live' && this.passing() && !this.aim) this.hint('DRAG BACK TO THROW · TAP A RECEIVER: BULLET · SWIPE AHEAD: RUN');
       else if (this.phase === 'kick' && this.kick && this.kick.cpu) this.hint({ flight: this.kick.fairCall ? (this.kick.type === 'ko' ? 'FAIR CATCH / TOUCHBACK CALLED' : 'FAIR CATCH CALLED') : this.kick.type === 'ko' ? 'TAP FOR A FAIR CATCH OR TOUCHBACK' : 'TAP TO CALL A FAIR CATCH',
@@ -2488,12 +2516,18 @@
       const FH = FW * YA, top = TOPA - TOPA / this.zf, bot = TOPA + FH - (AH - TOPA) / this.zf;
       return { sx: clamp(this.ax(this.zl), 0, AW - sw), sy: clamp(this.ay(this.zy) - sh / 2, top, Math.max(top, bot)), sw, sh };
     }
-    hint(t) {
-      const g = this.ug, Px = GP.Pixel, w = Px.width(t) + 10;
-      // centred, or in the space right of the play button when it's showing
-      const cx = this.chipEnd ? Math.max(AW / 2, this.chipEnd + w / 2) : AW / 2;
-      Px.box(g, Math.round(cx - w / 2), AH - 15, w, 13, 'rgba(16,24,42,.85)');
-      Px.text(g, t, Math.round(cx), AH - 12, '#ffffff', 1, { center: true });
+    // the bottom hint; with a button label, a tappable button just right of it (its box is kept for the tap)
+    hint(t, button) {
+      const g = this.ug, Px = GP.Pixel, w = Px.width(t) + 10, bw = button ? Px.width(button) + 12 : 0, gap = button ? 4 : 0;
+      const x0 = Math.round(AW / 2 - (w + gap + bw) / 2);
+      Px.box(g, x0, AH - 15, w, 13, 'rgba(16,24,42,.85)');
+      Px.text(g, t, x0 + Math.round(w / 2), AH - 12, '#ffffff', 1, { center: true });
+      if (button) {
+        const bx = x0 + w + gap;
+        Px.box(g, bx, AH - 15, bw, 13, '#ffb43a');
+        Px.text(g, button, bx + Math.round(bw / 2), AH - 12, '#10182a', 1, { center: true });
+        this.changeBox = { x: bx, y: AH - 15, w: bw, h: 13 };
+      }
     }
     drawPlayer(p) {
       const g = this.ag, Px = GP.Pixel, X = this.ax(p.x), Y = this.ay(p.y);
