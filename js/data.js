@@ -46,6 +46,9 @@
     { id: 'csq', conf: 1, div: 3, city: 'Seattle', name: 'Seattle', abbr: 'SEA', c1: '#002244', c2: '#69be28' },
   ];
   GP.team = (id) => GP.TEAMS.find((t) => t.id === id);
+  // device preferences (not part of a career): camera zoom
+  GP.prefs = () => { try { return JSON.parse(localStorage.getItem('pg-prefs') || '{}'); } catch (e) { return {}; } };
+  GP.setPref = (k, v) => { const p = GP.prefs(); p[k] = v; try { localStorage.setItem('pg-prefs', JSON.stringify(p)); } catch (e) { /* private mode */ } };
   // An opponent's offense for a game, in the same shape as your lineup: each player's stats scattered around
   // the team's offense rating.
   GP.oppOffense = function (rating) {

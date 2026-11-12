@@ -248,6 +248,9 @@
       $('pause-quit').onclick = () => { this.pz.main.hidden = true; this.pz.confirm.hidden = false; };
       $('pause-back').onclick = () => this.resume();
       $('pause-forfeit').onclick = () => this.forfeit();
+      const zb = $('pause-zoom'), label = () => { zb.textContent = `Camera zoom: ${GP.prefs().zoom ? 'On' : 'Off'}`; };
+      zb.onclick = () => { GP.setPref('zoom', !GP.prefs().zoom); label(); };
+      label();
       // switching apps or locking the phone pauses the game
       this.onHide = () => { if (document.hidden) this.pause(); };
       document.addEventListener('visibilitychange', this.onHide);
@@ -255,6 +258,7 @@
     }
     pause() {
       if (this.paused || this.dead || this.phase === 'final') return;
+      document.getElementById('pause-zoom').textContent = `Camera zoom: ${GP.prefs().zoom ? 'On' : 'Off'}`;
       this.paused = true; this.aim = null; this.gesture = null; this.keys = {};
       const s = this.score, q = this.q === 5 ? 'Overtime' : `Quarter ${this.q}`;
       this.pz.score.textContent = `${this.cfg.me.abbr} ${s.me} — ${s.opp} ${this.cfg.opp.abbr} · ${q}`;
@@ -309,7 +313,8 @@
       const p = this.pos(e);
       if (this.phase === 'presnap') { this.hidePanel(); return this.snap(); }
       if (this.phase === 'kick') return this.kickTap(p);
-      if (this.phase !== 'live' || this.defending) return;      // on defense you watch your call play out
+      if (this.phase !== 'live') return;
+      if (this.defending) { this.gesture = { x: p.x, y: p.y, t: performance.now(), done: false }; return; }   // on defense: swipe up to go for the ball
       if (this.passing()) this.aim = { sx: p.x, sy: p.y, cx: p.x, cy: p.y };
       else this.gesture = { x: p.x, y: p.y, t: performance.now(), done: false };
     }
@@ -319,6 +324,7 @@
       if (this.aim) { this.aim.cx = p.x; this.aim.cy = p.y; return; }
       const g = this.gesture;
       if (!g || g.done) return;
+      if (this.defending) { if (p.y - g.y < -22 && Math.abs(p.y - g.y) > Math.abs(p.x - g.x)) { g.done = true; this.intSwipe(); } return; }
       // a swipe of 22px+ counts as soon as it happens, no need to lift the finger:
       // up/down cuts (or jukes after a tap), forward lunges, back stops for a moment
       const dy = p.y - g.y, dx = p.x - g.x;
@@ -386,6 +392,11 @@
       if (this.paused) return;
       if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' '].includes(k)) e.preventDefault();
       this.keys[k] = down;
+      if (this.defending) {                                 // on defense: space snaps, up goes for the ball
+        if (down && !e.repeat && this.phase === 'presnap' && k === ' ') { this.hidePanel(); this.snap(); }
+        else if (down && !e.repeat && this.phase === 'live' && (k === 'arrowup' || k === 'w' || k === ' ')) this.intSwipe();
+        return;
+      }
       if (down && !e.repeat) {
         if (k === ' ') {
           if (this.phase === 'presnap') this.snap();
@@ -706,7 +717,7 @@
         d.job = 'zone'; d.anchor = [this.los + 6, MID]; d.mark = null;
       }
       this.rollBusts();
-      this.phase = 'live'; this.t = 0; this.caught = false; this.scramble = false; this.gesture = null; this.aim = null; this.reads = null; this.cpuDecided = false; this.readIdx = -1;
+      this.phase = 'live'; this.t = 0; this.caught = false; this.scramble = false; this.gesture = null; this.aim = null; this.reads = null; this.cpuDecided = false; this.readIdx = -1; this.intTry = null;
       if (this.defending) { const k = this.dcall.type; this.covTend[k] = (this.covTend[k] || 0) + 1; }
       // play action: linebackers and safeties step up on the fake; good cover men barely bite, and the more
       // you've run the ball this game, the harder they bite
@@ -1334,6 +1345,7 @@
       }
       for (const p of this.def) { const x = hyp(p.x - b.tx, p.y - b.ty); if (x < dd) { dd = x; d = p; } }
       if (oob) return this.incomplete('Out of bounds — incomplete');
+      if (this.defending && this.intTry && this.intTry.kind !== 'late') { const r = this.intResolve(b); if (r !== false) return r; }
       // how much a nearby defender disrupts the catch depends on his coverage
       const dcov = d && d.info ? d.info.cov : 70, dskill = clamp(0.6 + (dcov - 60) * 0.015, 0.4, 1.2) * ((this.cfg.difficulty || 'normal') === 'hard' ? 1.15 : 1);
       if (d && (!o || dd < od) && Math.random() < (o ? 0.22 : 0.35) * this.dif.pick * dskill) return this.intercepted(b.tx);
@@ -1348,7 +1360,7 @@
       if (Math.random() > pc) return this.incomplete(d ? 'Broken up' : 'Dropped');
       // caught
       if (!this.conv) this.stats.comp++;
-      this.caught = true; this.carrier = o; b.state = 'held';
+      this.caught = true; this.carrier = o; b.state = 'held'; this.catchT = this.t;
       const bust = this.def.find((x) => x.bust && x.bust !== 'run' && (x.bustHit || x.bust === 'zone' || x.bust === 'pa')
         && (x.mark === o || hyp(x.x - b.tx, x.y - b.ty) < 9));
       if (bust && o.x - this.los > 8) this.pop(`Busted coverage! #${bust.info.num} blew it`, '#ffd84a');
@@ -1356,6 +1368,40 @@
       if (o.x >= 110) return this.touchdown();
     }
 
+    // ---------- going for the interception (defense) ----------
+    // Swipe up as their pass arrives. The defender nearest where it will come down plays the ball; his
+    // coverage sets the timing window (about 0.18s at 60 coverage, 0.36s at 90). On time: he goes for the
+    // pick (an interception or a breakup, better the closer he is and the better he covers). Too early:
+    // pass interference, a spot foul and a first down. Too late (just after the catch): he whiffs on the
+    // tackle. One try per pass.
+    intSwipe() {
+      if (this.intTry || this.phase !== 'live') return;
+      const b = this.ball;
+      if (b.state === 'air') {
+        const d = this.def.reduce((a, p) => (!a || hyp(p.x - b.tx, p.y - b.ty) < hyp(a.x - b.tx, a.y - b.ty) ? p : a), null);
+        const left = (1 - b.u) * b.dur, win = clamp(0.18 + ((d.info ? d.info.cov : 70) - 60) * 0.006, 0.15, 0.4);
+        this.intTry = { kind: left <= win ? 'good' : 'early', d };
+        if (this.intTry.kind === 'good') this.pop(`#${d.info.num} goes for it!`, '#5df2ff');
+        return;
+      }
+      if (this.caught && this.carrier && this.t - (this.catchT || 0) < 0.8) {
+        const c = this.carrier, d = this.def.filter((p) => !(p.stun > 0)).reduce((a, p) => (!a || hyp(p.x - c.x, p.y - c.y) < hyp(a.x - c.x, a.y - c.y) ? p : a), null);
+        this.intTry = { kind: 'late', d };
+        if (d && hyp(d.x - c.x, d.y - c.y) < 4) { d.stun = 1.0; this.stats.broken++; this.pop(`Too late! #${d.info.num} missed the tackle`, '#ff8a5c'); }
+      }
+    }
+    // the ball arrives on an interception try
+    intResolve(b) {
+      const t = this.intTry, d = t.d;
+      if (t.kind === 'early') {                              // flagged: spot foul, first down where the ball came down
+        this.los = b.tx >= 110 ? 109 : clamp(b.tx, this.los + 1, 109); this.down = 1; this.fdx = Math.min(this.los + 10, 110);
+        return this.endPlay(`PASS INTERFERENCE on #${d.info.num} — first down`, () => this.checkClock(() => this.nextDown()), 2);
+      }
+      const dist = hyp(d.x - b.tx, d.y - b.ty);
+      if (dist > 3) { this.pop(`#${d.info.num} couldn't get there`, '#ffb43a'); return false; }
+      if (Math.random() < clamp(0.18 + (d.info.cov - 70) * 0.01 + (3 - dist) * 0.08, 0.06, 0.6)) return this.intercepted(b.tx);
+      return this.incomplete(`Broken up by #${d.info.num}`);
+    }
     // the next down, for whichever side has the ball
     nextDown() { if (this.defending) this.defChoose(); else this.toChoose(); }
     // 4th down failed: the other side takes over where the ball is
@@ -1462,8 +1508,8 @@
       // field goals: from the hold spot to the uprights. Punts: from 13 yards behind the line, judged at about 40 yards.
       const dist = punt ? 40 : Math.round(127 - this.los);
       const acc = this.ks.acc, u = clamp((acc - 40) / 59, 0, 1);
-      // half-width of the green zone; a punt's is wider (direction and distance are forgiving, a shank isn't)
-      const tol = punt ? clamp(0.065 + u * 0.075, 0.065, 0.14) : clamp(0.035 + u * 0.07 - (dist - 20) * 0.0012, 0.035, 0.1);
+      // half-width of the green zone: the same forgiving meter for every kick, wider for an accurate kicker
+      const tol = clamp(0.065 + u * 0.075, 0.065, 0.14);
       const yel = tol + Math.max(0.035, tol * 0.9);                               // and of the yellow around it
       const sx = punt ? Math.max(this.los - 13, 2) : 120 - dist;
       // punt reach from the punter's spot: 61 yards at 71 kick distance (a 3-star punter), so a full punt
@@ -1531,17 +1577,21 @@
       else if (k.stage === 'aim') this.kaim = { sx: p.x, sy: p.y, cx: p.x, cy: p.y };
       else if (k.stage === 'meter') this.doKick();
     }
+    // A punt can be stretched up to 25% past its range (the range ring turns yellow): the green zone shrinks
+    // and even a clean one sails off target. Field goals stop at the range.
     kickAimTarget() {
-      const a = this.kaim, k = this.kick;
+      const a = this.kaim, k = this.kick, max = k.type === 'punt' ? k.range * 1.25 : k.range;
       let vx = ((a.sx - a.cx) / PPY) * 2.2, vy = ((a.sy - a.cy) / PPY) * 2.2;
       const d = hyp(vx, vy);
-      if (d > k.range) { vx *= k.range / d; vy *= k.range / d; }
+      if (d > max) { vx *= max / d; vy *= max / d; }
+      k.over = k.type === 'punt' ? clamp((Math.min(d, max) - k.range) / (k.range * 0.25), 0, 1) : 0;
       return { x: k.sx + vx, y: k.sy + vy };
     }
     kickRelease() {
       const a = this.kaim, k = this.kick;
       if (!a || hyp(a.cx - a.sx, a.cy - a.sy) < 14 || k.stage !== 'aim') { this.kaim = null; return; }
       k.target = this.kickAimTarget(); this.kaim = null;          // read the aim before clearing it
+      if (k.over > 0) { k.tol *= 1 - 0.5 * k.over; k.yel = k.tol + Math.max(0.035, k.tol * 0.9); }   // a stretched punt: less green
       k.stage = 'meter'; k.pos = 0; k.dir = 1;
     }
     doKick() {
@@ -1583,6 +1633,7 @@
     puntResult(clean, side) {
       const k = this.kick, t = k.target;
       let ex = t.x, ey = t.y;
+      if (clean && k.over > 0) { ex -= rnd(0, k.over * 8); ey += gauss() * k.over * 5; }      // stretched: it sails a bit
       if (!clean) { const f = rnd(0.45, 0.7); ex = k.sx + (t.x - k.sx) * f; ey = k.sy + (t.y - k.sy) * f + side * rnd(2, 7); }
       k.res = { punt: true, clean, ex, ey }; k.stage = 'approach'; k.ap = 0.2;
     }
@@ -1905,6 +1956,9 @@
       const me = this.cfg.me, opp = this.cfg.opp;
       this.art = this.art || document.createElement('canvas'); this.art.width = AW; this.art.height = AH;
       this.ag = this.art.getContext('2d');
+      // the overlay: scoreboard, hints, banners and the kick meter, drawn on top and never zoomed
+      this.ui = this.ui || document.createElement('canvas'); this.ui.width = AW; this.ui.height = AH;
+      this.ug = this.ui.getContext('2d');
       this.fieldImg = GP.Pixel.field(me, opp, YA, TOPA, FW, PAD);
       this.fieldImgDef = GP.Pixel.field(opp, me, YA, TOPA, FW, PAD);   // on defense they attack your end zone
       if (!this.kits0) this.kits0 = GP.matchKits(this.cfg.me.id, this.cfg.opp.id, this.cfg.home !== false, this.cfg.uniform);
@@ -1995,14 +2049,6 @@
         this.drawBall();
       }
       if (this.aim && this.passing()) this.drawAim();
-      if (this.kick) this.drawKick();
-
-      if (this.phase === 'presnap') this.hint(this.defending ? 'DEFENSE · TAP THE FIELD WHEN READY' : 'TAP THE FIELD TO SNAP');
-      else if (this.phase === 'live' && this.defending) this.hint('YOUR DEFENSE · ' + (this.dcall ? callName(this.dcall).toUpperCase() : ''));
-      else if (this.phase === 'live' && this.passing() && !this.aim) this.hint('DRAG BACK TO THROW · SWIPE TOWARD THE END ZONE TO RUN');
-      else if (this.phase === 'kick' && this.kick) this.hint({ set: 'TAP THE FIELD TO START THE KICK', aim: 'DRAG BACK TO AIM · RELEASE TO KICK',
-        meter: 'TAP WHEN THE MARKER IS IN THE GREEN', flight: '' }[this.kick.stage] || '');
-      else if (this.phase === 'live' && this.running(this.carrier)) this.hint(`UP/DOWN: CUT · TAP+SWIPE: JUKE · FORWARD: ${this.carrier === this.qb ? 'SLIDE' : 'LUNGE'} · BACK: STOP`);
       if (this.popup && this.carrier) {
         const c = this.carrier, w = Px.width(this.popup.text);
         const x = clamp(this.ax(c.x), Math.ceil(w / 2) + 2, AW - Math.ceil(w / 2) - 2);
@@ -2010,24 +2056,48 @@
         Px.text(g, this.popup.text, x, this.ay(c.y) - 33, this.popup.color, 1, { center: true, shadow: '#10182a' });
         g.globalAlpha = 1;
       }
+      // everything below is the overlay
+      const u = this.ug; u.clearRect(0, 0, AW, AH);
+      if (this.kick) this.drawKick();
+
+      if (this.phase === 'presnap') this.hint(this.defending ? 'DEFENSE · TAP THE FIELD WHEN READY' : 'TAP THE FIELD TO SNAP');
+      else if (this.phase === 'live' && this.defending) this.hint('SWIPE UP AS THE BALL ARRIVES TO GO FOR THE PICK');
+      else if (this.phase === 'live' && this.passing() && !this.aim) this.hint('DRAG BACK TO THROW · SWIPE TOWARD THE END ZONE TO RUN');
+      else if (this.phase === 'kick' && this.kick) this.hint({ set: 'TAP THE FIELD TO START THE KICK', aim: 'DRAG BACK TO AIM · RELEASE TO KICK',
+        meter: 'TAP WHEN THE MARKER IS IN THE GREEN', flight: '' }[this.kick.stage] || '');
+      else if (this.phase === 'live' && this.running(this.carrier)) this.hint(`UP/DOWN: CUT · TAP+SWIPE: JUKE · FORWARD: ${this.carrier === this.qb ? 'SLIDE' : 'LUNGE'} · BACK: STOP`);
       if (this.banner) {
         const t = this.banner.text, sc = Px.width(t, 2) > AW - 24 ? 1 : 2, w = Px.width(t, sc) + 14, h = 7 * sc + 10;
-        Px.box(g, Math.round(AW / 2 - w / 2), 30, w, h, '#10182a', '#ffb43a');
-        Px.text(g, t, AW / 2, 35, '#ffb43a', sc, { center: true });
+        Px.box(u, Math.round(AW / 2 - w / 2), 30, w, h, '#10182a', '#ffb43a');
+        Px.text(u, t, AW / 2, 35, '#ffb43a', sc, { center: true });
         if (this.defNote) {
           const w2 = Px.width(this.defNote) + 10;
-          Px.box(g, Math.round(AW / 2 - w2 / 2), 30 + h + 2, w2, 12, 'rgba(16,24,42,.85)');
-          Px.text(g, this.defNote, AW / 2, 30 + h + 5, '#9fd3ff', 1, { center: true });
+          Px.box(u, Math.round(AW / 2 - w2 / 2), 30 + h + 2, w2, 12, 'rgba(16,24,42,.85)');
+          Px.text(u, this.defNote, AW / 2, 30 + h + 5, '#9fd3ff', 1, { center: true });
         }
       }
 
-      this.drawScoreboard(g);
-      const m = this.g;
+      this.drawScoreboard(u);
+      const m = this.g, z = this.zoomView();
       m.setTransform(1, 0, 0, 1, 0, 0); m.imageSmoothingEnabled = false;
-      m.drawImage(this.art, 0, 0, this.cv.width, this.cv.height);
+      m.drawImage(this.art, z.sx, z.sy, z.sw, z.sh, 0, 0, this.cv.width, this.cv.height);
+      m.drawImage(this.ui, 0, 0, this.cv.width, this.cv.height);
+    }
+    // Camera zoom (an option in the pause menu): during plays the view closes in on the ball, about 1.6x,
+    // and eases back out for kicks and between possessions. Returns the part of the field picture to show.
+    zoomView() {
+      const on = GP.prefs().zoom && (this.phase === 'presnap' || this.phase === 'live' || this.phase === 'tackling' || this.phase === 'dead') && !this.kick;
+      this.zf = (this.zf || 1) + ((on ? 1.6 : 1) - (this.zf || 1)) * 0.12;
+      const b = this.ball, c = this.carrier;
+      const f = b.state === 'air' ? { x: b.sx + (b.tx - b.sx) * Math.min(1, b.u), y: b.sy + (b.ty - b.sy) * Math.min(1, b.u) }
+        : c ? { x: c.x, y: c.y } : this.qb ? { x: this.qb.x + 6, y: this.qb.y } : { x: this.los, y: MID };
+      this.zx = this.zx == null ? f.x : this.zx + (f.x - this.zx) * 0.15;
+      this.zy = this.zy == null ? f.y : this.zy + (f.y - this.zy) * 0.15;
+      const sw = AW / this.zf, sh = AH / this.zf;
+      return { sx: clamp(this.ax(this.zx) - sw / 2, 0, AW - sw), sy: clamp(this.ay(this.zy) - sh / 2, 0, AH - sh), sw, sh };
     }
     hint(t) {
-      const g = this.ag, Px = GP.Pixel, w = Px.width(t) + 10;
+      const g = this.ug, Px = GP.Pixel, w = Px.width(t) + 10;
       // centred, or in the space right of the play button when it's showing
       const cx = this.chipEnd ? Math.max(AW / 2, this.chipEnd + w / 2) : AW / 2;
       Px.box(g, Math.round(cx - w / 2), AH - 15, w, 13, 'rgba(16,24,42,.85)');
@@ -2107,7 +2177,7 @@
       Px.dots(g, a.sx / 2, a.sy / 2, a.cx / 2, a.cy / 2, 'rgba(255,255,255,.55)', 4);
     }
     drawKick() {
-      const g = this.ag, Px = GP.Pixel, k = this.kick, X0 = this.ax(k.sx), Y0 = this.ay(k.sy);
+      const g = this.ug, Px = GP.Pixel, k = this.kick, X0 = this.ax(k.sx), Y0 = this.ay(k.sy);
       if (k.stage === 'flight' || k.stage === 'bounce' || k.stage === 'return') return;   // the ball's away: just watch
       const title = k.type === 'punt' ? `PUNT · RANGE ${k.range}` : `${k.type === 'pat' ? 'EXTRA POINT' : k.dist + '-YARD FIELD GOAL'} · RANGE ${this.kickRange}`;
       Px.box(g, Math.round(AW / 2 - Px.width(title) / 2) - 6, 18, Px.width(title) + 12, 12, 'rgba(16,24,42,.85)');
@@ -2122,8 +2192,10 @@
       };
       if (k.stage === 'aim') {
         // the kicker's reach, drawn as an arc around the hold spot
-        Px.ring(g, X0, Y0, Math.round(k.range * YA), Math.round(k.range * YA), 'rgba(255,255,255,.35)');
-        if (this.kaim) { aimLine(this.kickAimTarget(), '#ffffff'); const a = this.kaim; Px.dots(g, a.sx / 2, a.sy / 2, a.cx / 2, a.cy / 2, 'rgba(255,255,255,.55)', 4); }
+        const t = this.kaim ? this.kickAimTarget() : null, over = t && k.over > 0;
+        Px.ring(g, X0, Y0, Math.round(k.range * YA), Math.round(k.range * YA), over ? '#ffd84a' : 'rgba(255,255,255,.35)');
+        if (k.type === 'punt') Px.ring(g, X0, Y0, Math.round(k.range * 1.25 * YA), Math.round(k.range * 1.25 * YA), over ? 'rgba(255,216,74,.5)' : 'rgba(255,255,255,.12)');
+        if (this.kaim) { aimLine(t, over ? '#ffd84a' : '#ffffff'); const a = this.kaim; Px.dots(g, a.sx / 2, a.sy / 2, a.cx / 2, a.cy / 2, 'rgba(255,255,255,.55)', 4); }
       }
       if (k.stage === 'meter') {
         aimLine(k.target, 'rgba(255,255,255,.6)');

@@ -44,8 +44,8 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
   any down (marked "a long shot" beyond your kicker's range).
 - **Kicking:** tap the field to start the kick, drag back to aim (like a pass), and release to open the
   timing meter. Kick distance sets how far you can aim: 30 yards at 40, about 45 at 70, 60 at 99 (a kick
-  from the 40). Kick accuracy sets the meter's zones and how fast the marker moves: green (7% of the bar
-  for a weak kicker up to about 16% for a maxed one on a 42-yarder) goes where you aimed; the yellow
+  from the 40). Kick accuracy sets the meter's zones and how fast the marker moves: green (about 13% of the bar
+  for a weak kicker up to 28% for a maxed one, the same for every kick and distance) goes where you aimed; the yellow
   around it does so about half the time; outside it the kick is pushed wide.
   Tapping to start is the snap: seven rushers fight the kick unit's blockers (your line's pass block
   sets how long they hold), then charge the ball. Kick quickly: a rusher near the ball when the kicker
@@ -53,10 +53,12 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
   the other team the ball at the spot. The kicker takes his steps and swings through on every kick.
 - **Landing marker:** once a pass is in the air, a yellow marker on the turf shows where it will come down
   (after the throw's scatter), so you can see whether it's leading your receiver or floating to a defender.
-- **Punting:** the same three steps from 13 yards behind the line. Aim where it should land. A full punt
+- **Punting:** the same three steps from 13 yards behind the line. Aim where it should land; you can drag
+  up to 25% past the range (the range ring turns yellow), which shrinks the green zone and makes even a
+  clean punt sail a little. A full punt
   from a 71 kick-distance punter (about 3 stars) travels about 47 yards past the line, the NFL average;
   about 33 at 40 and 60 at 99. A clean punt lands where you aimed; a shank falls
-  short and veers. The punt meter's green zone is wider than a field goal's. Into the end zone is a
+  short and veers. Into the end zone is a
   touchback, over the sideline is spotted where it went out. Otherwise the play runs out: your gunners
   (held up a moment by jammers) and line cover downfield while the punter hangs back as the safety, the
   return team drops into a wall, and the returner settles under it. If the coverage is close he calls a
@@ -90,6 +92,13 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
   follows him to the run side. In Cover 0 the blitzing linebacker comes off the tight end's edge and keeps
   the runner inside; on outside runs the tight end kicks out the edge defender, and on inside runs he blocks
   the man covering him. Cover 0 is a real all-out blitz: quick throws beat it, slow ones get sacked.
+- **Go for the interception.** On defense, swipe up (or press up/space) as their pass arrives. The
+  defender nearest where it will come down plays the ball, and his coverage sets the timing window (about
+  0.18s at 60 coverage, 0.36s at 90). On time and close enough: he goes for the pick (an interception or a
+  breakup). Too early: pass interference, a spot foul and an automatic first down. Too late, just after the
+  catch: he whiffs on the tackle. One try per pass.
+- **Camera zoom** (pause menu, remembered on the device): during plays the view closes in on the ball,
+  about 1.6x, and eases back out for kicks; the scoreboard and hints stay full size.
 - **Play defense (Phase 1: you call it).** When the opponent has the ball you play their drive: the field
   flips so they attack your end zone, their offense calls a play (hidden from you), and your defensive
   coordinator calls a coverage. Keep it or tap Change for four groups: Man (Cover 1, Cover 1 Press, 2-Man),
