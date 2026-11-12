@@ -179,6 +179,13 @@
         h('span', { style: 'flex:1' }),
         h('button', { class: 'btn', onclick: () => startMatch(game) }, 'Play game')));
       hub.append(uniformCard(game));
+      // play your defense, or let it be simulated as before
+      const pd = S.playDefense !== false, setPD = (v) => { S.playDefense = v; GP.save(S); renderHub(); };
+      hub.append(h('div', { class: 'card next' }, h('div', null, h('b', null, 'Defense'),
+        h('div', { class: 'dim' }, pd ? 'You call the coverage on every opponent snap' : 'Opponent drives are simulated')),
+        h('span', { style: 'flex:1' }),
+        h('div', { class: 'seg' }, h('button', { class: 'btn small' + (pd ? '' : ' ghost'), onclick: () => setPD(true) }, 'Play it'),
+          h('button', { class: 'btn small' + (pd ? ' ghost' : ''), onclick: () => setPD(false) }, 'Simulate'))));
     } else {
       const ch = GP.team(S.champion);
       hub.append(h('h2', null, `Season ${S.season} complete`), h('div', { class: 'card next' },
@@ -380,7 +387,7 @@
     show('match');
     GP.match = new GP.Match($('#field'), {
       me: GP.team(S.teamId), opp: GP.team(game.oppId), roster: GP.lineup(S), staff: S.staff, difficulty: S.difficulty || 'normal',
-      oppOff: or.off, oppDef: or.def, oppDC: GP.oppDC(S, game.oppId), home: game.home !== false, uniform: S.uniform || 'auto', label: game.label,
+      oppOff: or.off, oppDef: or.def, oppDC: GP.oppDC(S, game.oppId), home: game.home !== false, uniform: S.uniform || 'auto', playDefense: S.playDefense !== false, label: game.label,
       onEnd: (my, opp, st, info) => {
         GP.match = null; GP.advance(S, my, opp);
         if (info && info.forfeit) { S.news = (S.news || []).concat(`You forfeited against ${full(GP.team(game.oppId))}. It counts as a ${my}-${opp} loss.`); GP.save(S); }

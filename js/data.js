@@ -46,6 +46,16 @@
     { id: 'csq', conf: 1, div: 3, city: 'Seattle', name: 'Seattle', abbr: 'SEA', c1: '#002244', c2: '#69be28' },
   ];
   GP.team = (id) => GP.TEAMS.find((t) => t.id === id);
+  // An opponent's offense for a game, in the same shape as your lineup: each player's stats scattered around
+  // the team's offense rating.
+  GP.oppOffense = function (rating) {
+    const v = () => GP.clamp(Math.round(rating + GP.rnd(-7, 7)), 40, 99), st = (keys) => Object.fromEntries(keys.map((k) => [k, v()]));
+    const p = (keys) => ({ ovr: rating, stats: st(keys) });
+    return { QB: p(['arm', 'acc', 'spd', 'agi', 'sta']), RB: p(['spd', 'agi', 'hands', 'pow', 'sta']),
+      WR1: p(['hands', 'spd', 'agi', 'sta', 'pow']), WR2: p(['hands', 'spd', 'agi', 'sta', 'pow']), TE: p(['hands', 'pow', 'blk', 'spd', 'sta']),
+      OL1: p(['pow', 'pblk', 'rblk', 'spd', 'sta']), OL2: p(['pow', 'pblk', 'rblk', 'spd', 'sta']), OL3: p(['pow', 'pblk', 'rblk', 'spd', 'sta']),
+      K: p(['leg', 'acc']), DEF: { ovr: rating } };
+  };
 
   GP.POS = [
     { key: 'QB', label: 'Quarterback', desc: 'Throw range and accuracy' },
@@ -54,7 +64,7 @@
     { key: 'WR2', label: 'Wide Receiver', desc: 'Speed and hands' },
     { key: 'TE', label: 'Tight End', desc: 'Catching, strength, blocking, speed, stamina' },
     { key: 'OL', label: 'Offensive Line', desc: 'Time in the pocket', unit: true },
-    { key: 'DEF', label: 'Defense', desc: 'Stops simulated enemy drives', unit: true },
+    { key: 'DEF', label: 'Defense', desc: 'Sets your defenders’ speed, coverage and tackling', unit: true },
     { key: 'K', label: 'Kicker', desc: 'Wider sweet spot on kicks' },
   ];
   const FIRST = ['Dax', 'Milo', 'Otis', 'Rafe', 'Jett', 'Cole', 'Nico', 'Theo', 'Bram', 'Zeke', 'Arlo', 'Quinn', 'Remy', 'Sol', 'Tate', 'Vance', 'Wes', 'Idris', 'Kai', 'Luca',
@@ -126,7 +136,7 @@
   GP.ROSTER_MAX = 12;
   GP.PLAYER_POS = { QB: 'Quarterback', RB: 'Running Back', WR: 'Wide Receiver', TE: 'Tight End', OL: 'Offensive Lineman', K: 'Kicker' };
   GP.SLOTS = [['QB', 'QB'], ['RB', 'RB'], ['WR1', 'WR'], ['WR2', 'WR'], ['TE', 'TE'], ['OL1', 'OL'], ['OL2', 'OL'], ['OL3', 'OL'], ['K', 'K']];   // a game's starters
-  GP.UNITS = [['DEF', 'Defense', 'Stops simulated enemy drives']];
+  GP.UNITS = [['DEF', 'Defense', 'Sets your defenders’ speed, coverage and tackling']];
   const PHYSICAL = { spd: 1, agi: 1, sta: 1 };      // fade from 29; skills (and overall) from 31
 
   // Stars (0-5, fixed for life) set the general level of a player's caps; each stat gets its own cap

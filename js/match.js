@@ -71,6 +71,15 @@
   const COVERAGES = { cover0: 'Cover 0', cover1: 'Cover 1', cover1p: 'Cover 1 Press', cover2: 'Cover 2', cover3: 'Cover 3',
                       cover4: 'Cover 4', '2man': '2-Man', firezone: 'Fire Zone', prevent: 'Prevent' };
   const TWO_HIGH = { cover2: 1, cover4: 1, '2man': 1, prevent: 1 };
+  const GAP_K = 0.4;      // see the Match constructor: how much of a rating gap reaches the field on defense
+  // the defensive play menu groups the calls, like the offense's play types; 'cover1b' is Cover 1 with a
+  // linebacker blitzing
+  const DEF_TYPES = [['man', 'Man', 'Lock up every receiver', ['cover1', 'cover1p', '2man']],
+                     ['zone', 'Zone', 'Keep everything in front', ['cover3', 'cover2', 'cover4']],
+                     ['blitz', 'Blitz', 'Send extra rushers', ['cover0', 'firezone', 'cover1b']],
+                     ['prevent', 'Prevent', 'Give up the short stuff, nothing deep', ['prevent']]];
+  const defGroup = (call) => DEF_TYPES.find((t) => t[3].includes(call.lbBlitz ? 'cover1b' : call.type));
+  const callName = (call) => (call.lbBlitz ? 'Cover 1 Blitz' : COVERAGES[call.type]);
   // what each play gains against each coverage, relative to that coverage's average (measured in testing);
   // the offensive coordinator uses it to read the defense
   let OC_FIT = {
@@ -112,18 +121,23 @@
       this.hudCache = {};
 
       const r = cfg.roster;
-      // QB stats (older rosters without them fall back to his overall)
-      const qs = r.QB.stats || {}, qv = (k) => (qs[k] != null ? qs[k] : r.QB.ovr);
-      this.qbs = { arm: qv('arm'), acc: qv('acc'), spd: qv('spd'), agi: qv('agi'), sta: qv('sta') };
-      this.maxRange = 30 + (this.qbs.arm - 60) * 0.6;                       // arm: how far
-      this.ballSpeed = 26 + this.qbs.arm * 0.09;                            // arm: how fast (yards/second)
-      this.scatter = Math.max(0.015, 0.085 - (this.qbs.acc - 60) * 0.0015); // accuracy
-      if (GP.hasSkill(cfg.staff, 'OC', 'airraid')) this.scatter *= 0.85;   // OC skill: Air Raid
-      // difficulty: Easy throws straighter, tires less, gets more time and a bigger catch window; Hard the reverse
-      this.dif = { easy: { scatter: 0.7, tire: 0.5, rush: 1.3, window: 0.4, pick: 0.6 }, normal: { scatter: 1, tire: 1, rush: 1, window: 0, pick: 1 },
-                   hard: { scatter: 1.15, tire: 1, rush: 1, window: 0, pick: 1.2 } }[cfg.difficulty || 'normal'];
-      this.scatter *= this.dif.scatter;
+      // difficulty: Easy throws straighter, tires less, gets more time and a bigger catch window; Hard the reverse.
+      // On defense it works the other way: the opponent's quarterback is less accurate on Easy, sharper on Hard.
+      this.difMine = { easy: { scatter: 0.7, tire: 0.5, rush: 1.3, window: 0.4, pick: 0.6 }, normal: { scatter: 1, tire: 1, rush: 1, window: 0, pick: 1 },
+                       hard: { scatter: 1.15, tire: 1, rush: 1, window: 0, pick: 1.2 } }[cfg.difficulty || 'normal'];
+      this.difCpu = { scatter: { easy: 1.3, normal: 1, hard: 0.85 }[cfg.difficulty || 'normal'], tire: 1, rush: 1, window: 0, pick: 1 };
+      this.dif = this.difMine;
+      this.applyQB(r, true);
       this.energy = 100;
+      // the opponent's offense, for when you're on defense: each player's stats scattered around the team's
+      // offense rating
+      // A rating gap between their offense and your defense matters about three times as much on the field
+      // (speed compounds through separation, pursuit and yards after contact) as in the simulated drives, so
+      // the two are pulled toward each other before the players are made: the better unit still wins its
+      // matchup, by about as much as the simulation gives it.
+      const myDef = cfg.roster.DEF.ovr + (cfg.staff ? cfg.staff.DC.stars * 1.5 : 0), mid = (cfg.oppOff + myDef) / 2;
+      this.oppRoster = GP.oppOffense(Math.round(mid + (cfg.oppOff - mid) * GAP_K));
+      this.myDefEff = Math.round(mid + (myDef - mid) * GAP_K);
       // kicker: distance sets how far he can aim, accuracy the meter's green zone and speed
       const kst = r.K.stats || {}, kv = (k) => (kst[k] != null ? kst[k] : r.K.ovr);
       this.ks = { leg: kv('leg'), acc: kv('acc') };
@@ -131,20 +145,21 @@
 
       this.q = 1; this.clock = QLEN;
       this.score = { me: 0, opp: 0 };
-      this.stats = { att: 0, comp: 0, pyd: 0, ptd: 0, int: 0, ryd: 0, rtd: 0, sack: 0, jukes: 0, broken: 0, jbroken: 0, yac: 0, fum: 0 };
-      // Each opposing defender has a jersey number and a tackling rating (TKL) drawn from the team's defense.
-      const nums = { DL: [90, 99], LB: [50, 59], CB: [20, 29], S: [30, 39] }, used = new Set();
-      this.dRoster = {};
-      for (const [slot, pos, off] of DSLOTS) {
-        let n; do { n = GP.rint(...nums[pos]); } while (used.has(n)); used.add(n);
-        // speed and coverage by position: corners fastest and best in coverage, then safeties, then linebackers
-        const so = { DL: [-10, -15], LB: [-4, -6], CB: [4, 4], S: [1, 2] }[pos];
-        this.dRoster[slot] = { slot, pos, num: n, tkl: clamp(Math.round(cfg.oppDef + off + rnd(-5, 5)), 45, 99), tk: 0,
-          spd: clamp(Math.round(cfg.oppDef + so[0] + rnd(-6, 6)), 40, 99), cov: clamp(Math.round(cfg.oppDef + so[1] + rnd(-6, 6)), 40, 99) };
-        const r = this.dRoster[slot];          // stars follow his ratings, measured against his position
-        r.stars = clamp(Math.round(((r.tkl - off) + (r.spd - so[0]) + (r.cov - so[1])) / 3 / 6 - 58 / 6), 0, 5);
-      }
+      const newStats = () => ({ att: 0, comp: 0, pyd: 0, ptd: 0, int: 0, ryd: 0, rtd: 0, sack: 0, jukes: 0, broken: 0, jbroken: 0, yac: 0, fum: 0 });
+      this.myStats = this.stats = newStats(); this.oppStats = newStats();     // your offense / theirs
+      // Each side's defenders have a jersey number, tackling (TKL), speed and coverage, drawn from the defense's
+      // rating. Yours come from your defense unit plus your coordinator's stars.
+      this.oppDefRoster = this.dRoster = Match.defRoster(cfg.oppDef);
+      this.myDef = this.myDefEff;
+      this.myDefRoster = Match.defRoster(this.myDef);
       this.oppDC = cfg.oppDC != null ? cfg.oppDC : 2;   // their defensive coordinator's stars
+      // their offense's tuning: seconds per read, how open a man must be beyond what his accuracy needs, how
+      // much wilder his throws are than yours, and how often their runner tries a juke
+      // Tuned so a drive against an even defense ends about like an NFL drive (measured over hundreds of drives:
+      // ~20-25% touchdowns, ~6-7 yards a pass, ~4.5 a carry, ~3% interceptions). Their pace (spd) is the
+      // sensitive one: 0.93 already doubles their touchdown rate.
+      this.cpuK = { read: 0.8, open: 2.0, scatter: 2.1, juke: 0.03, hold: 0.45, force: 0.03, cut: 0.1, lead: 0.9, deep: 0.1, run: 1.5, spd: 0.9 };
+      this.defending = false; this.otherTend = { run: 0, short: 0, deep: 0, n: 0 }; this.covTend = {};
       this.keys = {}; this.gesture = null; this.lastTap = -1e9; this.popup = null; this.aim = null; this.banner = null; this.kick = null;
       this.camX = 0; this.off = []; this.def = []; this.ball = { state: 'held' };
 
@@ -159,7 +174,10 @@
 
       this.paused = false; this.initPause();
       this.tend = { run: 0, short: 0, deep: 0, n: 0 };
-      this.el.chip.onclick = () => { if (this.phase === 'presnap' && !this.paused) this.playList('Change the play — ' + this.downText()); };
+      this.el.chip.onclick = () => {
+        if (this.phase !== 'presnap' || this.paused) return;
+        if (this.defending) this.defList('Change the defense — ' + this.downText()); else this.playList('Change the play — ' + this.downText());
+      };
       this.onResize = () => this.resize();
       window.addEventListener('resize', this.onResize);
       window.addEventListener('orientationchange', this.onResize);
@@ -175,6 +193,44 @@
       };
       this.raf = requestAnimationFrame(this.frame);
     }
+
+    // A defense's nine players (see DSLOTS), drawn from a rating.
+    static defRoster(rating) {
+      const nums = { DL: [90, 99], LB: [50, 59], CB: [20, 29], S: [30, 39] }, used = new Set(), out = {};
+      for (const [slot, pos, off] of DSLOTS) {
+        let n; do { n = GP.rint(...nums[pos]); } while (used.has(n)); used.add(n);
+        // speed and coverage by position: corners fastest and best in coverage, then safeties, then linebackers
+        const so = { DL: [-10, -15], LB: [-4, -6], CB: [4, 4], S: [1, 2] }[pos];
+        const r = out[slot] = { slot, pos, num: n, tkl: clamp(Math.round(rating + off + rnd(-5, 5)), 45, 99), tk: 0, ints: 0, sacks: 0,
+          spd: clamp(Math.round(rating + so[0] + rnd(-6, 6)), 40, 99), cov: clamp(Math.round(rating + so[1] + rnd(-6, 6)), 40, 99) };
+        r.stars = clamp(Math.round(((r.tkl - off) + (r.spd - so[0]) + (r.cov - so[1])) / 3 / 6 - 58 / 6), 0, 5);   // stars follow his ratings
+      }
+      return out;
+    }
+    // the quarterback's arm and accuracy for whichever side has the ball
+    applyQB(r, mine) {
+      const qs = r.QB.stats || {}, qv = (k) => (qs[k] != null ? qs[k] : r.QB.ovr);   // older rosters fall back to his overall
+      this.qbs = { arm: qv('arm'), acc: qv('acc'), spd: qv('spd'), agi: qv('agi'), sta: qv('sta') };
+      this.maxRange = 30 + (this.qbs.arm - 60) * 0.6;                       // arm: how far
+      this.ballSpeed = 26 + this.qbs.arm * 0.09;                            // arm: how fast (yards/second)
+      this.scatter = Math.max(0.015, 0.085 - (this.qbs.acc - 60) * 0.0015); // accuracy
+      if (mine && GP.hasSkill(this.cfg.staff, 'OC', 'airraid')) this.scatter *= 0.85;   // OC skill: Air Raid
+      this.scatter *= this.dif.scatter * (mine ? 1 : this.cpuK.scatter);
+    }
+    // Which side has the ball. On defense the opponent's offense uses the same engine: their roster, your
+    // defenders, their stats, uniforms swapped and the field drawn from their end.
+    setSide(def) {
+      if (this.defending === def) return;
+      this.defending = def;
+      this.dif = def ? this.difCpu : this.difMine;
+      this.applyQB(def ? this.oppRoster : this.cfg.roster, !def);
+      this.dRoster = def ? this.myDefRoster : this.oppDefRoster;
+      this.stats = def ? this.oppStats : this.myStats;
+      [this.tend, this.otherTend] = [this.otherTend, this.tend];
+    }
+    roster() { return this.defending ? this.oppRoster : this.cfg.roster; }
+    defRating() { return this.defending ? this.myDef : this.cfg.oppDef; }
+    dcStars() { return this.defending ? (this.cfg.staff ? this.cfg.staff.DC.stars : 1) : this.oppDC; }
 
     // ---------- pause ----------
     initPause() {
@@ -204,7 +260,7 @@
     }
     // Quitting forfeits: the game is recorded as a loss (by one point if you were level or ahead).
     forfeit() {
-      const me = this.score.me, opp = Math.max(this.score.opp, me + 1), st = this.stats;
+      const me = this.score.me, opp = Math.max(this.score.opp, me + 1), st = this.myStats;
       this.destroy();
       this.cfg.onEnd(me, opp, st, { forfeit: true });
     }
@@ -246,7 +302,7 @@
       const p = this.pos(e);
       if (this.phase === 'presnap') { this.hidePanel(); return this.snap(); }
       if (this.phase === 'kick') return this.kickTap(p);
-      if (this.phase !== 'live') return;
+      if (this.phase !== 'live' || this.defending) return;      // on defense you watch your call play out
       if (this.passing()) this.aim = { sx: p.x, sy: p.y, cx: p.x, cy: p.y };
       else this.gesture = { x: p.x, y: p.y, t: performance.now(), done: false };
     }
@@ -357,7 +413,7 @@
         const b = document.createElement('button');
         b.className = modal ? 'btn' : 'opt' + (o.kick ? ' kick' : '') + (o.rec ? ' rec' : '');
         if (modal) b.textContent = o.label;
-        else { const n = document.createElement('b'); n.textContent = o.label; const s = document.createElement('small'); s.textContent = o.rec ? "OC's call" : o.sub || ''; b.append(n, s); }
+        else { const n = document.createElement('b'); n.textContent = o.label; const s = document.createElement('small'); s.textContent = o.rec ? (this.defending ? "DC's call" : "OC's call") : o.sub || ''; b.append(n, s); }
         b.onclick = () => { this.hidePanel(); o.fn(); };
         row.appendChild(b);
       }
@@ -369,6 +425,7 @@
     // Stamina: every snap drains the QB's energy (faster with low stamina); he's fresh each drive.
     fatigue() { return (100 - this.energy) / 100; }
     startDrive(x) {
+      this.setSide(false);
       this.energy = 100; this.olEnergy = [100, 100, 100];
       this.los = clamp(x, 11, 105); this.down = 1; this.fdx = Math.min(this.los + 10, 110);
       this.toChoose();
@@ -376,9 +433,155 @@
     downText() {
       const togo = this.fdx >= 110 ? 'Goal' : Math.max(1, Math.round(this.fdx - this.los));
       const yl = Math.round(this.los - 10);
-      const on = yl === 50 ? '50' : yl < 50 ? 'own ' + yl : 'opp ' + (100 - yl);
+      // field position from your point of view: on defense the opponent is on "their" side of the field
+      const on = yl === 50 ? '50' : this.defending ? (yl < 50 ? 'their ' + yl : 'your ' + (100 - yl)) : yl < 50 ? 'own ' + yl : 'opp ' + (100 - yl);
       return `${ord(this.down)} & ${togo} · ${on}`;
     }
+    // ---------- your defense ----------
+    // Before each snap: their offense decides 4th down and calls a play (hidden from you); your defensive
+    // coordinator calls a coverage, which you can keep or change by group; tap the field to snap.
+    defChoose() {
+      this.phase = 'choose'; this.kick = null; this.typePick = null; this.carrier = null;
+      if (this.down === 4 && this.cpuKick()) return;
+      this.play = this.cpuCall();
+      this.dcall = this.dcRec = this.callDefense(); this.defNote = null;
+      this.setupFormation();
+      this.phase = 'presnap'; this.hidePanel();
+    }
+    defList(title) {
+      const rec = defGroup(this.dcRec);
+      const opts = DEF_TYPES.map(([key, label, desc]) => ({ label, sub: defGroup(this.dcall)[0] === key ? `Now: ${callName(this.dcall)} · tap for another` : desc,
+        rec: rec[0] === key, fn: () => this.pickDefType(key) }));
+      opts.push({ label: 'Simulate drive', sub: 'Let your coordinator run it', kick: true,
+        fn: () => this.oppDriveSim(110 - this.los, 'Your coordinator runs the defense.') });
+      this.showPanel(title, '', opts);
+    }
+    // A group's calls, ranked by how much your coordinator likes them here; picking the group again gives the next.
+    pickDefType(key) {
+      const calls = DEF_TYPES.find((t) => t[0] === key)[3].slice();
+      const w = this.defW || {}, score = (c) => (c === 'cover1b' ? (w.cover1 || 0) * 0.4 : w[c] || 0);
+      calls.sort((a, b) => score(b) - score(a));
+      let i = 0;
+      if (this.typePick && this.typePick.key === key) i = (this.typePick.i + 1) % calls.length;
+      else { const cur = calls.indexOf(this.dcall.lbBlitz ? 'cover1b' : this.dcall.type); if (cur === 0 && calls.length > 1) i = 1; }
+      this.typePick = { key, i };
+      const c = calls[i];
+      this.dcall = c === 'cover1b' ? { type: 'cover1', shown: 'cover1', lbBlitz: true } : { type: c, shown: c, lbBlitz: false };
+      this.setupFormation(); this.phase = 'presnap'; this.hidePanel();
+    }
+
+    // ---------- the opponent's offense ----------
+    // Their play call: situation (the same weights your coordinator uses) plus what tends to work against the
+    // coverages you've been calling this drive, plus noise. They don't see your call for this snap.
+    cpuCall() {
+      const togo = this.fdx >= 110 ? 110 - this.los : this.fdx - this.los, diff = this.score.opp - this.score.me;
+      const late = (this.q === 4 && this.clock < 120) || (this.q === 2 && this.clock < 40);
+      const sit = { quick: 0, deep: 0, inside: 0, outside: 0, screen: 0, pa: 0 };
+      if (togo <= 2) { sit.inside += 3; sit.outside += 1; sit.quick += 1; sit.pa += 1; }
+      else if ((this.down >= 2 && togo >= 7) || togo >= 13) { sit.deep += 2; sit.screen += 1; sit.inside -= 2; sit.outside -= 1; if (this.down <= 2) sit.pa += 1; }
+      else if (this.down === 1) { sit.inside += 0.5; sit.pa += 0.5; }
+      else { sit.quick += 1; sit.inside += 0.5; }
+      if (this.los >= 90) { sit.deep -= 3; sit.pa -= 1; sit.quick += 1; sit.inside += 1; }
+      if (late && diff < 0) { sit.inside -= 3; sit.outside -= 2; sit.screen -= 1; sit.deep += 1; sit.quick += 0.5; }
+      if (this.q >= 4 && diff > 0 && !late) { sit.inside += 3; sit.outside += 2; }
+      sit.inside += this.cpuK.run; sit.outside += this.cpuK.run * 0.6;      // a real offense runs it about 45% of the time
+      const smart = clamp((this.cfg.oppOff - 60) / 30, 0, 1), n = Object.values(this.covTend).reduce((a, b) => a + b, 0);
+      let best = null, bs = -1e9;
+      for (const p of PLAYS) {
+        let fit = 0;
+        if (n) for (const c in this.covTend) fit += ((OC_FIT[c] || {})[p.id] || 0) * this.covTend[c] / n;
+        const sc = sit[p.cat] + fit * 1.5 * smart * Math.min(1, n / 3) + gauss() * (3.2 - smart * 1.4);
+        if (sc > bs) { bs = sc; best = p; }
+      }
+      return best;
+    }
+    // Their 4th down: go for it when it's short enough or they're desperate, otherwise a field goal in range
+    // or a punt. Kicks are quick and simulated. Returns true if they kicked.
+    cpuKick() {
+      const togo = this.fdx - this.los, fg = Math.round(127 - this.los), o = this.cfg.opp.name;
+      const desperate = (this.q >= 4 && this.clock < 150 && this.score.opp <= this.score.me) || (this.q === 5 && fg > 50);
+      if (desperate || (togo <= 1 && this.los >= 45) || (togo <= 3 && this.los >= 62 && fg > 52)) return false;
+      if (fg <= 52) {
+        const good = Math.random() < clamp(1.02 - (fg - 18) * 0.014, 0.35, 0.98);
+        if (good) { this.score.opp += 3; this.endPlay(`${o}: ${fg}-yard field goal is GOOD`, () => this.checkClock(() => this.startDrive(35)), 2); }
+        else this.endPlay(`${o}: ${fg}-yard field goal NO GOOD`, () => this.checkClock(() => this.startDrive(clamp(120 - (this.los - 7), 30, 105))), 2);
+        return true;
+      }
+      const land = this.los + rnd(36, 47), x = land >= 110 ? 30 : clamp(120 - land, 11, 95);
+      const spot = Math.round(x - 10);
+      this.endPlay(land >= 110 ? `${o} punt — touchback` : `${o} punt — your ball at your ${spot}`, () => this.checkClock(() => this.startDrive(x)), 2);
+      return true;
+    }
+    // Their quarterback: after his drop he reads his receivers one at a time (deepest first on deep calls,
+    // shortest first on quick ones) and throws to the first one open enough for his accuracy; under pressure
+    // or late he takes the most open man, scrambles, or throws it away. Screens go on time.
+    cpuOffense() {
+      const pl = this.play, t = this.t, qb = this.qb;
+      if (this.passing() && this.ball.state === 'held') {
+        if (pl.screen === 'rb') { if (t > 1.0) this.cpuThrow(this.rb); return; }
+        if (pl.screen === 'wr') { if (t > 0.4) this.cpuThrow(this.off.find((p) => p.role === 'WR1')); return; }
+        const start = { quick: 0.55, deep: 1.2, pa: 1.35 }[pl.cat] || 0.8;
+        if (t < start) return;
+        const rs = this.off.filter((p) => p.route && !p.route.block), L = this.los;
+        // how open a man will be when the ball gets there: room at the catch point, less what defenders can
+        // close while the ball is in the air
+        const open = (p) => {
+          const T = 0.3 + hyp(p.x - qb.x, p.y - qb.y) / this.ballSpeed, cx = p.x + p.vx * T, cy = p.y + p.vy * T;
+          return Math.min(...this.def.map((d) => hyp(d.x - cx, d.y - cy) - (d.spd || 6) * T * 0.45)) + 1.5;
+        };
+        const depth = (p) => { const q = p.route.pts[p.route.pts.length - 1]; return q ? q[0] : 0; };
+        if (!this.reads) this.reads = rs.slice().sort((a, b) => (pl.cat === 'quick' ? depth(a) - depth(b) : depth(b) - depth(a)));
+        const need = clamp(2.7 - (this.qbs.acc - 60) * 0.025, 1.7, 3.1) + this.cpuK.open;
+        const ri = Math.floor((t - start) / this.cpuK.read), r = this.reads[ri % this.reads.length], fresh = ri !== this.readIdx;
+        this.readIdx = ri;
+        const pressure = this.def.some((d) => !d.held && !(d.stun > 0) && hyp(d.x - qb.x, d.y - qb.y) < 2.2);
+        // a deep window has to be wider: about an extra yard of room for every 12 yards downfield
+        if (r && r.x > L - 1 && open(r) > need + Math.max(0, r.x - L) * this.cpuK.deep) return this.cpuThrow(r);
+        // a bad read: now and then he forces it to a covered man (worse quarterbacks more often)
+        if (r && fresh && r.x > L - 1 && Math.random() < this.cpuK.force * (1 + Math.max(0, 75 - this.qbs.acc) * 0.05)) return this.cpuThrow(r);
+        // under pressure or late: the most open man if anyone's open enough; otherwise a mobile quarterback
+        // may take off; otherwise he hangs in (and may take the sack) until he throws it away
+        if (pressure || t > 3.1) {
+          const most = rs.slice().sort((a, b) => open(b) - open(a))[0];
+          if (most && open(most) > 1.5 + this.cpuK.open * 0.5) return this.cpuThrow(most);
+          if (!this.cpuDecided) { this.cpuDecided = true; this.cpuHold = Math.random() < this.cpuK.hold; }
+          if (this.qbs.spd >= 70 && Math.random() < 0.02) return this.tuck();
+          if (t > (this.cpuHold ? 4.6 : 3.6)) this.throwBall(L + rnd(2, 8), qb.y < MID ? -3 : FW + 3);      // throws it away
+        }
+        return;
+      }
+      if (this.running(this.carrier)) this.cpuRun(this.carrier);
+    }
+    // aim where the receiver will be when the ball gets there
+    cpuThrow(p) {
+      if (!p) return;
+      const qb = this.qb; let lx = p.x, ly = p.y;
+      for (let i = 0; i < 3; i++) { const T = (0.3 + hyp(lx - qb.x, ly - qb.y) / this.ballSpeed) * this.cpuK.lead; lx = p.x + p.vx * T; ly = p.y + p.vy * T; }
+      const d = hyp(lx - qb.x, ly - qb.y), max = this.maxRange;
+      if (d > max) { lx = qb.x + (lx - qb.x) * max / d; ly = qb.y + (ly - qb.y) * max / d; }
+      this.throwBall(lx, ly);
+    }
+    // Their ball carrier: slides away from a defender closing in front of him, jukes one about to hit him
+    // (more often the more agile he is), and lunges for the marker when he's just short.
+    cpuRun(c) {
+      if (c.lunge || (c.cut && c.cut.t > 0) || (c.juke && c.juke.t > 0)) return;
+      let near = null, nd = 99;
+      for (const d of this.def) {
+        if (d.held || d.stun > 0 || d.x < c.x - 0.5) continue;
+        const x = hyp(d.x - c.x, d.y - c.y); if (x < nd) { nd = x; near = d; }
+      }
+      if (!near || nd > 4.5) { c.jkTried = false; return; }
+      let dir = Math.sign(c.y - near.y) || 1;
+      if (c.y < 4) dir = 1; else if (c.y > FW - 4) dir = -1;
+      const toMarker = this.fdx - c.x;
+      if (nd < 1.6 && toMarker > 0.3 && toMarker < 1.8) return this.lunge();
+      if (nd < 1.9 && !c.jkTried) {
+        c.jkTried = true;
+        if (Math.random() < this.cpuK.juke + ((c.agi || 60) - 60) * 0.006) { this.lastTap = -1e9; return this.juke(c, dir); }
+      }
+      if (Math.abs(near.y - c.y) < 1.6 && Math.random() < this.cpuK.cut) c.cut = { dir, t: 0.22 };
+    }
+
     // ---------- offensive coordinator ----------
     // Which plays beat which looks (from testing): quick throws beat the blitz, curls and runs beat
     // three-deep, verticals beat press, slants beat man and two-deep.
@@ -421,10 +624,15 @@
     // the "Play: ... · Change" button over the field before the snap
     chip() {
       const c = this.el.chip, show = this.phase === 'presnap' && this.el.panel.hidden && !this.paused;
-      if (c.hidden === !show && c.dataset.play === (this.play && this.play.id)) return;
-      c.hidden = !show; c.dataset.play = this.play ? this.play.id : '';
-      const type = (PLAY_TYPES.find((t) => t[0] === (this.play && this.play.cat)) || [0, ''])[1];
-      if (show) c.innerHTML = `<small>${this.play === this.ocPick ? "OC's call" : 'Your call'} · ${type}</small><b>${this.play.name}</b><span>Change</span>`;
+      const key = this.defending ? 'D:' + (this.dcall ? callName(this.dcall) : '') : this.play && this.play.id;
+      if (c.hidden === !show && c.dataset.play === key) return;
+      c.hidden = !show; c.dataset.play = key || '';
+      if (show && this.defending) {
+        c.innerHTML = `<small>${this.dcall === this.dcRec ? "DC's call" : 'Your call'} · ${defGroup(this.dcall)[1]}</small><b>${callName(this.dcall)}</b><span>Change</span>`;
+      } else if (show) {
+        const type = (PLAY_TYPES.find((t) => t[0] === (this.play && this.play.cat)) || [0, ''])[1];
+        c.innerHTML = `<small>${this.play === this.ocPick ? "OC's call" : 'Your call'} · ${type}</small><b>${this.play.name}</b><span>Change</span>`;
+      }
       // where the button ends, in art pixels, so the bottom hint can sit to its right
       const bw = this.cv.getBoundingClientRect().width;
       this.chipEnd = show && bw ? Math.ceil(((c.offsetLeft + c.offsetWidth) / bw) * AW) + 6 : 0;
@@ -475,7 +683,8 @@
         d.job = 'zone'; d.anchor = [this.los + 6, MID]; d.mark = null;
       }
       this.rollBusts();
-      this.phase = 'live'; this.t = 0; this.caught = false; this.scramble = false; this.gesture = null; this.aim = null;
+      this.phase = 'live'; this.t = 0; this.caught = false; this.scramble = false; this.gesture = null; this.aim = null; this.reads = null; this.cpuDecided = false; this.readIdx = -1;
+      if (this.defending) { const k = this.dcall.type; this.covTend[k] = (this.covTend[k] || 0) + 1; }
       // play action: linebackers and safeties step up on the fake; good cover men barely bite, and the more
       // you've run the ball this game, the harder they bite
       if (this.play.pa) {
@@ -579,7 +788,7 @@
     // Calls a coverage the way an NFL coordinator would: by down and distance, field position, clock and score,
     // and the offense's tendencies so far this game. Better defenses adapt more and disguise more.
     callDefense() {
-      const d = this.cfg.oppDef, smart = clamp((d - 60) / 30, 0, 1);
+      const d = this.defRating(), smart = clamp((d - 60) / 30, 0, 1);
       const togo = this.fdx >= 110 ? 110 - this.los : this.fdx - this.los, lead = this.score.opp - this.score.me;   // the defense's lead
       let w;
       if (this.down >= 3 && togo <= 3) w = { cover1p: 25, cover0: 25, cover1: 25, firezone: 15, cover3: 10 };
@@ -604,6 +813,7 @@
         if (dp > 0.35) for (const k of ['cover2', 'cover4', '2man']) mul(k, f((dp - 0.35) * 4));
         if (sh > 0.4) { mul('cover1p', f((sh - 0.4) * 4)); mul('cover2', f((sh - 0.4) * 2)); }
       }
+      this.defW = w;                                   // kept so the defensive menu can rank calls
       let r = Math.random() * Object.values(w).reduce((a, b) => a + b, 0), type = 'cover3';
       for (const k in w) { if ((r -= w[k]) < 0) { type = k; break; } }
       // disguise: show one shell and rotate to the real call at the snap
@@ -616,7 +826,7 @@
     }
 
     setupFormation() {
-      const L = this.los, r = this.cfg.roster, d = this.cfg.oppDef, M = (...a) => this.mk(...a);
+      const L = this.los, r = this.roster(), d = this.defRating(), M = (...a) => this.mk(...a);
       const wr = (o) => 6.6 + (o - 60) * 0.035;
       this.qb = M('O', 'QB', L - 5, MID, 5.5); this.qb.agi = this.qbs.agi; this.qb.sta = this.qbs.sta; this.qb.sStat = this.qbs.spd;
       // on a run the back sets up in the off-tackle gap, so running straight hits a lane, not a lineman
@@ -656,7 +866,7 @@
         // how long the lineman across from him holds him. Passes: his pass-block stat. Runs are decided in
         // about 1.5s, so there run block (with a quarter strength) sets a hold of ~1-3s that varies block to block.
         if (isRun) p.shed = clamp(2.2 + ((ol[i].blk * 0.75 + ol[i].pow * 0.25) - d) * 0.06, 0.4, 4) * rnd(0.5, 1.5)
-          * (GP.hasSkill(this.cfg.staff, 'OC', 'ground') ? 1.2 : 1);                              // OC skill: Ground Game
+          * (!this.defending && GP.hasSkill(this.cfg.staff, 'OC', 'ground') ? 1.2 : 1);                              // OC skill: Ground Game
         else p.shed = clamp(2.6 + rnd(0, 2.4) + (ol[i].blk - d) * 0.05, 1.5, 7) * (this.dif ? this.dif.rush : 1);
         ol[i].mark = p; return p;
       });
@@ -676,6 +886,7 @@
         const p = this.cov.s2; p.info = this.dRoster.S2; p.role = 'S'; p.spd = 6.6 + (p.info.spd - 60) * 0.035;
       }
       this.off.forEach((p, i) => { p.skin = (i * 7 + 2) % 3; });
+      if (this.defending) for (const p of this.off) p.spd *= this.cpuK.spd;     // their offense's pace (tuned for balance)
       this.downed = null;
 
       if (this.play && this.play.type === 'pass') {
@@ -721,7 +932,7 @@
     //   zone  - he drops to the wrong spot                    play action - he bites twice as hard on the fake
     //   runs  - he misreads it, comes late and overruns the play
     rollBusts() {
-      const dc = this.oppDC, isRun = this.play.type === 'run';
+      const dc = this.dcStars(), isRun = this.play.type === 'run';
       for (const d of this.def) {
         d.bust = null; d.bustHit = false;
         if (d.role === 'DL' || !d.info || d.job === 'rush') continue;
@@ -869,6 +1080,7 @@
       const L = this.los, qb = this.qb, b = this.ball, isPass = this.play.type === 'pass';
       this.t += dt; this.tick(dt);
       if (!isPass && this.carrier === qb && this.t >= 0.25) this.carrier = this.rb;
+      if (this.defending) { this.cpuOffense(); if (this.phase !== 'live' || this.ball !== b) return; }   // he threw: next frame
       const c = this.carrier;
       const runPhase = this.running(c);
       const ref = c || this.rb;      // who blockers protect / defenders chase
@@ -970,7 +1182,7 @@
         const tkl = d.info.tkl;
         if (c === qb && !this.scramble) {
           if (Math.random() > clamp(0.86 + (tkl - 70) * 0.006, 0.75, 0.97)) { d.stun = 1; this.pop('Slipped the sack!'); continue; }
-          this.stats.sack++; d.info.tk++; this.downed = c; this.energy = Math.max(0, this.energy - 4);
+          this.stats.sack++; d.info.tk++; d.info.sacks = (d.info.sacks || 0) + 1; this.downed = c; this.energy = Math.max(0, this.energy - 4);
           return this.gainResult(c.x, `SACKED by #${d.info.num} — loss of ${Math.max(0, Math.round(L - c.x))}`);
         }
         if (c.juke && c.juke.t > 0 && !c.juke.read) {
@@ -1040,13 +1252,17 @@
     }
     fumble(x) {
       this.credit(x);
-      if (Math.random() < 0.6) {          // defense recovers
+      if (Math.random() < 0.6 && this.defending) {    // your defense recovers
+        this.stats.fum++;
+        return this.endPlay('FUMBLE! Your defense recovers', () => this.checkClock(() => this.startDrive(clamp(120 - x, 11, 105))));
+      }
+      if (Math.random() < 0.6 && !this.defending) {   // defense recovers
         this.stats.fum++;
         const dist = clamp(x - 10, 1, 99);
         return this.endPlay(`FUMBLE! ${this.cfg.opp.abbr} recover`, () => this.checkClock(() => this.oppDrive(dist, 'They recovered the fumble.')));
       }
       const g = Math.round(x - this.los);
-      this.gainResult(x, `Fumble — you recover${g ? (g > 0 ? `, gain of ${g}` : `, loss of ${-g}`) : ''}`);
+      this.gainResult(x, `Fumble — ${this.defending ? 'they keep it' : 'you recover'}${g ? (g > 0 ? `, gain of ${g}` : `, loss of ${-g}`) : ''}`);
     }
 
     steerRunner(p, dt) {
@@ -1063,7 +1279,7 @@
         if (p.stop.t > 0) { go(p, p.x, p.y, 0, dt, 14); return; }
         p.stop = null;
       }
-      const k = this.keys;
+      const k = this.defending ? {} : this.keys;               // their runner isn't yours to steer
       let dy = 0, sp = p.spd * 0.97, acc = 10;       // a touch slower with the ball
       const f = this.runFade(p, dt);
       if (f < 0.94 && !p.tired) { p.tired = true; this.pop('Running out of gas…', '#ffb43a'); }
@@ -1115,13 +1331,25 @@
       if (o.x >= 110) return this.touchdown();
     }
 
+    // the next down, for whichever side has the ball
+    nextDown() { if (this.defending) this.defChoose(); else this.toChoose(); }
+    // 4th down failed: the other side takes over where the ball is
+    downsTurnover(msg) {
+      if (this.defending) return this.endPlay(msg + ' — TURNOVER ON DOWNS', () => this.checkClock(() => this.startDrive(clamp(120 - this.los, 11, 105))));
+      this.endPlay(msg + ' — TURNOVER ON DOWNS', () => this.checkClock(() => this.oppDrive(this.los - 10, 'They take over on downs.')));
+    }
     incomplete(msg) {
-      if (this.down >= 4) return this.endPlay(msg + ' — TURNOVER ON DOWNS', () => this.checkClock(() => this.oppDrive(this.los - 10, 'They take over on downs.')));
+      if (this.down >= 4) return this.downsTurnover(msg);
       this.down++;
-      this.endPlay(msg, () => this.checkClock(() => this.toChoose()));
+      this.endPlay(msg, () => this.checkClock(() => this.nextDown()));
     }
     intercepted(x) {
       this.stats.int++;
+      if (this.defending) {                             // your defense picks it off: your ball at the spot
+        const d = this.def.reduce((a, p) => (!a || hyp(p.x - x, p.y - this.ball.ty) < hyp(a.x - x, a.y - this.ball.ty) ? p : a), null);
+        if (d && d.info) d.info.ints++;
+        return this.endPlay(d && d.info ? `INTERCEPTED by #${d.info.num}!` : 'INTERCEPTED!', () => this.checkClock(() => this.startDrive(clamp(120 - x, 11, 105))), 2);
+      }
       const dist = clamp(x - 10, 20, 95);
       this.endPlay('INTERCEPTED!', () => this.checkClock(() => this.oppDrive(dist, 'They take over after the pick.')));
     }
@@ -1132,6 +1360,10 @@
     touchdown() {
       this.credit(110);
       if (this.caught) this.stats.ptd++; else this.stats.rtd++;
+      if (this.defending) {                             // they score; the extra point is automatic, then they kick off
+        this.score.opp += 7;
+        return this.endPlay(`TOUCHDOWN ${this.cfg.opp.name}`, () => this.checkClock(() => this.startDrive(35)), 2);
+      }
       this.score.me += 6;
       this.endPlay('TOUCHDOWN!', () => (this.q === 5 ? this.final() : this.startKick('pat')), 2);
     }
@@ -1142,6 +1374,7 @@
     gainResult(x, label, oob) {
       const gain = Math.round(x - this.los);
       if (x <= 10) {
+        if (this.defending) { this.score.me += 2; return this.endPlay('SAFETY! Two points for you', () => this.checkClock(() => this.startDrive(45)), 2); }
         this.score.opp += 2;
         return this.endPlay('SAFETY', () => this.checkClock(() => this.oppDrive(65, 'They get the ball after the safety.')));
       }
@@ -1149,17 +1382,17 @@
       let msg = label || (gain > 0 ? `Gain of ${gain}` : gain < 0 ? `Loss of ${-gain}` : 'No gain');
       if (oob) msg += ' (out of bounds)';
       else if (this.clock !== Infinity) {
-        const hurry = GP.hasSkill(this.cfg.staff, 'OC', 'twomin') && (this.q === 2 || this.q === 4) && this.clock < 60;   // OC skill
+        const hurry = !this.defending && GP.hasSkill(this.cfg.staff, 'OC', 'twomin') && (this.q === 2 || this.q === 4) && this.clock < 60;   // OC skill
         this.clock = Math.max(0, this.clock - RUNOFF * (hurry ? 0.5 : 1));
       }
       if (this.los >= this.fdx) {
         this.down = 1; this.fdx = Math.min(this.los + 10, 110);
-        this.endPlay(msg + ' — FIRST DOWN', () => this.checkClock(() => this.toChoose()));
+        this.endPlay(msg + ' — FIRST DOWN', () => this.checkClock(() => this.nextDown()));
       } else if (this.down >= 4) {
-        this.endPlay(msg + ' — TURNOVER ON DOWNS', () => this.checkClock(() => this.oppDrive(this.los - 10, 'They take over on downs.')));
+        this.downsTurnover(msg);
       } else {
         this.down++;
-        this.endPlay(msg, () => this.checkClock(() => this.toChoose()));
+        this.endPlay(msg, () => this.checkClock(() => this.nextDown()));
       }
     }
     endPlay(msg, after, hold) {
@@ -1477,7 +1710,19 @@
     punt() { this.startKick('punt'); }
 
     // ---------- opponent possession (simulated) ----------
+    // The opponent gets the ball: you play defense (unless it's set to simulate), or the drive is simulated.
     oppDrive(dist, lead) {
+      if (this.cfg.playDefense === false) return this.oppDriveSim(dist, lead);
+      this.kick = null; this.carrier = null; this.ball = { state: 'held' };
+      this.setSide(true);
+      this.energy = 100; this.olEnergy = [100, 100, 100];
+      this.los = clamp(110 - dist, 11, 105); this.down = 1; this.fdx = Math.min(this.los + 10, 110);
+      this.covTend = {};
+      if (lead) this.banner = { text: lead.replace(/\.$/, '').toUpperCase(), t: 1.8 };
+      this.defChoose();
+    }
+    oppDriveSim(dist, lead) {
+      this.setSide(false);
       this.phase = 'opp'; this.kick = null;
       // the defense: its unit rating plus the defensive coordinator's stars and skills
       const st = this.cfg.staff, dc = (s) => GP.hasSkill(st, 'DC', s);
@@ -1516,15 +1761,27 @@
       this.final();
     }
 
+    // your defense's game: what their offense managed, and your playmakers
+    defLine() {
+      const o = this.oppStats, d = Object.values(this.myDefRoster);
+      if (!o.att && !o.ryd && !o.rtd) return 'Defense: simulated';
+      const tk = d.filter((r) => r.tk > 0).sort((a, b) => b.tk - a.tk).slice(0, 2).map((r) => `#${r.num} ${r.pos} ${r.tk}`).join(', ');
+      const sacks = d.reduce((a, r) => a + (r.sacks || 0), 0), ints = d.reduce((a, r) => a + (r.ints || 0), 0);
+      return `Your defense: allowed ${o.comp}/${o.att} passing for ${o.pyd} yds, ${o.ryd} rushing · ${sacks} sacks, ${ints} INT${tk ? ` · Tackles ${tk}` : ''}`;
+    }
     tacklers() {
+      if (this.myDefRoster) { const save = this.dRoster; this.dRoster = this.oppDefRoster; const t = this.tacklers0(); this.dRoster = save; return t; }
+      return this.tacklers0();
+    }
+    tacklers0() {
       const top = Object.values(this.dRoster).filter((r) => r.tk > 0).sort((a, b) => b.tk - a.tk).slice(0, 3);
       return top.length ? top.map((r) => `#${r.num} ${r.pos} (TKL ${r.tkl}) ${r.tk}`).join(' · ') : 'none';
     }
     final() {
       this.phase = 'final'; this.kick = null; if (this.pz) this.pz.btn.hidden = true;
-      const s = this.score, st = this.stats, won = s.me > s.opp;
+      const s = this.score, st = this.myStats, won = s.me > s.opp;
       this.showPanel(won ? 'VICTORY' : 'DEFEAT',
-        `${this.cfg.me.abbr} ${s.me} — ${s.opp} ${this.cfg.opp.abbr}\n\nPassing ${st.comp}/${st.att}, ${st.pyd} yds, ${st.ptd} TD, ${st.int} INT\nRushing ${st.ryd} yds, ${st.rtd} TD · Sacked ${st.sack}x\nBroken tackles ${st.broken} (${st.jbroken} on jukes) · Yards after contact ${st.yac} · Fumbles lost ${st.fum}\n\n${this.cfg.opp.abbr} tacklers: ${this.tacklers()}`,
+        `${this.cfg.me.abbr} ${s.me} — ${s.opp} ${this.cfg.opp.abbr}\n\n${this.defLine()}\n\nPassing ${st.comp}/${st.att}, ${st.pyd} yds, ${st.ptd} TD, ${st.int} INT\nRushing ${st.ryd} yds, ${st.rtd} TD · Sacked ${st.sack}x\nBroken tackles ${st.broken} (${st.jbroken} on jukes) · Yards after contact ${st.yac} · Fumbles lost ${st.fum}\n\n${this.cfg.opp.abbr} tacklers: ${this.tacklers()}`,
         [{ label: 'Continue', fn: () => { this.destroy(); this.cfg.onEnd(s.me, s.opp, st); } }], true);
     }
 
@@ -1598,6 +1855,7 @@
       this.art = this.art || document.createElement('canvas'); this.art.width = AW; this.art.height = AH;
       this.ag = this.art.getContext('2d');
       this.fieldImg = GP.Pixel.field(me, opp, YA, TOPA, FW, PAD);
+      this.fieldImgDef = GP.Pixel.field(opp, me, YA, TOPA, FW, PAD);   // on defense they attack your end zone
       if (!this.kits0) this.kits0 = GP.matchKits(this.cfg.me.id, this.cfg.opp.id, this.cfg.home !== false, this.cfg.uniform);
       this.kits = {
         // each side in its uniform for this game (see uniforms.js)
@@ -1651,7 +1909,7 @@
       if (!this.art) this.initArt();
       const g = this.ag, Px = GP.Pixel, FH = Math.round(FW * YA);
       this.camPx = Math.round(this.camX * YA);
-      g.drawImage(this.fieldImg, -(this.camPx + Math.round(PAD * YA)), 0);
+      g.drawImage(this.defending ? this.fieldImgDef : this.fieldImg, -(this.camPx + Math.round(PAD * YA)), 0);
 
       const show = this.phase !== 'opp' && this.phase !== 'final';
       if (show) {
@@ -1660,7 +1918,7 @@
       }
 
       // route preview
-      if (this.phase === 'presnap' && this.play.type === 'pass') {
+      if (this.phase === 'presnap' && this.play.type === 'pass' && !this.defending) {
         for (const p of this.off) {
           if (!p.route) continue;
           let lx = this.ax(p.x), ly = this.ay(p.y) - 3;
@@ -1688,7 +1946,8 @@
       if (this.aim && this.passing()) this.drawAim();
       if (this.kick) this.drawKick();
 
-      if (this.phase === 'presnap') this.hint('TAP THE FIELD TO SNAP');
+      if (this.phase === 'presnap') this.hint(this.defending ? 'DEFENSE · TAP THE FIELD WHEN READY' : 'TAP THE FIELD TO SNAP');
+      else if (this.phase === 'live' && this.defending) this.hint('YOUR DEFENSE · ' + (this.dcall ? callName(this.dcall).toUpperCase() : ''));
       else if (this.phase === 'live' && this.passing() && !this.aim) this.hint('DRAG BACK TO THROW · SWIPE TOWARD THE END ZONE TO RUN');
       else if (this.phase === 'kick' && this.kick) this.hint({ set: 'TAP THE FIELD TO START THE KICK', aim: 'DRAG BACK TO AIM · RELEASE TO KICK',
         meter: 'TAP WHEN THE MARKER IS IN THE GREEN', flight: '' }[this.kick.stage] || '');
@@ -1731,7 +1990,8 @@
       const moving = (this.phase === 'live' || this.phase === 'tackling' || this.phase === 'kick') && hyp(p.vx, p.vy) > 0.8;
       const sliding = p.lunge && p.lunge.slide || (p === this.downed && p.slid);
       const pose = p.pose || (sliding ? 'slide' : down ? 'down' : moving ? (Math.floor(this.animT * 9 + (p.skin || 0)) % 2 ? 'run1' : 'run2') : 'stand');
-      const img = this.kits[p.team][p.skin || 0][pose][p.face];
+      const side = this.defending ? (p.team === 'O' ? 'D' : 'O') : p.team;   // on defense their offense wears their kit
+      const img = this.kits[side][p.skin || 0][pose][p.face];
       g.fillStyle = 'rgba(0,0,0,.28)'; g.fillRect(X - 4, Y + 1, 9, 2); g.fillRect(X - 3, Y + 3, 7, 1);
       if (p === this.carrier && !down) {
         // ring at the ball carrier's feet; yellow and doubled while a juke is live
@@ -1747,13 +2007,13 @@
         g.fillStyle = '#10182a'; g.fillRect(bx - 1, Y - 7, 5, 4);
         g.fillStyle = '#8a4b22'; g.fillRect(bx, Y - 6, 3, 2); g.fillStyle = '#ffffff'; g.fillRect(bx + 1, Y - 6, 1, 1);
       }
-      if (p === this.qb && (this.phase === 'presnap' || this.phase === 'live' || this.phase === 'choose')) {
+      if (p === this.qb && !this.defending && (this.phase === 'presnap' || this.phase === 'live' || this.phase === 'choose')) {
         // stamina bar above the QB's head
         const e = this.energy / 100;
         g.fillStyle = '#10182a'; g.fillRect(X - 8, Y - 19, 17, 4);
         g.fillStyle = e > 0.6 ? '#4fd18b' : e > 0.3 ? '#ffd84a' : '#ff6b6b'; g.fillRect(X - 7, Y - 18, Math.round(15 * e), 2);
       }
-      if (p.team === 'O' && p.route && this.phase !== 'dead')
+      if (p.team === 'O' && p.route && this.phase !== 'dead' && !this.defending)
         Px.text(g, p.role.replace(/\d/, ''), X, Y - 23, '#ffffff', 1, { center: true, shadow: '#10182a' });
     }
     drawBall() {
