@@ -99,6 +99,14 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
   plays from a 5-star defense under a 5-star coordinator, 1 every 2 from 0 stars under 0 stars. Every
   team's defensive coordinator has 0-5 stars, shown on the next-game card. A big catch a bust caused
   pops up as "Busted coverage!".
+- **Blocking after the catch and on returns.** Once a pass is caught, every receiver, tight end and back turns
+  blocker: each picks a defender still in front of the ball carrier, gets between them and locks him up (the
+  tight end's blocking stat sets how long, about 0.9s for a receiver or back). On kickoff and punt returns the
+  return team forms a wall, each blocker takes a cover man coming at the returner (one nobody else has, if he
+  can) and stays on him: 0.7-1.8s on a kickoff, 0.2-0.5s on a punt (punt coverage arrives with the ball), then
+  the cover man is free for a moment before anyone can pick him up again. Measured with a returner who just
+  runs straight: punt returns about 11 yards (they were 5, with the blockers barely touching anyone), kickoff
+  returns about 16; steering into the gaps does better.
 - **Blocking is one-on-one.** A lineman holds only the man he's blocking, so the defense's numbers matter:
   against a one-high man call (Cover 0, Cover 1, press) one defender near the line goes unblocked, and you
   beat him with a juke or by throwing. Man defenders line up over their man, so the tight end's defender

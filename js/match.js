@@ -1098,7 +1098,9 @@
       let f = 1;
       for (const o of this.off) {
         if (!o.blocking) continue;
-        const line = o.role === 'OL' || (o.role === 'TE' && this.play.type === 'run');
+        // after a catch every receiver, tight end and back turns blocker and locks up the man he picks
+        const afterCatch = this.caught && o.role !== 'OL' && o !== this.carrier;
+        const line = o.role === 'OL' || (o.role === 'TE' && this.play.type === 'run') || afterCatch;
         // a lineman (or a run-blocking tight end) holds only the man he's blocking, not everyone near him
         if (line && o.otarget !== d && o.btarget !== d && o.mark !== d) continue;
         if (hyp(o.x - d.x, o.y - d.y) < (line ? 1.5 : 1.2)) {
@@ -1116,8 +1118,9 @@
             // a tight end's blocking stat sets how long he holds the man he engages, on average about
             // 0.5s at 50, 1.4s at 70, 2.3s at 90, varying from block to block (40%-160% of that).
             // Runs are decided in about 1.5s, so better blockers lose their man less often.
-            if (o.blk != null && d.blockedBy !== o) {
-              d.blockedBy = o; d.shed = d.eng + clamp(0.5 + (o.blk - 50) * 0.045, 0.3, 2.5) * rnd(0.4, 1.6);
+            // After a catch: the tight end's blocking stat, and about 50 for a receiver or back (0.9s on average).
+            if (d.blockedBy !== o && (o.blk != null || afterCatch)) {
+              d.blockedBy = o; d.shed = d.eng + clamp(0.5 + ((o.blk != null ? o.blk : 50) - 50) * 0.045, 0.3, 2.5) * rnd(0.4, 1.6);
             }
             d.eng += dt; d.held = true; return 0.15;
           }
@@ -1911,15 +1914,30 @@
       go(k.lead, R.x - 5, R.y + (R.y < MID ? 3 : -3), k.lead.spd, dt, 9);
     }
     // the return team's blockers each take a coverage man coming downfield and hold him a moment
+    // Each blocker picks a cover man still in front of the returner (one nobody else has, if he can), gets between
+    // him and the ball, and locks him up (0.7-1.8s on a kickoff, 0.2-0.5s on a punt); then the cover man is free for a moment before anyone can
+    // pick him up again.
     returnBlocks(dt) {
       const k = this.kick, R = this.carrier || k.ret;
+      for (const c of k.cover) if (c.shedCd > 0) c.shedCd -= dt;
       for (const b of this.def) {
         if (b === k.ret || b.stun > 0) continue;
         let t = b.btarget;
-        if (!t || t.hold > 0.05 || t.stun > 0) {
+        if (t && t.blockedBy === b && !(t.hold > 0)) { t.blockedBy = null; t.shedCd = 0.7; b.btarget = t = null; }   // he got off the block
+        if (!t || t.stun > 0 || t.x > R.x + 2 || (t.blockedBy && t.blockedBy !== b)) {
           t = null; let bd = 1e9;
-          for (const c of k.cover) { if (c.hold > 0 || c.stun > 0 || c.x < R.x - 2) continue; const x = hyp(c.x - b.x, c.y - b.y); if (x < bd) { bd = x; t = c; } }
+          const taken = new Set(this.def.filter((o) => o !== b && o.btarget).map((o) => o.btarget));
+          for (const c of k.cover) {
+            if (c.stun > 0 || c.x > R.x + 2 || (c.blockedBy && c.blockedBy !== b && c.hold > 0)) continue;   // past him, or already blocked
+            const x = hyp(c.x - b.x, c.y - b.y) + 0.4 * hyp(c.x - R.x, c.y - R.y) + (taken.has(c) ? 8 : 0);
+            if (x < bd) { bd = x; t = c; }
+          }
           b.btarget = t;
+        }
+        if (t && t.blockedBy === b && t.hold > 0) {                // locked up: stay between him and the ball
+          const d = hyp(R.x - t.x, R.y - t.y) || 1;
+          go(b, t.x + ((R.x - t.x) / d) * 0.8, t.y + ((R.y - t.y) / d) * 0.8, b.spd, dt, 12);
+          continue;
         }
         // during the flight, blockers drop back into a wall about 9 yards in front of the returner and only
         // take on a cover man who gets close; once he has the ball they take on whoever's coming
@@ -1928,8 +1946,9 @@
           go(b, k.retX - 9, b.wall, b.spd, dt, 8); continue;
         }
         if (!t) { go(b, R.x + 4, b.y, b.spd * 0.6, dt, 8); continue; }
-        go(b, t.x - 0.9, t.y + (R.y - t.y) * 0.1, b.spd, dt, 9);
-        if (hyp(t.x - b.x, t.y - b.y) < 1.2 && !(t.hold > 0)) { t.hold = rnd(0.3, 0.85); b.btarget = null; }
+        const d = hyp(R.x - t.x, R.y - t.y) || 1;
+        go(b, t.x + ((R.x - t.x) / d) * 0.9, t.y + ((R.y - t.y) / d) * 0.9, b.spd, dt, 9);
+        if (hyp(t.x - b.x, t.y - b.y) < 1.2 && !(t.hold > 0) && !(t.shedCd > 0)) { t.hold = k.res.ko ? rnd(0.7, 1.8) : rnd(0.2, 0.5); t.blockedBy = b; }   // punt coverage comes in fast: shorter blocks
       }
     }
     // the ball comes down: out of bounds, into the end zone, into the returner's hands, or onto the turf
