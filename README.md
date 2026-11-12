@@ -108,7 +108,8 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
   scrimmage near the back (left) of the screen and the field ahead. Before the snap and while the
   quarterback has the ball it only crops the stands, so every receiver stays on screen; once someone's
   running with the ball it closes in to about 1.6x, and moves up with him once he's about three-quarters of
-  the way across. It eases back out for kicks; the scoreboard and hints stay full size.
+  the way across. It eases back out for kicks; the scoreboard, hints and the stands strips above and below the field stay
+  their normal size at any zoom.
 - **Play defense (Phase 1: you call it).** When the opponent has the ball you play their drive: the field
   flips so they attack your end zone, their offense calls a play (hidden from you), and your defensive
   coordinator calls a coverage. Keep it or tap Change for four groups: Man (Cover 1, Cover 1 Press, 2-Man),
@@ -189,13 +190,16 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
   defenders read a thrown ball sooner and from farther away the better they cover. Easy also throws
   straighter, tires less, gets more time and a bigger catch window; Hard makes defenders read throws faster.
   Choose the difficulty on the title screen; change it any time from the team page.
+- **New career:** choosing your team will be part of career setup (not built yet); for now New career
+  gives you a random team.
 - **Team page:** your team's banner, the next game (tap Play), uniforms and the defense setting, then a
   tile for each part of running the team: Roster, Standings, Coaching staff, Trades, Draft (offseason) and
   Difficulty. The **roster** is a grid of cards (position, a pixel portrait in your home uniform, name,
   stars, overall against potential, and a bar for how far he's grown); empty spots show as dimmed reserve
   cards. Tap a card for the **player card**: his profile on the left, attributes on the right (each bar
   filled to his value, outlined up to his ceiling) with upgrade buttons, and arrows to step through the
-  roster. Menus use a pixel font (Silkscreen, from Google Fonts; plain monospace offline).
+  roster. Menus use a pixel font (Silkscreen, from Google Fonts; plain monospace offline) and keep clear of the
+  notch / Dynamic Island in landscape.
 - **Franchise:** 32 teams in two conferences (American, National), each with four divisions of four,
   laid out like the NFL: the American Conference is the AFC and the National the NFC, every team plays in
   its NFL counterpart's city and division, in that team's colors. Teams go by their city alone; where two

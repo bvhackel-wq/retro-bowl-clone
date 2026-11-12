@@ -60,21 +60,13 @@
       h('div', { class: 'tabs' }, ...Object.entries(GP.DIFFICULTY).map(([k, label]) =>
         h('button', { class: 'btn small' + (k === newDiff ? '' : ' ghost'), onclick: () => { newDiff = k; renderTitle(); } }, label))),
       h('div', { class: 'dim' }, diffDesc[newDiff])));
-    const grid = $('#team-grid'); grid.innerHTML = '';
-    const start = (t) => {
+    // New career: the team is picked during setup (not built yet); until then you get a random team
+    act.append(h('button', { class: 'btn' + (saved ? ' ghost' : ''), onclick: () => {
       if (saved && !confirm('Start a new career? This replaces your current save.')) return;
+      const t = GP.TEAMS[Math.floor(Math.random() * GP.TEAMS.length)];
       S = GP.newCareer(t.id, newDiff); GP.save(S); viewConf = t.conf; renderHub();
-    };
-    GP.CONFS.forEach((cn, c) => {
-      grid.append(h('h3', { class: 'conf px' }, cn + ' Conference'));
-      const row = h('div', { class: 'divs' });
-      GP.DIVS.forEach((dn, d) => {
-        row.append(h('div', { class: 'card' }, h('h2', null, dn),
-          ...GP.TEAMS.filter((t) => t.conf === c && t.div === d).map((t) =>
-            h('button', { class: 'team-card', style: `--c1:${t.c1};--c2:${t.c2}`, onclick: () => start(t) }, badge(t), h('span', null, h('b', { class: 'px' }, t.name), h('br'), h('small', null, t.abbr))))));
-      });
-      grid.append(row);
-    });
+    } }, 'New career'));
+    act.append(h('div', { class: 'dim', style: 'width:100%;font-size:13px' }, 'For now a new career gives you a random team; choosing one will be part of career setup.'));
     show('title');
   }
 

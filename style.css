@@ -5,7 +5,7 @@
 *{box-sizing:border-box}
 html,body{overscroll-behavior:none;margin:0;height:100%;background:var(--bg);color:var(--ink);
   font-family:ui-rounded,"Trebuchet MS","Segoe UI",system-ui,sans-serif;-webkit-tap-highlight-color:transparent}
-#app{max-width:1100px;margin:0 auto;padding:0 16px}
+#app{max-width:1100px;margin:0 auto;padding:env(safe-area-inset-top) max(16px,env(safe-area-inset-right)) env(safe-area-inset-bottom) max(16px,env(safe-area-inset-left))}
 .screen{display:none;padding:16px 0 32px}
 .screen.on{display:block}
 h1,h2,h3{margin:0}
@@ -19,10 +19,6 @@ button{font:inherit;color:inherit;cursor:pointer;border:0}
 .btn.small{padding:6px 12px;font-size:14px;border-radius:8px}
 .btn:disabled{opacity:.35;cursor:default}
 #title-actions{display:flex;gap:10px;flex-wrap:wrap}
-#team-grid .conf{margin:18px 0 8px;font-size:18px}
-#team-grid .divs{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px}
-#team-grid .card h2{margin:0 0 8px}
-#team-grid .team-card{width:100%;margin-top:6px;padding:9px 10px;background:var(--bg)}
 .tabs{display:flex;gap:8px;margin-bottom:6px}
 table+table{margin-top:14px}
 td:first-child,th:first-child{width:26px}
@@ -196,9 +192,6 @@ button.link:hover{color:var(--bad)}
 .pill.big{font-size:18px;font-family:Silkscreen,monospace}
 .stars{color:#ffd84a;letter-spacing:1px}
 .stars .off{color:rgba(255,255,255,.18)}
-/* title: team cards in their colors */
-#team-grid .team-card{border-radius:4px;box-shadow:inset 4px 0 0 var(--c1),inset 0 0 0 1px var(--line)}
-#team-grid .team-card:hover{box-shadow:inset 4px 0 0 var(--c1),inset 0 0 0 2px var(--c2)}
 /* team page */
 .teamhead{padding:12px;border-radius:6px;background:linear-gradient(90deg,var(--c1),transparent 70%)}
 .teamhead h1{font-size:26px}

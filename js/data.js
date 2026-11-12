@@ -623,6 +623,7 @@
     try {
       const s = JSON.parse(localStorage.getItem(KEY));
       if (!s || (s.v !== 2 && s.v !== 3)) return null;
+      if (s.news) s.news = s.news.filter((n) => !/three individual linemen/.test(n));   // an old one-time notice
       // saves from before agility existed: give the current back a rating near his overall
       if (s.v === 2 && s.roster.RB.agi == null && !s.roster.RB.stats) s.roster.RB.agi = GP.clamp(s.roster.RB.ovr + GP.rint(-6, 6), 40, 99);
       // saves from before stars and per-stat caps
@@ -649,7 +650,7 @@
           GP.refresh(r, 'OL'); s.players.push(r);
         }
         delete s.units.OL;
-        s.news = (s.news || []).concat('Your offensive line is now three individual linemen on the roster.');
+
         changed = true;
       }
       if (!s.staff) { s.staff = { OC: genCoach('OC', 1), DC: genCoach('DC', 1) }; changed = true; }

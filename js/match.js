@@ -2166,7 +2166,10 @@
       left = Math.min(left, f.x - wy * 0.1);                             // never lose the ball off the back
       this.zl = this.zl == null ? left : this.zl + (left - this.zl) * 0.15;
       this.zy = this.zy == null ? f.y : this.zy + (f.y - this.zy) * 0.15;
-      return { sx: clamp(this.ax(this.zl), 0, AW - sw), sy: clamp(this.ay(this.zy) - sh / 2, 0, AH - sh), sw, sh };
+      // keep the stands strips (the top one under the scoreboard, the bottom one under the hints) the same
+      // height on screen at any zoom: the view never reaches further into the stands than the unzoomed one
+      const FH = FW * YA, top = TOPA - TOPA / this.zf, bot = TOPA + FH - (AH - TOPA) / this.zf;
+      return { sx: clamp(this.ax(this.zl), 0, AW - sw), sy: clamp(this.ay(this.zy) - sh / 2, top, Math.max(top, bot)), sw, sh };
     }
     hint(t) {
       const g = this.ug, Px = GP.Pixel, w = Px.width(t) + 10;
