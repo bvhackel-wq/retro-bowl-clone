@@ -262,7 +262,8 @@
       L.append(h('h2', null, (S.phase === 'playoffs' ? 'Playoffs — ' : '') + game.label), h('div', { class: 'card gamecard' },
         h('div', { class: 'vsline px' }, (game.home === false ? 'at ' : 'vs ') + full(o)),
         h('div', { class: 'matchup' }, side(me, rec, true), h('div', { class: 'at px' }, game.home === false ? 'AT' : 'VS'), side(o, or, false)),
-        h('button', { class: 'btn play big', onclick: () => pregame(game) }, 'Play game')));
+        h('button', { class: 'btn play big', onclick: () => pregame(game) }, 'Play game'),
+        h('button', { class: 'btn ghost filmbtn', onclick: () => renderFilm(game) }, 'Watch opponent film')));
     } else {
       const ch = GP.team(S.champion);
       L.append(h('h2', null, `Season ${S.season} complete`), h('div', { class: 'card next' },
@@ -435,6 +436,32 @@
     show('hub');
   }
 
+  // Film on the next opponent: your OC breaks down their defense, your DC their offense. Every tip is true for
+  // this team this season; how many you see grows through the season and with your coordinators' stars.
+  function renderFilm(game) {
+    const hub = $('#hub'); hub.innerHTML = '';
+    const o = GP.team(game.oppId), f = GP.film(S, game.oppId), me = GP.team(S.teamId);
+    hub.append(backBar(`Film · ${o.name}`, renderHub));
+    const total = f.off.length + f.def.length;
+    const col = (role, tips, title) => {
+      const c = S.staff[role], rv = GP.filmReveal(S, c.stars), shown = tips.slice(0, rv.n), locked = tips.length - shown.length;
+      const nextWk = rv.week + (3 - ((rv.week - 1) % 3));
+      return h('div', { class: 'filmcol' },
+        h('div', { class: 'filmcoach' },
+          h('div', { class: 'fc-pic', style: `background:${me.c1}` }, coachPortrait(c, { jersey: me.c2, number: me.c1 })),
+          h('div', null, h('div', { class: 'px fc-role' }, `${role} · ${title}`), h('div', null, h('b', null, c.name), ' ', stars(c.stars)),
+            h('div', { class: 'dim fc-say' }, shown.length ? `"Here's what I've got on ${o.name}${rv.detail ? ', and how we beat it' : ''}."` : '"Nothing yet."'))),
+        ...shown.map((t, i) => h('div', { class: 'card tip filmtip' }, h('div', { class: 'ft-head px' }, `${i + 1}. ${t.head}`), h('div', null, t.text),
+          rv.detail ? h('div', { class: 'ft-fix' }, '→ ' + t.fix) : null)),
+        locked ? h('div', { class: 'card filmtip locked dim' }, `${locked} more on tape. ` + (rv.week < 14 ? `More by week ${Math.min(nextWk, 14)}` : 'A better coordinator would see more') + (c.stars < 5 ? `; a better ${role} sees more.` : '.')) : null,
+        !rv.detail ? h('div', { class: 'dim ft-note' }, 'From week 6 (or with a 4-star coordinator) each tip comes with how to beat it.') : null);
+    };
+    const seen = GP.filmReveal(S, S.staff.OC.stars).n + GP.filmReveal(S, S.staff.DC.stars).n;
+    hub.append(h('div', { class: 'dim film-sub' }, `${game.label} · ${game.home === false ? 'at' : 'vs'} ${full(o)} · ${Math.min(seen, total)} of ${total} tendencies on tape`));
+    hub.append(h('div', { class: 'filmcols' }, col('DC', f.off, 'their offense'), col('OC', f.def, 'their defense')));
+    hub.append(h('div', { class: 'film-go' }, h('button', { class: 'btn play', onclick: () => pregame(game) }, 'Play game')));
+    show('hub');
+  }
   // Between Play game and kickoff: pick the uniform and whether you play defense, then kick off.
   function pregame(game) {
     let box = document.getElementById('pregame');
@@ -460,7 +487,8 @@
     show('match');
     GP.match = new GP.Match($('#field'), {
       me: GP.team(S.teamId), opp: GP.team(game.oppId), roster: GP.lineup(S), staff: S.staff, difficulty: S.difficulty || 'normal',
-      oppOff: or.off, oppDef: or.def, oppDC: GP.oppDC(S, game.oppId), home: game.home !== false, uniform: S.uniform || 'auto', playDefense: S.playDefense !== false, label: game.label,
+      oppOff: or.off, oppDef: or.def, oppDC: GP.oppDC(S, game.oppId),
+      oppSeed: `${game.oppId}|${S.season}`, oppScheme: GP.teamScheme(game.oppId, S.season), home: game.home !== false, uniform: S.uniform || 'auto', playDefense: S.playDefense !== false, label: game.label,
       onEnd: (my, opp, st, info) => {
         GP.match = null; GP.advance(S, my, opp);
         if (info && info.forfeit) { S.news = (S.news || []).concat(`You forfeited against ${full(GP.team(game.oppId))}. It counts as a ${my}-${opp} loss.`); GP.save(S); }

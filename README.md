@@ -266,6 +266,18 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
   filled to his value, outlined up to his ceiling) with upgrade buttons, and arrows to step through the
   roster. Menus use a pixel font (Silkscreen, from Google Fonts; plain monospace offline) and keep clear of the
   notch / Dynamic Island in landscape.
+- **Opponent film.** Every team has a scheme for the season that its play calling and coverage calling follow:
+  run or pass first, short or deep, a favorite play type, a 3rd-and-long go-to and a red-zone go-to on offense;
+  man or zone, how often it blitzes, a favorite 3rd-and-long coverage and how often it disguises on defense.
+  Its players are the same all season too. Watch opponent film (under Play game) has your DC break down their
+  offense and your OC their defense, each tip with the number that matters (their fastest target, a weak
+  corner, the slowest safety, the quarterback's arm against his accuracy) and, later on, how to beat it. You
+  see 1 tendency per coordinator in week 1 and one more every 3 weeks, plus 1 with a 3-star and 1 with a 5-star
+  coordinator; from week 6 (or with a 4-star coordinator) each comes with how to beat it. Measured, what the
+  film tells you is worth knowing: a run-first team runs about 75% of snaps against about 40% for a pass-first
+  one; a man team plays man about 64% of snaps against 22% for a zone team; a blitz-heavy team about 34%
+  against 12%; a team's 3rd-and-long go-to goes from about 5% to 65-70% of those snaps; its 3rd-and-long
+  coverage from about 13% to about 42%; a screen team screens about 27% of snaps against 1%.
 - **Coaching staff page:** laid out like the roster. Your coordinators come first, as cards with a portrait in
   a staff polo in your team's colors, their role, name, stars, age and skills; below them, the coaches
   available for hire this season, grouped by job (in a plain gray polo until you hire them), each with a Hire

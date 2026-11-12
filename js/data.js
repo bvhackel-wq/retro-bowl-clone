@@ -311,6 +311,94 @@
   GP.rec = (s, id) => s.teams.find((t) => t.id === id);
   // Every other team's defensive coordinator: 0-5 stars, kept for the career. Loosely follows the team's defense,
   // but a talented defense can have a poor coordinator (and the reverse). His stars set how often his players bust.
+  // ---------- opponent identity: a scheme and a roster that hold for the whole season ----------
+  GP.hash = (str) => { let x = 2166136261; for (const ch of String(str)) x = Math.imul(x ^ ch.charCodeAt(0), 16777619) >>> 0; return x; };
+  // run fn with Math.random replaced by a seeded generator, so the same seed always gives the same draws
+  GP.withSeed = function (seed, fn) {
+    const save = Math.random; let a = seed >>> 0;
+    Math.random = () => { a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+    try { return fn(); } finally { Math.random = save; }
+  };
+  GP.oppSeed = (id, season, what) => GP.hash(`${id}|${season}|${what}`);
+  // A team's scheme for the season, which their play calling and coverage calling follow (see match.js cpuCall
+  // and callDefense). Offense: run lean and deep lean (-1..1), a favorite play type, a 3rd-and-long go-to and a
+  // red-zone go-to. Defense: man (+) or zone (-) lean, blitz and disguise rates (0.5-2x), a 3rd-and-long call.
+  GP.teamScheme = (id, season) => GP.withSeed(GP.oppSeed(id, season, 'scheme'), () => {
+    const pick = (a) => a[Math.floor(Math.random() * a.length)], r2 = (x) => Math.round(x * 100) / 100;
+    const lean = () => { const x = GP.rnd(-1, 1); return r2(Math.sign(x) * Math.max(Math.abs(x), 0.25)); };   // no team is perfectly neutral
+    return {
+      run: lean(), deep: lean(), fav: pick(['quick', 'deep', 'inside', 'outside', 'screen', 'pa']),
+      third: pick(['quick', 'deep', 'screen', 'outside']), red: pick(['inside', 'quick', 'pa', 'outside']),
+      man: lean(), blitz: r2(pick([0.5, 0.7, 1, 1.4, 1.9])), disguise: r2(pick([0.5, 0.8, 1.2, 2])),
+      long3: pick(['cover4', '2man', 'cover2', 'firezone', 'cover0']),
+    };
+  });
+
+  // ---------- opponent film ----------
+  // What your coordinators can tell you about the next opponent: your DC on their offense, your OC on their
+  // defense. Every tip is true: it comes from the team's scheme and from its roster for the season. Ordered by
+  // how much it matters; how many you see grows through the season (see GP.filmReveal).
+  const CAT = { quick: 'quick passes', deep: 'deep shots', inside: 'inside runs', outside: 'outside runs', screen: 'screens', pa: 'play action' };
+  const CALL = { cover0: 'Cover 0', cover1: 'Cover 1', cover1p: 'Cover 1 Press', cover2: 'Cover 2', cover3: 'Cover 3', cover4: 'Cover 4', '2man': '2-Man', firezone: 'Fire Zone' };
+  // what beats each coverage (from the measured play-vs-coverage results your OC uses)
+  const BEAT = { cover0: 'Stick and Curls get it out before the rush', cover2: 'Dagger, Curls and Comeback sit in the holes',
+    cover4: 'Comeback and Post work underneath and between the deep quarters', '2man': 'Verticals win against it',
+    firezone: 'Post, Dagger and Comeback beat its three-deep shell', cover1: 'Verticals, Stick and play-action shots beat it' };
+  // what stops each kind of play (your defensive call groups)
+  const STOP = { inside: 'Blitz calls (Cover 0, Fire Zone) and Cover 1 load the box',
+    outside: 'Zone keeps everyone facing the ball and turns runs inside; Cover 3 has the edges', quick: 'Cover 1 Press jams the quick routes',
+    deep: 'two-high looks (Cover 4, 2-Man, Cover 2) keep it in front', screen: "zone; don't blitz into a screen", pa: 'Cover 4 or 2-Man, so the safeties stay deep' };
+  GP.film = function (s, oppId) {
+    const t = GP.team(oppId), r = GP.rec(s, oppId), sc = GP.teamScheme(oppId, s.season), nm = t.name;
+    const off = GP.withSeed(GP.oppSeed(oppId, s.season, 'off'), () => GP.oppOffense(r.off));
+    const def = GP.withSeed(GP.oppSeed(oppId, s.season, 'def'), () => GP.Match.defRoster(r.def));
+    const st = (k, x) => off[k].stats[x], offTips = [], defTips = [];
+    // ---- their offense (your DC) ----
+    const runText = sc.run > 0 ? `${nm} want to run the ball${sc.run > 0.6 ? ' — a lot' : ''}.` : `${nm} would rather throw it${sc.run < -0.6 ? ' — they barely run' : ''}.`;
+    offTips.push({ w: Math.abs(sc.run), head: sc.run > 0 ? 'Run-first offense' : 'Pass-first offense', text: runText,
+      fix: sc.run > 0 ? `Early downs: ${STOP.inside}.` : `Sit in zone (Cover 3, Cover 4) and make them be patient.` });
+    offTips.push({ w: Math.abs(sc.deep) * 0.9, head: sc.deep > 0 ? 'They take deep shots' : 'Short, quick passing game',
+      text: sc.deep > 0 ? `When they throw, they look deep${sc.deep > 0.6 ? ' every chance they get' : ''}.` : `They throw short and quick${sc.deep < -0.6 ? ', almost nothing downfield' : ''}.`,
+      fix: sc.deep > 0 ? `Play ${STOP.deep}.` : `${STOP.quick}, and you can take a chance with a blitz.` });
+    offTips.push({ w: 0.8, head: `Favorite: ${CAT[sc.fav]}`, text: `They call ${CAT[sc.fav]} far more than a typical team.`, fix: `When you expect it: ${STOP[sc.fav]}.` });
+    offTips.push({ w: 0.75, head: '3rd and long', text: `On 3rd and long they go to ${CAT[sc.third]}.`, fix: `${STOP[sc.third][0].toUpperCase() + STOP[sc.third].slice(1)}.` });
+    offTips.push({ w: 0.6, head: 'In the red zone', text: `Inside your 20 they lean on ${CAT[sc.red]}.`, fix: `${STOP[sc.red][0].toUpperCase() + STOP[sc.red].slice(1)}.` });
+    const wrs = ['WR1', 'WR2', 'TE'].map((k) => ({ k, spd: st(k, 'spd'), hands: st(k, 'hands') })).sort((a, b) => b.spd - a.spd);
+    const lab = { WR1: 'their #1 receiver', WR2: 'their #2 receiver', TE: 'their tight end' };
+    offTips.push({ w: 0.55, head: 'Deep threat', text: `${lab[wrs[0].k][0].toUpperCase() + lab[wrs[0].k].slice(1)} is their fastest target (speed ${wrs[0].spd}).`, fix: 'Keep a safety over the top of him on obvious passing downs.' });
+    const qa = st('QB', 'arm'), qc = st('QB', 'acc');
+    offTips.push({ w: 0.5, head: 'Quarterback', text: qa - qc >= 5 ? `Big arm (${qa}), shaky accuracy (${qc}): he'll throw into tight windows and miss.` : qc - qa >= 5 ? `Accurate (${qc}) more than strong (${qa}): he lives on short, on-time throws.` : `Balanced arm (${qa}) and accuracy (${qc}).`,
+      fix: qa - qc >= 5 ? 'Play the ball in the air: go for the pick (swipe up) when he forces it.' : qc - qa >= 5 ? 'Pressure beats him: blitz and dive at him with your ringed lineman.' : 'Mix it up; nothing to exploit here.' });
+    const rb = off.RB.stats;
+    offTips.push({ w: 0.4, head: 'Running back', text: rb.pow - rb.spd >= 5 ? `Their back runs through people (power ${rb.pow}).` : rb.spd - rb.pow >= 5 ? `Their back has breakaway speed (${rb.spd}).` : `Their back is a little of everything.`,
+      fix: rb.pow - rb.spd >= 5 ? 'Gang tackle; arm tackles slide off.' : rb.spd - rb.pow >= 5 ? 'Keep contain on outside runs.' : 'Fill your gaps.' });
+    // ---- their defense (your OC) ----
+    defTips.push({ w: Math.abs(sc.man), head: sc.man > 0 ? 'Man coverage team' : 'Zone coverage team', text: sc.man > 0 ? `${nm} love to play man${sc.man > 0.6 ? ' — Cover 1 most snaps' : ''}.` : `${nm} sit in zone${sc.man < -0.6 ? ' — mostly Cover 3 and Cover 2' : ''}.`,
+      fix: sc.man > 0 ? `${BEAT.cover1}.` : 'Dagger, Post and Comeback find the holes; Outs get jumped by Cover 3.' });
+    defTips.push({ w: Math.abs(Math.log(sc.blitz)) + 0.1, head: sc.blitz >= 1.4 ? 'They blitz a lot' : sc.blitz <= 0.7 ? 'They rarely blitz' : 'Average blitz rate',
+      text: sc.blitz >= 1.4 ? `Expect Cover 0 and Fire Zone pressure, especially on 3rd down.` : sc.blitz <= 0.7 ? 'They rush four and drop everybody else.' : 'They pick their spots to bring pressure.',
+      fix: sc.blitz >= 1.4 ? `${BEAT.cover0}; a screen can go a long way.` : sc.blitz <= 0.7 ? 'You will have time: let the deep routes develop.' : 'Have a quick throw ready on 3rd down.' });
+    defTips.push({ w: 0.8, head: '3rd and long', text: `On 3rd and long they call ${CALL[sc.long3]}.`, fix: `${BEAT[sc.long3]}.` });
+    defTips.push({ w: Math.abs(sc.disguise - 1) * 0.7 + 0.2, head: sc.disguise >= 1.2 ? 'They disguise coverages' : 'What you see is what you get',
+      text: sc.disguise >= 1.2 ? `They show one shell and rotate to another at the snap${sc.disguise >= 2 ? ' — often' : ''}.` : 'The shell they show before the snap is usually what they play.',
+      fix: sc.disguise >= 1.2 ? 'After the play, the banner shows what they really ran: check it before you trust a look.' : 'Read the pre-snap shell and pick the play that beats it.' });
+    const cbs = Object.values(def).filter((d) => d.pos === 'CB').sort((a, b) => a.cov - b.cov);
+    if (cbs.length > 1 && cbs[1].cov - cbs[0].cov >= 3) defTips.push({ w: 0.6, head: 'Weak corner', text: `Cornerback #${cbs[0].num} is their weak link in coverage (${cbs[0].cov}, against ${cbs[1].cov} for #${cbs[1].num}).`, fix: 'Throw at whichever receiver he covers.' });
+    const saf = Object.values(def).filter((d) => d.pos === 'S').sort((a, b) => a.spd - b.spd);
+    if (saf.length) defTips.push({ w: 0.45, head: 'Safeties', text: `Safety #${saf[0].num} is the slowest man in their secondary (speed ${saf[0].spd}).`, fix: 'Posts and deep middle throws test him.' });
+    const lbs = Object.values(def).filter((d) => d.pos === 'LB'), lbSpd = Math.round(lbs.reduce((a, d) => a + d.spd, 0) / Math.max(1, lbs.length));
+    defTips.push({ w: 0.35, head: 'Linebackers', text: lbSpd < r.def - 3 ? `Their linebackers are slow (speed ${lbSpd}).` : `Their linebackers can run (speed ${lbSpd}).`,
+      fix: lbSpd < r.def - 3 ? 'Screens and crossers get outside of them.' : 'Attack the edges with outside runs instead.' });
+    const order = (a) => a.sort((x, y) => y.w - x.w);
+    return { off: order(offTips), def: order(defTips), scheme: sc };
+  };
+  // How much of the film your coordinator can show you: 1 tendency in week 1, one more every 3 weeks, plus 1 at
+  // 3 stars and 1 at 5 stars; from week 6 (or with a 4-star coordinator) each comes with how to beat it.
+  GP.filmReveal = (s, stars) => {
+    const wk = s.phase === 'regular' ? s.week + 1 : (s.schedule ? s.schedule.length : 14) + 1;
+    return { n: 1 + Math.floor((wk - 1) / 3) + (stars >= 3 ? 1 : 0) + (stars >= 5 ? 1 : 0), detail: wk >= 6 || stars >= 4, week: wk };
+  };
+
   GP.oppDC = function (s, id) {
     const t = GP.rec(s, id);
     if (t.dc == null) { t.dc = GP.clamp(Math.round((t.def - 60) / 8) + GP.rint(-2, 2), 0, 5); GP.save(s); }

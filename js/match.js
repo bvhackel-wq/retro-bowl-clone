@@ -138,7 +138,9 @@
       // matchup, by about as much as the simulation gives it.
       const myDef = cfg.roster.DEF.ovr + (cfg.staff ? cfg.staff.DC.stars * 1.5 : 0), mid = (cfg.oppOff + myDef) / 2;
       this.myDefRaw = cfg.roster.DEF.ovr;
-      this.oppRoster = GP.oppOffense(Math.round(mid + (cfg.oppOff - mid) * GAP_K));
+      // the same players all season (the film describes them): drawn from a seed for this team and season
+      const seeded = (what, fn) => (cfg.oppSeed != null ? GP.withSeed(GP.hash(cfg.oppSeed + '|' + what), fn) : fn());
+      this.oppRoster = seeded('off', () => GP.oppOffense(Math.round(mid + (cfg.oppOff - mid) * GAP_K)));
       this.myDefEff = Math.round(mid + (myDef - mid) * GAP_K);
       // kicker: distance sets how far he can aim, accuracy the meter's green zone and speed
       const kst = r.K.stats || {}, kv = (k) => (kst[k] != null ? kst[k] : r.K.ovr);
@@ -151,7 +153,7 @@
       this.myStats = this.stats = newStats(); this.oppStats = newStats();     // your offense / theirs
       // Each side's defenders have a jersey number, tackling (TKL), speed and coverage, drawn from the defense's
       // rating. Yours come from your defense unit plus your coordinator's stars.
-      this.oppDefRoster = this.dRoster = Match.defRoster(cfg.oppDef);
+      this.oppDefRoster = this.dRoster = seeded('def', () => Match.defRoster(cfg.oppDef));
       this.myDef = this.myDefEff;
       // your defenders are your players: each keeps his own strengths, all shifted by your coordinator's
       // bonus and the same gap squeeze as above (older careers without defensive players: from the rating)
@@ -568,6 +570,15 @@
       if (late && diff < 0) { sit.inside -= 3; sit.outside -= 2; sit.screen -= 1; sit.deep += 1; sit.quick += 0.5; }
       if (this.q >= 4 && diff > 0 && !late) { sit.inside += 3; sit.outside += 2; }
       sit.inside += this.cpuK.run; sit.outside += this.cpuK.run * 0.6;      // a real offense runs it about 45% of the time
+      // their scheme (what the film shows): run and deep leans, a favorite, a 3rd-and-long and a red-zone go-to
+      const sc = this.cfg.oppScheme;
+      if (sc) {
+        sit.inside += sc.run * 1.3; sit.outside += sc.run * 0.9; sit.quick -= sc.run * 0.4; sit.deep -= sc.run * 0.4;
+        sit.deep += sc.deep * 1.5; sit.pa += sc.deep * 0.5; sit.quick -= sc.deep * 0.8; sit.screen -= sc.deep * 0.4;
+        sit[sc.fav] += sc.fav === "screen" || sc.fav === "pa" ? 2.6 : 1.6;   // screens and play action start from almost nothing
+        if (this.down === 3 && togo >= 7) sit[sc.third] += 2.5;
+        if (this.los >= 90) sit[sc.red] += sc.red === "pa" ? 4.5 : 2.5;
+      }
       const smart = clamp((this.cfg.oppOff - 60) / 30, 0, 1), n = Object.values(this.covTend).reduce((a, b) => a + b, 0);
       let best = null, bs = -1e9;
       for (const p of PLAYS) {
@@ -928,16 +939,23 @@
         if (dp > 0.35) for (const k of ['cover2', 'cover4', '2man']) mul(k, f((dp - 0.35) * 4));
         if (sh > 0.4) { mul('cover1p', f((sh - 0.4) * 4)); mul('cover2', f((sh - 0.4) * 2)); }
       }
+      const sc = !this.defending && this.cfg.oppScheme;    // their scheme (what the film shows)
+      if (sc && !(late && lead > 0)) {
+        for (const k of ['cover1', 'cover1p', '2man', 'cover0']) mul(k, 1 + 0.7 * sc.man);
+        for (const k of ['cover2', 'cover3', 'cover4']) mul(k, 1 - 0.6 * sc.man);
+        mul('cover0', sc.blitz); mul('firezone', sc.blitz);
+        if (this.down === 3 && togo >= 8) { if (w[sc.long3] == null) w[sc.long3] = 10; mul(sc.long3, 3); }
+      }
       this.defW = w;                                   // kept so the defensive menu can rank calls
       let r = Math.random() * Object.values(w).reduce((a, b) => a + b, 0), type = 'cover3';
       for (const k in w) { if ((r -= w[k]) < 0) { type = k; break; } }
       // disguise: show one shell and rotate to the real call at the snap
       let shown = type;
-      if (type !== 'prevent' && Math.random() < 0.08 + smart * 0.17) {
+      if (type !== 'prevent' && Math.random() < (0.08 + smart * 0.17) * (sc ? sc.disguise : 1)) {
         const looks = ['cover1', 'cover2', 'cover3', 'cover4'].filter((x) => x !== type);
         shown = looks[Math.floor(Math.random() * looks.length)];
       }
-      return { type, shown, lbBlitz: type === 'cover1' && Math.random() < (this.down >= 3 ? 0.3 : 0.12) };
+      return { type, shown, lbBlitz: type === 'cover1' && Math.random() < (this.down >= 3 ? 0.3 : 0.12) * (sc ? sc.blitz : 1) };
     }
 
     setupFormation() {
