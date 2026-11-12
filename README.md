@@ -94,7 +94,7 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
   the man covering him. Cover 0 is a real all-out blitz: quick throws beat it, slow ones get sacked.
 - **Go for the interception.** On defense, swipe up (or press up/space) as their pass arrives. The
   defender nearest where it will come down plays the ball, and his coverage sets the timing window (about
-  0.18s at 60 coverage, 0.36s at 90). On time and close enough: he goes for the pick (an interception or a
+  0.17s at 60 coverage, 0.34s at 90). On time and close enough: he goes for the pick (an interception or a
   breakup). Too early: pass interference, a spot foul and an automatic first down. Too late, just after the
   catch: he whiffs on the tackle. One try per pass.
 - **Camera zoom** (pause menu, remembered on the device): framed from behind the offense, with the line of

@@ -1370,7 +1370,7 @@
 
     // ---------- going for the interception (defense) ----------
     // Swipe up as their pass arrives. The defender nearest where it will come down plays the ball; his
-    // coverage sets the timing window (about 0.18s at 60 coverage, 0.36s at 90). On time: he goes for the
+    // coverage sets the timing window (about 0.17s at 60 coverage, 0.34s at 90). On time: he goes for the
     // pick (an interception or a breakup, better the closer he is and the better he covers). Too early:
     // pass interference, a spot foul and a first down. Too late (just after the catch): he whiffs on the
     // tackle. One try per pass.
@@ -1379,7 +1379,7 @@
       const b = this.ball;
       if (b.state === 'air') {
         const d = this.def.reduce((a, p) => (!a || hyp(p.x - b.tx, p.y - b.ty) < hyp(a.x - b.tx, a.y - b.ty) ? p : a), null);
-        const left = (1 - b.u) * b.dur, win = clamp(0.18 + ((d.info ? d.info.cov : 70) - 60) * 0.006, 0.15, 0.4);
+        const left = (1 - b.u) * b.dur, win = clamp(0.18 + ((d.info ? d.info.cov : 70) - 60) * 0.006, 0.15, 0.4) * 0.95;
         this.intTry = { kind: left <= win ? 'good' : 'early', d };
         if (this.intTry.kind === 'good') this.pop(`#${d.info.num} goes for it!`, '#5df2ff');
         return;
