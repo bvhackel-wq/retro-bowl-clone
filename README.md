@@ -128,7 +128,7 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
   jog over: half the time a jump with his arms up, half the time the griddy (heel taps shuffling side to side,
   then the glasses); then the game moves on to the extra point (or the kickoff).
 - **Kickoffs.** Every half, and every score, starts with a kickoff from the kicking team's 35 (you receive the
-  opening kickoff and kick to start the second half; you receive in overtime). Kicking: the same tap, aim and
+  opening kickoff and kick to start the second half; in overtime the coin toss winner receives). Kicking: the same tap, aim and
   meter as a punt, with the same stretch past the range (64 yards at 71 kick distance, about to the goal
   line); your coverage team runs down and their returner brings it back. Receiving: your running back
   returns it with the runner controls; tap while it's in the air for a fair catch (in the end zone, a
@@ -306,9 +306,16 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
   too alike the opponent switches. Pick yours for the next game on your team page (Auto, or any of the four),
   with a preview of each and of what the opponent will wear.
   14-game season: 6 division games, 4 against another division in your conference, 4 against a
-  division in the other conference (pairings rotate each season). Six teams per conference make
-  the playoffs (four division winners plus two wild cards; top two seeds get a bye), then
-  Wild Card, Divisional, Conference Championship and the Championship Game. Wins earn coaching
+  division in the other conference (pairings rotate each season). Seven teams per conference make
+  the playoffs, as in the NFL since 2020: the four division winners are seeds 1-4 by record, three wild cards
+  5-7; only the 1 seed has a bye (Wild Card games: 2 vs 7, 3 vs 6, 4 vs 5), the top remaining seed plays the
+  lowest after each round, and the higher seed hosts. Then Divisional, Conference Championship and the
+  Championship Game. Ties in the standings are broken NFL-style (simplified): head-to-head among the tied
+  teams, division record (within a division), conference record, strength of victory, point differential,
+  then a coin flip. Overtime follows the NFL's 2024 rules: a coin toss, both teams get the ball at least
+  once, then the next score wins (a safety or a return score by the team without the ball ends it at once);
+  in the regular season it's one period (10 minutes, scaled) and can end in a tie (W-L-T, half a win), in
+  the playoffs it goes on until someone wins. Wins earn coaching
   points for roster upgrades; players age between seasons. Progress saves to `localStorage`.
 
 ## Art

@@ -404,22 +404,50 @@
     if (t.dc == null) { t.dc = GP.clamp(Math.round((t.def - 60) / 8) + GP.rint(-2, 2), 0, 5); GP.save(s); }
     return t.dc;
   };
-  const byRecord = (a, b) => b.w - a.w || (b.pf - b.pa) - (a.pf - a.pa);
-  GP.standings = (s) => s.teams.slice().sort(byRecord);   // whole league, best first
-  GP.divStandings = (s, conf, div) =>
-    s.teams.filter((t) => { const m = GP.team(t.id); return m.conf === conf && m.div === div; }).sort(byRecord);
-  // Six seeds per conference: four division winners, then two wild cards.
+  // winning percentage: a tie counts as half a win
+  const pct = (w, l, t) => (w + l + t ? (w + 0.5 * t) / (w + l + t) : 0.5);
+  const winPct = (r) => pct(r.w, r.l, r.t || 0);
+  const byRecord = (a, b) => winPct(b) - winPct(a) || (b.pf - b.pa) - (a.pf - a.pa);
+  GP.recText = (r) => `${r.w}-${r.l}${r.t ? '-' + r.t : ''}`;
+  GP.standings = (s) => s.teams.slice().sort(byRecord);   // whole league, best first (draft order and the like)
+  // NFL-style tiebreakers, simplified. Teams with the same winning percentage are ordered by, in turn:
+  // head-to-head record among the tied teams, division record (teams in the same division), conference record,
+  // strength of victory (the wins of the teams they beat), then point differential, then a coin flip.
+  // Saves from before results were kept fall straight through to point differential.
+  function rankTeams(s, list) {
+    const res = s.results || [], sv = (id) => res.reduce((a, g) => a + (g.a === id && g.pa > g.pb ? winPct(GP.rec(s, g.b)) : g.b === id && g.pb > g.pa ? winPct(GP.rec(s, g.a)) : 0), 0);
+    const recIn = (id, ok) => { let w = 0, l = 0, t = 0; for (const g of res) { const me = g.a === id ? 'a' : g.b === id ? 'b' : null; if (!me) continue;
+      const opp = me === 'a' ? g.b : g.a, mp = me === 'a' ? g.pa : g.pb, op = me === 'a' ? g.pb : g.pa; if (!ok(opp)) continue; if (mp > op) w++; else if (mp < op) l++; else t++; } return pct(w, l, t); };
+    const groups = new Map();
+    for (const t of list) { const k = winPct(t).toFixed(4); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(t); }
+    const out = [];
+    for (const k of [...groups.keys()].sort((a, b) => b - a)) {
+      const g = groups.get(k);
+      if (g.length > 1) {
+        const ids = new Set(g.map((t) => t.id)), divOf = (id) => { const m = GP.team(id); return m.conf * 4 + m.div; };
+        const sameDiv = g.every((t) => divOf(t.id) === divOf(g[0].id)), conf = GP.team(g[0].id).conf;
+        const key = (t) => [recIn(t.id, (o) => ids.has(o)), sameDiv ? recIn(t.id, (o) => divOf(o) === divOf(t.id)) : 0,
+          recIn(t.id, (o) => GP.team(o).conf === conf), sv(t.id), t.pf - t.pa, (GP.hash(t.id + '|' + s.season) % 1000) / 1000];
+        g.sort((a, b) => { const ka = key(a), kb = key(b); for (let i = 0; i < ka.length; i++) if (Math.abs(ka[i] - kb[i]) > 1e-9) return kb[i] - ka[i]; return 0; });
+      }
+      out.push(...g);
+    }
+    return out;
+  }
+  GP.divStandings = (s, conf, div) => rankTeams(s, s.teams.filter((t) => { const m = GP.team(t.id); return m.conf === conf && m.div === div; }));
+  // Seven seeds per conference, as in the NFL since 2020: the four division winners (1-4, by record), then three
+  // wild cards (5-7). Only the 1 seed has a bye.
   GP.seeds = function (s, conf) {
-    const winners = [0, 1, 2, 3].map((d) => GP.divStandings(s, conf, d)[0]).sort(byRecord);
-    const rest = s.teams.filter((t) => GP.team(t.id).conf === conf && !winners.includes(t)).sort(byRecord);
-    return [...winners, ...rest.slice(0, 2)].map((t) => t.id);
+    const winners = rankTeams(s, [0, 1, 2, 3].map((d) => GP.divStandings(s, conf, d)[0]));
+    const rest = rankTeams(s, s.teams.filter((t) => GP.team(t.id).conf === conf && !winners.includes(t)));
+    return [...winners, ...rest.slice(0, 3)].map((t) => t.id);
   };
   GP.ROUNDS = ['Wild Card', 'Divisional Round', 'Conference Championship', 'Championship Game'];
   function buildRound(p) {
     const g = [];
     if (p.round === 3) g.push([p.alive[0][0], p.alive[1][0]]);
     else for (const a of p.alive) {
-      if (p.round === 0) g.push([a[2], a[5]], [a[3], a[4]]);
+      if (p.round === 0) g.push(...(a.length >= 7 ? [[a[1], a[6]], [a[2], a[5]], [a[3], a[4]]] : [[a[2], a[5]], [a[3], a[4]]]));   // 7 seeds (6 in older saves)
       else if (p.round === 1) g.push([a[0], a[3]], [a[1], a[2]]);
       else g.push([a[0], a[1]]);
     }
@@ -459,7 +487,8 @@
   function record(s, a, b, pa, pb) {
     const A = GP.rec(s, a), B = GP.rec(s, b);
     A.pf += pa; A.pa += pb; B.pf += pb; B.pa += pa;
-    if (pa > pb) { A.w++; B.l++; } else { B.w++; A.l++; }
+    if (pa > pb) { A.w++; B.l++; } else if (pb > pa) { B.w++; A.l++; } else { A.t = (A.t || 0) + 1; B.t = (B.t || 0) + 1; }   // a regular-season tie
+    (s.results = s.results || []).push({ a, b, pa, pb });   // kept for the tiebreakers
   }
 
   GP.currentGame = function (s) {
@@ -484,7 +513,7 @@
   function endSeason(s, champion, note) {
     s.champion = champion; s.phase = 'offseason'; s.seasonNote = note;
     const me = GP.rec(s, s.teamId);
-    s.history.push({ season: s.season, w: me.w, l: me.l, note });
+    s.history.push({ season: s.season, w: me.w, l: me.l, t: me.t || 0, note });
     GP.startDraft(s);
   }
 
@@ -682,7 +711,7 @@
 
   // Apply the user's result (pass nulls on a playoff bye) and simulate everything else that week.
   GP.advance = function (s, myPts, oppPts) {
-    const g = GP.currentGame(s), me = s.teamId, played = myPts != null, won = played && myPts > oppPts;
+    const g = GP.currentGame(s), me = s.teamId, played = myPts != null, won = played && myPts > oppPts, tied = played && myPts === oppPts;
     let earned = 0, champ = null;
     const simOut = () => { while (!champ) champ = playRound(s, null); };
     if (s.phase === 'regular') {
@@ -690,7 +719,7 @@
         if (a === me || b === me) record(s, me, g.oppId, myPts, oppPts);
         else { const [pa, pb] = simGame(s, a, b); record(s, a, b, pa, pb); }
       }
-      earned = won ? 2 : 1;
+      earned = won ? 2 : tied ? 1.5 : 1;   // (points are whole numbers: a tie rounds up below)
       s.week++;
       if (s.week >= s.schedule.length) {
         const seeds = [GP.seeds(s, 0), GP.seeds(s, 1)];
@@ -706,7 +735,7 @@
       if (champ === me) { earned += 5; endSeason(s, me, 'CHAMPIONS'); }
       else if (champ || !s.playoff.alive.flat().includes(me)) { simOut(); endSeason(s, champ, 'Lost in the ' + label); }
     }
-    s.credits += earned;
+    s.credits += Math.ceil(earned);
     GP.save(s);
     return earned;
   };
@@ -716,7 +745,7 @@
     const drafted = (s.news || []).filter((n) => n.startsWith('You drafted'));
     s.draft = null;
     if (s.pickOwners) for (const k in s.pickOwners) if (+k.split('-')[0] <= s.season) delete s.pickOwners[k];
-    s.season++; s.week = 0; s.phase = 'regular'; s.playoff = null; s.champion = null;
+    s.season++; s.week = 0; s.phase = 'regular'; s.playoff = null; s.champion = null; s.results = [];
     s.news = drafted;
     s.players = s.players.filter((r) => {
       r.age++;
@@ -734,7 +763,7 @@
     s.blocks = {};                           // and new trade blocks
     s.staffPool = null;                      // and new coaching candidates
     for (const t of s.teams) {
-      t.w = t.l = t.pf = t.pa = 0;
+      t.w = t.l = t.t = t.pf = t.pa = 0;
       if (t.id !== s.teamId) { t.off = GP.clamp(t.off + GP.rint(-3, 3), 60, 92); t.def = GP.clamp(t.def + GP.rint(-3, 3), 60, 92); }
     }
     s.schedule = buildSchedule(s.season);

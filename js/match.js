@@ -507,7 +507,15 @@
     // ---------- drive / down flow ----------
     // Stamina: every snap drains the QB's energy (faster with low stamina); he's fresh each drive.
     fatigue() { return (100 - this.energy) / 100; }
+    // overtime: note whose possession starts; once both teams have had the ball, a lead at a change of possession wins
+    otDrive(who) {
+      const o = this.ot; if (this.q !== 5 || !o) return false;
+      if (o.drives[o.drives.length - 1] !== who) o.drives.push(who);
+      if (o.drives.length >= 3 && this.score.me !== this.score.opp) { this.final(); return true; }
+      return false;
+    }
     startDrive(x) {
+      if (this.otDrive('me')) return;
       this.setSide(false);
       this.energy = 100; this.olEnergy = [100, 100, 100];
       this.los = clamp(x, 11, 105); this.down = 1; this.fdx = Math.min(this.los + 10, 110);
@@ -2204,6 +2212,7 @@
     // ---------- opponent possession (simulated) ----------
     // The opponent gets the ball: you play defense (unless it's set to simulate), or the drive is simulated.
     oppDrive(dist, lead) {
+      if (this.otDrive('opp')) return;
       if (this.cfg.playDefense === false) return this.oppDriveSim(dist, lead);
       this.kick = null; this.carrier = null; this.ball = { state: 'held' };
       this.setSide(true);
@@ -2226,19 +2235,29 @@
       let need = (25 + rnd(0, 30)) * clamp(dist / 75, 0.35, 1.1);
       let text, nextX;
       const r = Math.random();
-      if (this.q <= 4 && this.clock < 12) { text = 'The clock runs out on their drive.'; need = this.clock; nextX = 35; }
+      if (this.clock !== Infinity && this.clock < 12) { text = 'The clock runs out on their drive.'; need = this.clock; nextX = 35; }
       else if (r < pTD) { this.score.opp += 7; text = `TOUCHDOWN ${o.name}. They march ${Math.round(dist)} yards and kick the extra point.`; nextX = 'ko'; }
       else if (r < pTD + pFG) { this.score.opp += 3; text = `${o.name} settle for a field goal.`; nextX = 'ko'; }
       else if (r < pTD + pFG + pTO) { text = Math.random() < 0.5 ? 'Your defense forces a fumble!' : 'Your defense picks it off!'; nextX = rnd(45, 65); }
       else { text = 'Your defense holds. They punt it away.'; nextX = rnd(28, 40) + (dc('flip') ? 8 : 0); }
-      if (this.q <= 4) this.clock = Math.max(0, this.clock - need);
+      if (this.clock !== Infinity) this.clock = Math.max(0, this.clock - need);
       this.showPanel(`${o.name} possession`, `${lead}\n${text}\n\n${this.cfg.me.abbr} ${this.score.me} — ${this.score.opp} ${o.abbr}`,
         [{ label: 'Continue', fn: () => this.checkClock(() => (nextX === 'ko' ? this.receiveKick() : this.startDrive(nextX))) }], true);
     }
 
     checkClock(next) {
       const s = this.score;
-      if (this.q === 5) return s.me !== s.opp ? this.final() : next();
+      if (this.q === 5) {
+        // NFL overtime (2024 rules): both teams get a possession; after that, the next score wins. The team that
+        // didn't have the ball scoring (a safety, a return) ends it at once. Regular season: one 10-minute period
+        // (scaled to these quarters), so it can end in a tie.
+        const o = this.ot || { drives: [] }, d = o.drives.length, lead = (who) => (who === 'me' ? s.me - s.opp : s.opp - s.me);
+        if (this.clock <= 0) return this.final();
+        if (d === 1 && lead(o.drives[0] === 'me' ? 'opp' : 'me') > 0) return this.final();
+        if (d === 2 && lead(o.drives[1]) > 0) return this.final();
+        if (d >= 3 && s.me !== s.opp) return this.final();
+        return next();
+      }
       if (this.clock > 0) return next();
       if (this.q === 1 || this.q === 3) { this.q++; this.clock = QLEN; this.banner = { text: `Start of Q${this.q}`, t: 1.5 }; return next(); }
       const line = `${this.cfg.me.abbr} ${s.me} — ${s.opp} ${this.cfg.opp.abbr}`;
@@ -2248,7 +2267,11 @@
       }
       if (s.me === s.opp) {
         this.q = 5; this.clock = Infinity; this.phase = 'opp';
-        return this.showPanel('Overtime', 'Sudden death — next score wins. You get the ball first.', [{ label: 'Go', fn: () => this.receiveKick() }], true);
+        // the coin toss; the winner takes the ball
+        const youReceive = Math.random() < 0.5, po = !!this.cfg.playoff;
+        this.ot = { drives: [] }; this.clock = po ? Infinity : Math.round(QLEN * 10 / 15);
+        return this.showPanel('Overtime', `${youReceive ? 'You win the coin toss and receive.' : `${this.cfg.opp.name} win the coin toss and receive.`}\nBoth teams get the ball at least once; if it's still tied after that, the next score wins.${po ? '' : '\nOne 10-minute period: if it ends tied, the game is a tie.'}`,
+          [{ label: 'Go', fn: () => (youReceive ? this.receiveKick() : this.kickoff()) }], true);
       }
       this.final();
     }
@@ -2272,7 +2295,7 @@
     final() {
       this.phase = 'final'; this.kick = null; if (this.pz) this.pz.btn.hidden = true;
       const s = this.score, st = this.myStats, won = s.me > s.opp;
-      this.showPanel(won ? 'VICTORY' : 'DEFEAT',
+      this.showPanel(won ? 'VICTORY' : s.me === s.opp ? 'TIE' : 'DEFEAT',
         `${this.cfg.me.abbr} ${s.me} — ${s.opp} ${this.cfg.opp.abbr}\n\n${this.defLine()}\n\nPassing ${st.comp}/${st.att}, ${st.pyd} yds, ${st.ptd} TD, ${st.int} INT\nRushing ${st.ryd} yds, ${st.rtd} TD · Sacked ${st.sack}x\nBroken tackles ${st.broken} (${st.jbroken} on jukes) · Yards after contact ${st.yac} · Fumbles lost ${st.fum}\n\n${this.cfg.opp.abbr} tacklers: ${this.tacklers()}`,
         [{ label: 'Continue', fn: () => { this.destroy(); this.cfg.onEnd(s.me, s.opp, st); } }], true);
     }

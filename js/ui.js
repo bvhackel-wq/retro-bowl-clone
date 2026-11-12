@@ -221,12 +221,12 @@
         const tm = GP.team(t.id), seed = seeds.indexOf(t.id);
         tb.append(h('tr', { class: t.id === S.teamId ? 'me' : '' },
           h('td', null, seed >= 0 ? h('span', { class: 'seed' }, String(seed + 1)) : ''), h('td', null, full(tm)),
-          h('td', null, String(t.w)), h('td', null, String(t.l)), h('td', null, String(t.pf)), h('td', null, String(t.pa))));
+          h('td', null, String(t.w)), h('td', null, String(t.l)), h('td', null, String(t.t || 0)), h('td', null, String(t.pf)), h('td', null, String(t.pa))));
       }
-      tables.append(h('table', null, h('thead', null, h('tr', null, ...['', dn, 'W', 'L', 'PF', 'PA'].map((x) => h('th', null, x)))), tb));
+      tables.append(h('table', null, h('thead', null, h('tr', null, ...['', dn, 'W', 'L', 'T', 'PF', 'PA'].map((x) => h('th', null, x)))), tb));
     });
     hub.append(tables);
-    if (S.history.length) hub.append(h('h2', null, 'History'), h('div', { class: 'card' }, ...S.history.map((x) => h('div', { class: 'dim' }, `Season ${x.season}: ${x.w}-${x.l} — ${x.note}`))));
+    if (S.history.length) hub.append(h('h2', null, 'History'), h('div', { class: 'card' }, ...S.history.map((x) => h('div', { class: 'dim' }, `Season ${x.season}: ${GP.recText(x)} — ${x.note}`))));
     show('hub');
   }
 
@@ -239,7 +239,7 @@
     hub.append(h('div', { class: 'hub-head teamhead', style: `--c1:${me.c1};--c2:${me.c2}` },
       badge(me), h('div', null, h('h1', { class: 'px' }, full(me)), h('div', { class: 'dim' }, `${GP.CONFS[me.conf]} ${GP.DIVS[me.div]} · Season ${S.season}`)),
       h('span', { class: 'sp' }),
-      h('span', { class: 'pill big' }, h('b', null, `${rec.w}-${rec.l}`)),
+      h('span', { class: 'pill big' }, h('b', null, GP.recText(rec))),
       h('span', { class: 'pill' }, 'Coaching points ', h('b', null, String(S.credits))),
       h('button', { class: 'btn ghost small', onclick: renderTitle }, 'Menu')));
 
@@ -250,14 +250,14 @@
     if (game && game.bye) {
       L.append(h('h2', null, 'Playoffs — ' + game.label), h('div', { class: 'card next' },
         h('div', null, h('div', { class: 'vs' }, 'First-round bye'),
-          h('div', { class: 'dim' }, 'You earned a top-two seed. Rest up while the wild cards play.')),
+          h('div', { class: 'dim' }, 'You earned the top seed. Rest up while the wild cards play.')),
         h('span', { style: 'flex:1' }),
         h('button', { class: 'btn', onclick: () => { GP.advance(S, null, null); renderHub(); } }, 'Advance')));
     } else if (game) {
       const o = GP.team(game.oppId), or = GP.rec(S, game.oppId);
       // the matchup: you and them side by side, then a big Play button (uniform and defense come in the pre-game dialog)
       const side = (t, r, you) => h('div', { class: 'tm' }, badge(t), h('div', { class: 'tmn px' }, t.abbr),
-        h('div', { class: 'dim' }, `${r.w}-${r.l}`), h('div', { class: 'dim tmr' }, `OFF ${r.off} · DEF ${r.def}`),
+        h('div', { class: 'dim' }, GP.recText(r)), h('div', { class: 'dim tmr' }, `OFF ${r.off} · DEF ${r.def}`),
         you ? null : h('div', { class: 'dim tmr' }, `DC ${starText(GP.oppDC(S, game.oppId))}`));
       L.append(h('h2', null, (S.phase === 'playoffs' ? 'Playoffs — ' : '') + game.label), h('div', { class: 'card gamecard' },
         h('div', { class: 'vsline px' }, (game.home === false ? 'at ' : 'vs ') + full(o)),
@@ -269,7 +269,7 @@
       L.append(h('h2', null, `Season ${S.season} complete`), h('div', { class: 'card next' },
         badge(ch),
         h('div', null, h('div', { class: 'vs px' }, S.champion === S.teamId ? 'You are the champions!' : `${full(ch)} win the title`),
-          h('div', { class: 'dim' }, `Your season: ${rec.w}-${rec.l} · ${S.seasonNote}`),
+          h('div', { class: 'dim' }, `Your season: ${GP.recText(rec)} · ${S.seasonNote}`),
           h('div', { class: 'dim' }, 'Young players develop and veterans decline over the offseason.')),
         h('span', { style: 'flex:1' }),
         h('div', { class: 'stack' },
@@ -488,7 +488,7 @@
     GP.match = new GP.Match($('#field'), {
       me: GP.team(S.teamId), opp: GP.team(game.oppId), roster: GP.lineup(S), staff: S.staff, difficulty: S.difficulty || 'normal',
       oppOff: or.off, oppDef: or.def, oppDC: GP.oppDC(S, game.oppId),
-      oppSeed: `${game.oppId}|${S.season}`, oppScheme: GP.teamScheme(game.oppId, S.season), home: game.home !== false, uniform: S.uniform || 'auto', playDefense: S.playDefense !== false, label: game.label,
+      playoff: S.phase === 'playoffs', oppSeed: `${game.oppId}|${S.season}`, oppScheme: GP.teamScheme(game.oppId, S.season), home: game.home !== false, uniform: S.uniform || 'auto', playDefense: S.playDefense !== false, label: game.label,
       onEnd: (my, opp, st, info) => {
         GP.match = null; GP.advance(S, my, opp);
         if (info && info.forfeit) { S.news = (S.news || []).concat(`You forfeited against ${full(GP.team(game.oppId))}. It counts as a ${my}-${opp} loss.`); GP.save(S); }
