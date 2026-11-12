@@ -730,8 +730,8 @@
         rec: !call.kick && call.play.cat === cat, fn: () => this.pickType(cat) }));
       // a field goal on any down once you're past midfield; a punt on 4th down
       if (this.los > 60 && !this.conv) {
-        const dist = this.fgDist(), far = dist > this.kickRange;
-        opts.push({ label: 'Field Goal', sub: `${dist} yds · range ${this.kickRange}${far ? ' · a long shot' : ''}`, kick: true, rec: call.kick === 'fg', fn: () => this.startKick('fg') });
+        const dist = this.fgDist(), far = dist > this.kickRange * 1.25 ? ' · out of reach' : dist > this.kickRange ? ' · a stretch' : '';
+        opts.push({ label: 'Field Goal', sub: `${dist} yds · range ${this.kickRange}${far}`, kick: true, rec: call.kick === 'fg', fn: () => this.startKick('fg') });
       }
       if (this.down === 4) opts.push({ label: 'Punt', sub: 'Flip the field', kick: true, rec: call.kick === 'punt', fn: () => this.punt() });
       this.showPanel(title, '', opts);
@@ -1690,18 +1690,18 @@
     // A punt can be stretched up to 25% past its range (the range ring turns yellow): the green zone shrinks
     // and even a clean one sails off target. Field goals stop at the range.
     kickAimTarget() {
-      const a = this.kaim, k = this.kick, max = k.type === 'punt' ? k.range * 1.25 : k.range;
+      const a = this.kaim, k = this.kick, max = k.range * 1.25;      // any kick can be stretched a quarter past its range
       let vx = ((a.sx - a.cx) / PPY) * 2.2, vy = ((a.sy - a.cy) / PPY) * 2.2;
       const d = hyp(vx, vy);
       if (d > max) { vx *= max / d; vy *= max / d; }
-      k.over = k.type === 'punt' ? clamp((Math.min(d, max) - k.range) / (k.range * 0.25), 0, 1) : 0;
+      k.over = clamp((Math.min(d, max) - k.range) / (k.range * 0.25), 0, 1);
       return { x: k.sx + vx, y: k.sy + vy };
     }
     kickRelease() {
       const a = this.kaim, k = this.kick;
       if (!a || hyp(a.cx - a.sx, a.cy - a.sy) < 14 || k.stage !== 'aim') { this.kaim = null; return; }
       k.target = this.kickAimTarget(); this.kaim = null;          // read the aim before clearing it
-      if (k.over > 0) { k.tol *= 1 - 0.5 * k.over; k.yel = k.tol + Math.max(0.035, k.tol * 0.9); }   // a stretched punt: less green
+      if (k.over > 0) { k.tol *= 1 - 0.5 * k.over; k.yel = k.tol + Math.max(0.035, k.tol * 0.9); }   // a stretched kick: less green
       k.stage = 'meter'; k.pos = 0; k.dir = 1;
     }
     doKick() {
@@ -1713,7 +1713,8 @@
       if (!clean && a <= k.yel) clean = Math.random() < 0.75 - 0.5 * ((a - k.tol) / (k.yel - k.tol));
       k.zone = a <= k.tol ? 'green' : a <= k.yel ? 'yellow' : 'red';
       if (k.type === 'punt') return this.puntResult(clean, Math.sign(off) || 1);
-      const dev = clean ? 0 : Math.sign(off) * (3.5 + Math.max(0, a - k.tol) * k.dist * 0.9);
+      // a stretched field goal drifts even when struck clean: at full stretch about 1 clean kick in 4 drifts outside the uprights
+      const dev = clean ? (k.over > 0 ? gauss() * k.over * 4.5 : 0) : Math.sign(off) * (3.5 + Math.max(0, a - k.tol) * k.dist * 0.9);
       const t = k.target, dx = t.x - k.sx, reach = hyp(dx, t.y - k.sy), toPosts = 120 - k.sx;
       let res;
       if (dx <= 0.5) res = { good: false, why: 'short', ex: t.x, ey: t.y + dev };
@@ -2347,8 +2348,9 @@
       if (k.cpu) return;                                  // their punt: nothing of yours to aim
       if (k.stage === 'flight' || k.stage === 'bounce' || k.stage === 'return') return;   // the ball's away: just watch
       const title = k.type === 'punt' ? `PUNT · RANGE ${k.range}` : `${k.type === 'pat' ? 'EXTRA POINT' : k.dist + '-YARD FIELD GOAL'} · RANGE ${this.kickRange}`;
-      Px.box(g, Math.round(AW / 2 - Px.width(title) / 2) - 6, 18, Px.width(title) + 12, 12, 'rgba(16,24,42,.85)');
-      Px.text(g, title, AW / 2, 21, k.type !== 'punt' && k.dist > this.kickRange ? '#ff8a5c' : '#ffffff', 1, { center: true });
+      const stretch = (k.stage === 'aim' && this.kaim && k.over > 0) || (k.stage === 'meter' && k.over > 0), full = stretch ? title + ' · STRETCH' : title;
+      Px.box(g, Math.round(AW / 2 - Px.width(full) / 2) - 6, 18, Px.width(full) + 12, 12, 'rgba(16,24,42,.85)');
+      Px.text(g, full, AW / 2, 21, stretch ? '#ffd84a' : k.type !== 'punt' && k.dist > k.range * 1.25 ? '#ff8a5c' : '#ffffff', 1, { center: true });
       // the hold spot and the uprights
       g.fillStyle = '#ffd84a'; g.fillRect(X0 - 1, Y0 - 1, 3, 3);
       const aimLine = (t, col) => {
@@ -2358,10 +2360,8 @@
         Px.ring(g, X1, Y1, 6, 6, '#ffd84a'); Px.ring(g, X1, Y1, 5, 5, '#ffd84a');
       };
       if (k.stage === 'aim') {
-        // the kicker's reach, drawn as an arc around the hold spot
+        // no range rings: aiming past the kicker's range turns the aim line yellow and the title says STRETCH
         const t = this.kaim ? this.kickAimTarget() : null, over = t && k.over > 0;
-        Px.ring(g, X0, Y0, Math.round(k.range * YA), Math.round(k.range * YA), over ? '#ffd84a' : 'rgba(255,255,255,.35)');
-        if (k.type === 'punt') Px.ring(g, X0, Y0, Math.round(k.range * 1.25 * YA), Math.round(k.range * 1.25 * YA), over ? 'rgba(255,216,74,.5)' : 'rgba(255,255,255,.12)');
         if (this.kaim) { aimLine(t, over ? '#ffd84a' : '#ffffff'); const a = this.kaim; Px.dots(g, a.sx / 2, a.sy / 2, a.cx / 2, a.cy / 2, 'rgba(255,255,255,.55)', 4); }
       }
       if (k.stage === 'meter') {

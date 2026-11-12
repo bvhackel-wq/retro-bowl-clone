@@ -41,7 +41,7 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
   two when the touchdown leaves you down 2, 5 or 10, or up 1, 4 or 5. Inside the 5 he leans to quick throws
   and play action, since the defense loads the box.
 - **4th down:** go for it, punt, or kick a field goal. Past midfield, Change also offers a field goal on
-  any down (marked "a long shot" beyond your kicker's range).
+  any down (marked "a stretch" past your kicker's range and "out of reach" more than 25% past it).
 - **Kicking:** tap the field to start the kick, drag back to aim (like a pass), and release to open the
   timing meter. A field goal is snapped and kicked from the line of scrimmage (held a yard behind it), so its
   distance is the line plus the 10-yard end zone, plus one. Kick distance sets how far you can aim: 30 yards at 40, about 45 at 70, 60 at 99 (a kick
@@ -58,8 +58,11 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
 - **Landing marker:** once a pass is in the air, a yellow marker on the turf shows where it will come down
   (after the throw's scatter), so you can see whether it's leading your receiver or floating to a defender.
 - **Punting:** the same three steps from 13 yards behind the line. Aim where it should land; you can drag
-  up to 25% past the range (the range ring turns yellow), which shrinks the green zone and makes even a
-  clean punt sail a little. A full punt
+  up to 25% past the range (the aim line turns yellow and the title says STRETCH), which shrinks the green
+  zone (to half at a full stretch) and makes even a clean punt sail a little. Field goals stretch the same
+  way: up to 25% past the kicker's range, with a smaller green zone, and a clean kick drifts (at a full
+  stretch about 1 in 4 clean kicks misses wide). There are no range rings on the field; the aim line and
+  the title tell you when you're past the range. A full punt
   from a 71 kick-distance punter (about 3 stars) travels about 47 yards past the line, the NFL average;
   about 33 at 40 and 60 at 99. A clean punt lands where you aimed; a shank falls
   short and veers. Into the end zone is a
