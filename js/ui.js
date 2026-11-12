@@ -306,35 +306,46 @@
   }
 
   // ---------- coaching staff ----------
+  // The coaching staff, laid out like the roster: your coordinators first, as cards with a portrait in your team
+  // colors, then the coaches available for hire this season (in a plain gray polo until you hire them).
+  const coachFace = (c) => {
+    if (c.face != null) return c.face;
+    let x = 7; for (const ch of c.name + c.role) x = (x * 31 + ch.charCodeAt(0)) >>> 0;   // the same face every time
+    return x;
+  };
+  const coachPortrait = (c, kit) => {
+    const src = GP.Pixel.portrait(coachFace(c), kit), img = document.createElement('canvas');
+    img.width = src.width; img.height = src.height; img.getContext('2d').drawImage(src, 0, 0); img.className = 'portrait';
+    return img;
+  };
   function renderStaff() {
     const hub = $('#hub'); hub.innerHTML = '';
-    const pool = GP.staffPool(S);
-    hub.append(h('div', { class: 'hub-head' },
-      h('h1', null, 'Coaching staff'), h('span', { class: 'sp' }),
-      h('span', { class: 'pill' }, 'Coaching points ', h('b', null, String(S.credits))),
-      h('button', { class: 'btn ghost small', onclick: renderHub }, 'Back to team')));
-    const coachCard = (c, buy) => h('div', { class: 'coach' },
-      h('div', null,
-        h('div', null, h('b', null, c.name), h('span', { class: 'dim' }, `  age ${c.age}`), h('span', { class: 'stars' }, ' ' + starText(c.stars))),
-        ...c.skills.map((k) => h('div', { class: 'skill' }, h('b', null, GP.SKILLS[c.role][k][0]), h('span', { class: 'dim' }, ' — ' + GP.SKILLS[c.role][k][1])))),
-      buy || h('span', { class: 'dim' }, 'Current'));
+    const pool = GP.staffPool(S), me = GP.team(S.teamId);
+    hub.append(backBar('Coaching staff', renderHub));
     const what = {
-      OC: 'Calls your plays before every snap; more stars means he reads the defense and the situation better. You can always change his call.',
-      DC: 'Runs your defense while the other team has the ball; more stars means more stops and turnovers.',
+      OC: 'Marks his play call before every snap; more stars, the better he reads the defense and the situation.',
+      DC: 'Marks his coverage call on defense and runs it when you simulate; more stars, more stops and turnovers.',
     };
-    const cols = ['OC', 'DC'].map((role) => {
-      const card = h('div', { class: 'card' }, h('div', { class: 'dim', style: 'margin-bottom:8px' }, what[role]), coachCard(S.staff[role]),
-        h('h3', { class: 'rhead' }, 'Available this season'));
-      pool[role].forEach((c, i) => {
+    const card = (c, mine, foot) => h('div', { class: 'pcard ccard' + (mine ? '' : ' hire') },
+      h('div', { class: 'top', style: mine ? `background-color:${me.c1};color:${me.c2}` : 'background-color:#3a455c;color:#cbd5e0' },
+        h('span', { class: 'pos' }, c.role), h('span', { class: 'num' }, `age ${c.age}`),
+        coachPortrait(c, mine ? { jersey: me.c2, number: me.c1 } : { jersey: '#5b6578', number: '#cbd5e0' })),   // a staff polo in the team's second color
+      h('div', { class: 'nm' }, lastName(c.name)), h('div', { class: 'dim sub' }, c.name), stars(c.stars),
+      h('div', { class: 'cskills' }, ...c.skills.map((k) => h('div', { class: 'skill' }, h('b', null, GP.SKILLS[c.role][k][0]), h('span', { class: 'dim' }, ' — ' + GP.SKILLS[c.role][k][1])))),
+      foot);
+    hub.append(h('h2', null, 'Your staff'), h('div', { class: 'ccards' },
+      ...['OC', 'DC'].map((role) => card(S.staff[role], true, h('div', { class: 'dim cwhat' }, `${GP.ROLES[role]}. ${what[role]}`)))));
+    hub.append(h('h2', null, 'Available for hire this season'));
+    for (const role of ['OC', 'DC']) {
+      hub.append(h('h3', { class: 'rhead' }, GP.ROLES[role] + 's'));
+      if (!pool[role].length) { hub.append(h('div', { class: 'card dim' }, 'Nobody else is available until next season.')); continue; }
+      hub.append(h('div', { class: 'ccards' }, ...pool[role].map((c, i) => {
         const cost = GP.STAFF_COST[c.stars];
-        card.append(coachCard(c, h('button', { class: 'btn small', disabled: S.credits < cost, onclick: () => {
+        return card(c, false, h('button', { class: 'btn small chire', disabled: S.credits < cost, onclick: () => {
           if (confirm(`Hire ${c.name} for ${cost} coaching point${cost === 1 ? '' : 's'}? ${S.staff[role].name} will leave.`) && GP.hire(S, role, i)) renderStaff();
-        } }, cost ? `Hire (${cost})` : 'Hire (free)')));
-      });
-      if (!pool[role].length) card.append(h('div', { class: 'dim' }, 'Nobody else is available until next season.'));
-      return h('div', null, h('h2', null, GP.ROLES[role]), card);
-    });
-    hub.append(h('div', { class: 'grid2' }, ...cols));
+        } }, cost ? `Hire · ${cost} pt${cost === 1 ? '' : 's'}` : 'Hire · free'));
+      })));
+    }
     show('hub');
   }
 

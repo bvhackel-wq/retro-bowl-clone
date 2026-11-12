@@ -265,6 +265,10 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
   filled to his value, outlined up to his ceiling) with upgrade buttons, and arrows to step through the
   roster. Menus use a pixel font (Silkscreen, from Google Fonts; plain monospace offline) and keep clear of the
   notch / Dynamic Island in landscape.
+- **Coaching staff page:** laid out like the roster. Your coordinators come first, as cards with a portrait in
+  a staff polo in your team's colors, their role, name, stars, age and skills; below them, the coaches
+  available for hire this season, grouped by job (in a plain gray polo until you hire them), each with a Hire
+  button and its cost. A coach's face comes from his name, so he always looks the same.
 - **Notices:** a trade, a staff hire, a draft pick, a retirement or a forfeit pops up once at the top of
   the screen and leaves after about 6 seconds (tap the × or anywhere on it to close it sooner); nothing stays
   pinned to the team page. At most three show at once: past that, the rest are folded into the third.

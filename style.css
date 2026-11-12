@@ -287,3 +287,13 @@ button.pcard:hover{box-shadow:inset 0 0 0 2px var(--accent),0 3px 0 rgba(0,0,0,.
   .hub-cols .next .btn.play,.hub-cols .next>.btn{flex:1 0 100%}
   .hub-cols .next .dim{font-size:13px}
 }
+
+/* coaching staff: the roster's cards, a little wider for the skills */
+.ccards{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.ccard{text-align:left;cursor:default}
+.ccard .nm,.ccard .sub,.ccard .stars{text-align:center}
+.ccard .sub{font-size:12px;margin:0 6px 2px}
+.ccard .cskills{padding:6px 10px 0;flex:1}
+.ccard .cwhat{font-size:12px;padding:8px 10px 10px}
+.ccard .chire{margin:8px 10px 10px}
+.ccard.hire .top{background-image:repeating-linear-gradient(135deg,rgba(255,255,255,.04) 0 6px,transparent 6px 12px)}
