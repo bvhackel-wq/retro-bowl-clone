@@ -1597,6 +1597,22 @@
       this.score.me += 6;
       this.endPlay('TOUCHDOWN!', () => (this.q === 5 ? this.final() : this.afterTD()), 3);
     }
+    // Out of bounds: instead of freezing on the sideline, the runner carries on and eases to a stop a couple of
+    // yards past it (about a second), and everyone else eases up too. The ball is still spotted where he went out.
+    startCoast(p) {
+      if (!p) return;
+      const out = p.y < MID ? -1 : 1;
+      if (p.vy * out < 3) p.vy = out * 3;                          // he's heading out, not along the line
+      this.coast = { who: p };
+    }
+    coastStep(dt) {
+      const p = this.coast.who;
+      for (const q of [...this.off, ...this.def]) {
+        if (q.stun > 0 || q.lunge) continue;
+        const f = Math.exp(-(q === p ? 2.2 : 3) * dt);
+        q.vx *= f; q.vy *= f; q.x += q.vx * dt; q.y = clamp(q.y + q.vy * dt, -3, FW + 3);
+      }
+    }
     // The scorer carries on a few yards deeper into the end zone, turns to the field and jumps with his arms up;
     // teammates nearby jog over to him. Runs in the pause after the score (dir: the way he was going).
     celebrateTD(p, dir) {
@@ -1654,6 +1670,7 @@
         () => this.checkClock(() => this.kickoff()), 2);
     }
     finishRun(x, oob) {
+      if (oob) this.startCoast(this.carrier);
       if (this.conv) return this.convOver(false);
       this.credit(x);
       this.gainResult(x, null, oob);
@@ -2067,6 +2084,7 @@
         this.score.opp += 7;
         return this.puntOver(null, `Punt returned for a TOUCHDOWN by ${this.cfg.opp.name}`);
       }
+      if (R.y <= 0.4 || R.y >= FW - 0.4) this.startCoast(R);
       if (R.y <= 0.4 || R.y >= FW - 0.4) return this.puntOver(R.x, `Punt — returned ${Math.round(k.res.ex - R.x)} out of bounds at ${this.spotK(R.x)}`);
       for (const c of (R.lunge ? [] : [...k.cover, this.kicker])) {
         if (c.hold > 0 || c.stun > 0 || hyp(c.x - R.x, c.y - R.y) > 1.15) continue;
@@ -2230,8 +2248,10 @@
       else if (this.phase === 'tackling') { this.tick(dt); this.updateTackle(dt); }
       else if (this.phase === 'dead') {
         if (this.celebrate) this.celebrateStep(dt);
+        else if (this.coast) this.coastStep(dt);
         if ((this.deadT -= dt) <= 0) {
           if (this.celebrate) { const p = this.celebrate.who; p.pose = null; p.hop = 0; this.celebrate = null; }
+          this.coast = null;
           const f = this.after; this.after = null; f();
         }
       } else if (this.phase === 'kick') {
@@ -2322,31 +2342,49 @@
         setArtWidth(aw); this.cv.width = AW * 4; this.cv.height = AH * 4;
         if (this.art) this.art.width = AW;
       }
+      // the notch / Dynamic Island and the rounded corners: keep the scoreboard's ends inside the safe area
+      const probe = document.createElement('div');
+      probe.style.cssText = 'position:fixed;visibility:hidden;padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right)';
+      document.body.append(probe);
+      const cs = getComputedStyle(probe), sl = parseFloat(cs.paddingLeft) || 0, sr = parseFloat(cs.paddingRight) || 0; probe.remove();
+      const br = board.getBoundingClientRect(), k = AW / (br.width || 1);
+      this.safeL = Math.max(0, sl - br.left) * k; this.safeR = Math.max(0, sr - (innerWidth - br.right)) * k;
     }
     // Score, quarter, clock and down & distance, drawn across the top stands.
-    drawScoreboard(g) {
-      const Px = GP.Pixel, me = this.cfg.me, opp = this.cfg.opp, c = this.clock;
-      g.fillStyle = 'rgba(10,14,24,.92)'; g.fillRect(0, 0, AW, 13);
-      g.fillStyle = '#ffb43a'; g.fillRect(0, 13, AW, 1);
-      const side = (t, pts, x, right) => {
-        const label = `${t.abbr} ${pts}`, w = Px.width(label) + 8, x0 = right ? x - w : x;
-        g.fillStyle = t.c1; g.fillRect(x0, 2, w, 10); g.fillStyle = t.c2; g.fillRect(x0, 11, w, 1);
-        Px.text(g, label, x0 + 4, 3, '#ffffff', 1, { shadow: '#10182a' });
+    // Score, quarter, clock and down & distance across the top stands. Drawn on the full-resolution canvas in the
+    // menus' pixel font (crisp at any size), with the team boxes kept clear of the notch and rounded corners and
+    // the middle centered on the screen.
+    drawScoreboard(m) {
+      const me = this.cfg.me, opp = this.cfg.opp, c = this.clock, s = this.cv.width / AW;
+      m.save(); m.setTransform(s, 0, 0, s, 0, 0);
+      m.fillStyle = 'rgba(10,14,24,.96)'; m.fillRect(0, 0, AW, 13);
+      m.fillStyle = '#ffb43a'; m.fillRect(0, 13, AW, 1);
+      m.font = '9px Silkscreen, ui-monospace, monospace'; m.textBaseline = 'middle';
+      const text = (t, x, y, col) => { m.fillStyle = 'rgba(16,24,42,.9)'; m.fillText(t, x + 0.5, y + 0.5); m.fillStyle = col; m.fillText(t, x, y); };
+      const box = (t, pts, x, right) => {
+        const label = `${t.abbr} ${pts}`, w = Math.ceil(m.measureText(label).width) + 8, x0 = right ? x - w : x;
+        m.fillStyle = t.c1; m.fillRect(x0, 2, w, 10); m.fillStyle = t.c2; m.fillRect(x0, 11, w, 1);
+        text(label, x0 + 4, 6.7, '#ffffff');
+        return w;
       };
-      side(me, this.score.me, 4, false); side(opp, this.score.opp, AW - 4, true);
+      const L = 4 + (this.safeL || 0), Rx = AW - 4 - (this.safeR || 0);
+      box(me, this.score.me, L, false);
+      const rw = box(opp, this.score.opp, Rx, true);
       // pause icon, just left of the opponent's score
-      const oppW = Px.width(`${opp.abbr} ${this.score.opp}`) + 8, px = AW - 4 - oppW - 16;
+      const px = Rx - rw - 16;
       if (this.pz && !this.pz.btn.hidden) {
-        g.fillStyle = 'rgba(255,255,255,.18)'; g.fillRect(px, 2, 12, 10);
-        g.fillStyle = '#ffffff'; g.fillRect(px + 3, 4, 2, 6); g.fillRect(px + 7, 4, 2, 6);
+        m.fillStyle = 'rgba(255,255,255,.18)'; m.fillRect(px, 2, 12, 10);
+        m.fillStyle = '#ffffff'; m.fillRect(px + 3.5, 4, 2, 6); m.fillRect(px + 6.5, 4, 2, 6);
       }
       this.pauseX = px;
       const clock = c === Infinity ? '-:--' : Math.floor(Math.ceil(c) / 60) + ':' + String(Math.ceil(c) % 60).padStart(2, '0');
       const q = this.q === 5 ? 'OT' : 'Q' + this.q;
-      const down = this.phase === 'opp' || this.phase === 'final' || this.phase === 'convert' ? '' : '   ' + this.downText().replace(' · ', '  ');
-      const mid = `${q} ${clock}${down}`;
-      Px.text(g, `${q} ${clock}`, AW / 2 - Px.width(mid) / 2, 3, '#ffffff', 1);
-      if (down) Px.text(g, down, AW / 2 - Px.width(mid) / 2 + Px.width(`${q} ${clock}`) + 1, 3, '#ffd84a', 1);
+      const down = this.phase === 'opp' || this.phase === 'final' || this.phase === 'convert' ? '' : this.downText().replace(' · ', '   ').replace(' & ', ' AND ');   // Silkscreen's & reads like a $
+      const left = `${q} ${clock}`, gap = down ? 12 : 0;
+      const wl = m.measureText(left).width, wd = down ? m.measureText(down).width : 0, x0 = AW / 2 - (wl + gap + wd) / 2;
+      text(left, x0, 6.7, '#ffffff');
+      if (down) text(down, x0 + wl + gap, 6.7, '#ffd84a');
+      m.restore();
     }
 
     draw() {
@@ -2418,11 +2456,11 @@
         }
       }
 
-      this.drawScoreboard(u);
       const m = this.g, z = this.zoomView(); this.lastZ = z;
       m.setTransform(1, 0, 0, 1, 0, 0); m.imageSmoothingEnabled = false;
       m.drawImage(this.art, z.sx, z.sy, z.sw, z.sh, 0, 0, this.cv.width, this.cv.height);
       m.drawImage(this.ui, 0, 0, this.cv.width, this.cv.height);
+      this.drawScoreboard(m);
     }
     // Camera zoom (an option in the pause menu): before the snap and while the quarterback has the ball the
     // view crops the stands but keeps the whole field width; once someone's running with the ball it closes
@@ -2462,7 +2500,7 @@
       if (X < -12 || X > AW + 12) return;
       if (Math.abs(p.vx) > 0.6) p.face = p.vx > 0 ? 0 : 1; else if (p.face == null) p.face = p.team === 'O' ? 0 : 1;
       const down = p.stun > 0 || p === this.downed || !!p.lunge;
-      const moving = (this.phase === 'live' || this.phase === 'tackling' || this.phase === 'kick' || (this.phase === 'dead' && this.celebrate)) && hyp(p.vx, p.vy) > 0.8;
+      const moving = (this.phase === 'live' || this.phase === 'tackling' || this.phase === 'kick' || (this.phase === 'dead' && (this.celebrate || this.coast))) && hyp(p.vx, p.vy) > 0.8;
       const sliding = p.lunge && p.lunge.slide || (p === this.downed && p.slid);
       const pose = p.pose || (sliding ? 'slide' : down ? 'down' : moving ? (Math.floor(this.animT * 9 + (p.skin || 0)) % 2 ? 'run1' : 'run2') : 'stand');
       const side = this.defending ? (p.team === 'O' ? 'D' : 'O') : p.team;   // on defense their offense wears their kit

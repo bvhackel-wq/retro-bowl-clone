@@ -113,6 +113,12 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
   follows him to the run side. In Cover 0 the blitzing linebacker comes off the tight end's edge and keeps
   the runner inside; on outside runs the tight end kicks out the edge defender, and on inside runs he blocks
   the man covering him. Cover 0 is a real all-out blitz: quick throws beat it, slow ones get sacked.
+- **Out of bounds:** a runner who steps out carries on and eases to a stop a couple of yards past the sideline
+  (about a second) while everyone else eases up, instead of freezing on the line. The ball is still spotted
+  where he went out.
+- **Scoreboard:** drawn at the screen's full resolution in the menus' pixel font, with the team boxes kept
+  inside the safe area (clear of the notch / Dynamic Island and the rounded corners) and the middle centered
+  on the screen. Down and distance reads "1ST AND 10" (the font's ampersand looks like a dollar sign).
 - **Touchdown celebrations.** Whoever scores (either team, including on a kick or punt return) carries on a
   few yards deeper into the end zone, drops the ball, turns to the field and celebrates while teammates nearby
   jog over: half the time a jump with his arms up, half the time the griddy (heel taps shuffling side to side,
