@@ -257,7 +257,8 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
   Choose the difficulty on the title screen; change it any time from the team page.
 - **New career:** choosing your team will be part of career setup (not built yet); for now New career
   gives you a random team.
-- **Team page:** your team's banner, the next game (tap Play), uniforms and the defense setting, then a
+- **Team page:** your team's banner, the next game as a big matchup card (both teams' badges, records and
+  ratings; tap Play game for the pre-game dialog: uniform, play or simulate your defense, then Kick off), then a
   tile for each part of running the team: Roster, Standings, Coaching staff, Trades, Draft (offseason) and
   Difficulty. The **roster** is a grid of cards (position, his own pixel portrait in your home jersey, name,
   stars, overall against potential, and a bar for how far he's grown); empty spots show as dimmed reserve

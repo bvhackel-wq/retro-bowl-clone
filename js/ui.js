@@ -95,19 +95,19 @@
     return img;
   };
   // Pick what you wear for the next game; shows each of your four uniforms and what the opponent wears against it.
-  function uniformCard(game) {
+  function uniformCard(game, rerender, noOpp) {
     const cur = S.uniform || 'auto', home = game.home !== false;
     const pick = GP.matchKits(S.teamId, game.oppId, home, cur);
     const opt = (type, label) => {
       const k = type === 'auto' ? GP.kit(S.teamId, home ? 'home' : 'away') : GP.kit(S.teamId, type);
-      return h('button', { class: 'kitopt' + (cur === type ? ' on' : ''), onclick: () => { S.uniform = type; GP.save(S); renderHub(); } },
+      return h('button', { class: 'kitopt' + (cur === type ? ' on' : ''), onclick: () => { S.uniform = type; GP.save(S); (rerender || renderHub)(); } },
         kitSprite(k), h('small', null, label));
     };
     const name = (t) => (GP.UNIFORM_TYPES.find((u) => u[0] === t) || [0, t])[1];
     return h('div', { class: 'card' },
       h('div', { class: 'dim' }, `Uniform · ${home ? 'home game' : 'road game'} · ${GP.team(game.oppId).name} wear ${name(pick.oppType).toLowerCase()}`),
       h('div', { class: 'kits' }, opt('auto', 'Auto'), ...GP.UNIFORM_TYPES.map(([t, l]) => opt(t, l)),
-        h('span', { class: 'kitvs' }, 'vs'), h('span', { class: 'kitopt' }, kitSprite(pick.opp), h('small', null, GP.team(game.oppId).abbr))));
+        ...(noOpp ? [] : [h('span', { class: 'kitvs' }, 'vs'), h('span', { class: 'kitopt' }, kitSprite(pick.opp), h('small', null, GP.team(game.oppId).abbr))])));
   }
   const starText = (n) => '★'.repeat(n) + '☆'.repeat(5 - n);
   // ---------- team screens: the dashboard, the roster grid, a player's card, the standings ----------
@@ -255,20 +255,14 @@
         h('button', { class: 'btn', onclick: () => { GP.advance(S, null, null); renderHub(); } }, 'Advance')));
     } else if (game) {
       const o = GP.team(game.oppId), or = GP.rec(S, game.oppId);
-      L.append(h('h2', null, (S.phase === 'playoffs' ? 'Playoffs — ' : '') + game.label), h('div', { class: 'card next gameday' },
-        badge(o),
-        h('div', null, h('div', { class: 'vs px' }, (game.home === false ? 'at ' : 'vs ') + full(o)),
-          h('div', { class: 'dim' }, `${or.w}-${or.l} · Offense ${or.off} · Defense ${or.def} · DC ${starText(GP.oppDC(S, game.oppId))}`),
-          h('div', { class: 'dim' }, `You: Offense ${rec.off} · Defense ${rec.def}`)),
-        h('span', { style: 'flex:1' }),
-        h('button', { class: 'btn play', onclick: () => startMatch(game) }, 'Play game')));
-      L.append(uniformCard(game));
-      const pd = S.playDefense !== false, setPD = (v) => { S.playDefense = v; GP.save(S); renderHub(); };
-      L.append(h('div', { class: 'card next' }, h('div', null, h('b', null, 'Defense'),
-        h('div', { class: 'dim' }, pd ? 'You call the coverage on every opponent snap' : 'Opponent drives are simulated')),
-        h('span', { style: 'flex:1' }),
-        h('div', { class: 'seg' }, h('button', { class: 'btn small' + (pd ? '' : ' ghost'), onclick: () => setPD(true) }, 'Play it'),
-          h('button', { class: 'btn small' + (pd ? ' ghost' : ''), onclick: () => setPD(false) }, 'Simulate'))));
+      // the matchup: you and them side by side, then a big Play button (uniform and defense come in the pre-game dialog)
+      const side = (t, r, you) => h('div', { class: 'tm' }, badge(t), h('div', { class: 'tmn px' }, t.abbr),
+        h('div', { class: 'dim' }, `${r.w}-${r.l}`), h('div', { class: 'dim tmr' }, `OFF ${r.off} · DEF ${r.def}`),
+        you ? null : h('div', { class: 'dim tmr' }, `DC ${starText(GP.oppDC(S, game.oppId))}`));
+      L.append(h('h2', null, (S.phase === 'playoffs' ? 'Playoffs — ' : '') + game.label), h('div', { class: 'card gamecard' },
+        h('div', { class: 'vsline px' }, (game.home === false ? 'at ' : 'vs ') + full(o)),
+        h('div', { class: 'matchup' }, side(me, rec, true), h('div', { class: 'at px' }, game.home === false ? 'AT' : 'VS'), side(o, or, false)),
+        h('button', { class: 'btn play big', onclick: () => pregame(game) }, 'Play game')));
     } else {
       const ch = GP.team(S.champion);
       L.append(h('h2', null, `Season ${S.season} complete`), h('div', { class: 'card next' },
@@ -441,6 +435,26 @@
     show('hub');
   }
 
+  // Between Play game and kickoff: pick the uniform and whether you play defense, then kick off.
+  function pregame(game) {
+    let box = document.getElementById('pregame');
+    if (!box) { box = document.createElement('div'); box.id = 'pregame'; document.body.append(box); }
+    const close = () => box.remove(), redraw = () => pregame(game);
+    const o = GP.team(game.oppId), pd = S.playDefense !== false, setPD = (v) => { S.playDefense = v; GP.save(S); redraw(); };
+    box.innerHTML = '';
+    box.onclick = (e) => { if (e.target === box) close(); };          // a tap outside the dialog closes it
+    box.append(h('div', { class: 'pg-box', role: 'dialog', 'aria-label': 'Game setup' },
+      h('div', { class: 'pg-head' }, h('h3', { class: 'px' }, `${game.home === false ? 'at' : 'vs'} ${full(o)}`),
+        h('span', { class: 'pg-opp' }, kitSprite(GP.matchKits(S.teamId, game.oppId, game.home !== false, S.uniform || 'auto').opp)), h('span', { class: 'sp' }),
+        h('button', { class: 'btn ghost small', onclick: close }, 'Back')),
+      h('div', { class: 'pg-body' },
+        uniformCard(game, redraw, true),
+        h('div', { class: 'card pg-def' }, h('div', null, h('b', null, 'Defense'),
+          h('div', { class: 'dim' }, pd ? 'You call the coverage on every opponent snap' : 'Opponent drives are simulated')),
+          h('div', { class: 'seg' }, h('button', { class: 'btn small' + (pd ? '' : ' ghost'), onclick: () => setPD(true) }, 'Play it'),
+            h('button', { class: 'btn small' + (pd ? ' ghost' : ''), onclick: () => setPD(false) }, 'Simulate')),
+          h('button', { class: 'btn play pg-go', onclick: () => { close(); startMatch(game); } }, 'Kick off')))));
+  }
   function startMatch(game) {
     const or = GP.rec(S, game.oppId);
     show('match');
