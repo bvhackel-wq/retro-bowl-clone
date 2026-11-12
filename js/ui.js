@@ -10,16 +10,24 @@
     document.body.classList.toggle('playing', id === 'match');   // pins the page during a game
     window.scrollTo(0, 0);
     // news (a trade, a hire, a draft pick, a retirement) pops up once, then it's gone
-    if (id !== 'match' && S && S.news && S.news.length) { S.news.forEach((n, i) => toast(n, i)); S.news = []; GP.save(S); }
+    if (id !== 'match' && S && S.news && S.news.length) {
+      // at most three at once: past that, the rest are folded into the third
+      const n = S.news, shown = n.length > 3 ? [n[0], n[1], `${n.length - 2} more: ` + n.slice(2).join(' · ')] : n;
+      shown.forEach((x, i) => toast(x, i)); S.news = []; GP.save(S);
+    }
   }
-  // a short notice that slides in at the top and leaves by itself (or on a tap)
+  // a short notice that slides in at the top and leaves by itself after 6 seconds, or on a tap (the × or anywhere on it)
   function toast(text, i) {
     let box = document.getElementById('toasts');
     if (!box) { box = document.createElement('div'); box.id = 'toasts'; document.body.append(box); }
-    const t = document.createElement('div'); t.className = 'toast'; t.textContent = text;
-    const bye = () => { t.classList.add('out'); setTimeout(() => t.remove(), 300); };
+    const t = document.createElement('div'); t.className = 'toast';
+    const msg = document.createElement('span'); msg.textContent = text;
+    const x = document.createElement('button'); x.className = 'toast-x'; x.type = 'button'; x.setAttribute('aria-label', 'Dismiss'); x.textContent = '×';
+    t.append(msg, x);
+    let gone = false;
+    const bye = () => { if (gone) return; gone = true; t.classList.add('out'); setTimeout(() => t.remove(), 300); };
     t.onclick = bye; box.append(t);
-    setTimeout(bye, 5000 + (i || 0) * 1200);
+    setTimeout(bye, 6000 + Math.min(i || 0, 2) * 800);
   }
   // During a game, a drag anywhere but the play-call strip must not scroll, zoom or refresh the page.
   document.addEventListener('touchmove', (e) => {

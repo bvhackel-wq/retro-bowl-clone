@@ -248,7 +248,8 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
   roster. Menus use a pixel font (Silkscreen, from Google Fonts; plain monospace offline) and keep clear of the
   notch / Dynamic Island in landscape.
 - **Notices:** a trade, a staff hire, a draft pick, a retirement or a forfeit pops up once at the top of
-  the screen and leaves after a few seconds (tap it to close it sooner); nothing stays pinned to the team page.
+  the screen and leaves after about 6 seconds (tap the × or anywhere on it to close it sooner); nothing stays
+  pinned to the team page. At most three show at once: past that, the rest are folded into the third.
 - **Landscape only:** every screen is laid out for a phone held sideways. Held upright, a phone shows a
   "turn your phone sideways" prompt over every screen, and a game in progress pauses. On a landscape phone
   the title and team page split into two columns (the next game and Play on the left, your team's tiles on
