@@ -1586,12 +1586,38 @@
       if (this.conv) return this.convOver(true);
       this.credit(110);
       if (this.caught) this.stats.ptd++; else this.stats.rtd++;
+      this.celebrateTD(this.carrier, 1);
       if (this.defending) {                             // they score; the extra point is automatic, then they kick off
         this.score.opp += 7;
-        return this.endPlay(`TOUCHDOWN ${this.cfg.opp.name}`, () => this.checkClock(() => this.receiveKick()), 2);
+        return this.endPlay(`TOUCHDOWN ${this.cfg.opp.name}`, () => this.checkClock(() => this.receiveKick()), 3);
       }
       this.score.me += 6;
-      this.endPlay('TOUCHDOWN!', () => (this.q === 5 ? this.final() : this.afterTD()), 2);
+      this.endPlay('TOUCHDOWN!', () => (this.q === 5 ? this.final() : this.afterTD()), 3);
+    }
+    // The scorer carries on a few yards deeper into the end zone, turns to the field and jumps with his arms up;
+    // teammates nearby jog over to him. Runs in the pause after the score (dir: the way he was going).
+    celebrateTD(p, dir) {
+      if (!p) return;
+      p.stun = 0; p.lunge = null; p.juke = null; if (this.downed === p) this.downed = null;
+      this.celebrate = { who: p, dir, t: 0, x: dir > 0 ? clamp(p.x + 4, 112, 117) : clamp(p.x - 4, 3, 8), y: clamp(p.y + (MID - p.y) * 0.3, 3, FW - 3) };
+    }
+    celebrateStep(dt) {
+      const c = this.celebrate, p = c.who; c.t += dt;
+      if (!c.arrived) {
+        go(p, c.x, c.y, Math.max(p.spd || 6, 5), dt, 8);
+        if (hyp(p.x - c.x, p.y - c.y) < 0.4 || c.t > 1.1) c.arrived = c.t;
+      } else {
+        p.vx = 0; p.vy = 0; p.face = c.dir > 0 ? 1 : 0;           // turned back to face the field
+        const up = Math.floor((c.t - c.arrived) * 4) % 2;
+        p.pose = up ? 'cheer2' : 'cheer1'; p.hop = up ? 2 : 0;
+      }
+      const team = this.off.includes(p) ? this.off : this.def, other = team === this.off ? this.def : this.off;
+      team.forEach((q, i) => {
+        if (q === p || q.stun > 0 || hyp(q.x - p.x, q.y - p.y) > 30) return;
+        const tx = p.x - c.dir * (1.6 + (i % 3) * 0.7), ty = p.y + ((i % 4) - 1.5) * 1.3;
+        if (hyp(q.x - tx, q.y - ty) > 0.5) go(q, tx, ty, 5, dt, 6); else { q.vx = 0; q.vy = 0; }
+      });
+      for (const q of other) { q.vx *= 0.9; q.vy *= 0.9; q.x += q.vx * dt; q.y += q.vy * dt; }
     }
     // After your touchdown: kick the extra point, or go for two from the 2. The coordinator recommends the
     // usual chart in the second half: go for two down 2, 5 or 10, or up 1, 4 or 5 (after the six points).
@@ -2006,6 +2032,7 @@
       }
       this.returnBlocks(dt);
       if (R.x <= 10) {
+        this.celebrateTD(R, -1);
         this.carrier = null;
         if (k.cpu) return this.puntOver(null, 'PUNT RETURN TOUCHDOWN!');
         this.score.opp += 7;
@@ -2034,12 +2061,12 @@
       if (!r.clean) msg = (r.ko ? 'Shanked kickoff! ' : 'Shanked! ') + msg;
       if (k.cpu) {                                                       // their punt: your ball where it ended (their frame flipped)
         this.kick = null; this.carrier = null; this.ball = { state: 'held' };
-        if (startX == null) { this.setSide(false); this.score.me += 6; return this.endPlay(msg, () => (this.q === 5 ? this.final() : this.afterTD()), 2.4); }
+        if (startX == null) { this.score.me += 6; return this.endPlay(msg, () => { this.setSide(false); return this.q === 5 ? this.final() : this.afterTD(); }, 3); }   // switch sides after the celebration
         const x = clamp(120 - startX, 11, 105);
         return this.endPlay(msg, () => this.checkClock(() => this.startDrive(x)), 2);
       }
       this.kick = null; this.carrier = null; this.ball = { state: 'held' };
-      if (startX == null) return this.endPlay(msg, () => this.checkClock(() => this.receiveKick()), 2.4);   // they scored: they kick off
+      if (startX == null) return this.endPlay(msg, () => this.checkClock(() => this.receiveKick()), 3);   // they scored: they kick off
       const net = Math.round(Math.min(startX, 110) - this.los), dist = Math.round(startX - 10);
       this.endPlay(msg, () => this.checkClock(() => this.oppDrive(dist, r.ko ? `They start at their ${dist > 50 ? 100 - dist : dist}.` : `Your punt netted ${net} yards.`)), 2);
     }
@@ -2173,7 +2200,11 @@
       if (this.phase === 'live') this.updateLive(dt);
       else if (this.phase === 'tackling') { this.tick(dt); this.updateTackle(dt); }
       else if (this.phase === 'dead') {
-        if ((this.deadT -= dt) <= 0) { const f = this.after; this.after = null; f(); }
+        if (this.celebrate) this.celebrateStep(dt);
+        if ((this.deadT -= dt) <= 0) {
+          if (this.celebrate) { const p = this.celebrate.who; p.pose = null; p.hop = 0; this.celebrate = null; }
+          const f = this.after; this.after = null; f();
+        }
       } else if (this.phase === 'kick') {
         const k = this.kick;
         if (k.started && k.type !== 'ko' && (k.stage === 'aim' || k.stage === 'meter' || k.stage === 'approach')) this.kickRush(dt);
@@ -2402,7 +2433,7 @@
       if (X < -12 || X > AW + 12) return;
       if (Math.abs(p.vx) > 0.6) p.face = p.vx > 0 ? 0 : 1; else if (p.face == null) p.face = p.team === 'O' ? 0 : 1;
       const down = p.stun > 0 || p === this.downed || !!p.lunge;
-      const moving = (this.phase === 'live' || this.phase === 'tackling' || this.phase === 'kick') && hyp(p.vx, p.vy) > 0.8;
+      const moving = (this.phase === 'live' || this.phase === 'tackling' || this.phase === 'kick' || (this.phase === 'dead' && this.celebrate)) && hyp(p.vx, p.vy) > 0.8;
       const sliding = p.lunge && p.lunge.slide || (p === this.downed && p.slid);
       const pose = p.pose || (sliding ? 'slide' : down ? 'down' : moving ? (Math.floor(this.animT * 9 + (p.skin || 0)) % 2 ? 'run1' : 'run2') : 'stand');
       const side = this.defending ? (p.team === 'O' ? 'D' : 'O') : p.team;   // on defense their offense wears their kit
@@ -2411,16 +2442,17 @@
       if (p === this.ringD && this.ringOn() && !p.dive) {
         Px.ring(g, X, Y + 2, 9, 4, 'rgba(16,24,42,.55)'); Px.ring(g, X, Y + 1, 9, 4, '#ffffff'); Px.ring(g, X, Y + 1, 8, 3, '#ffffff');
       }
-      if (p === this.carrier && !down) {
+      const party = this.celebrate && this.celebrate.who === p && this.celebrate.arrived;   // he's dropped the ball to celebrate
+      if (p === this.carrier && !down && !party) {
         // ring at the ball carrier's feet; yellow and doubled while a juke is live
         // solid white with a dark edge so it reads on any grass; yellow and doubled while a juke is live
         const live = p.juke && p.juke.t > 0, col = live ? '#ffd84a' : '#ffffff';
         Px.ring(g, X, Y + 2, 9, 4, 'rgba(16,24,42,.55)'); Px.ring(g, X, Y + 1, 9, 4, col); Px.ring(g, X, Y + 1, 8, 3, col);
         if (live) Px.ring(g, X, Y + 1, 11, 5, '#ffd84a');
       }
-      if (p.pose) g.drawImage(img, X - Math.floor(img.width / 2), Y - img.height + 3);
+      if (p.pose) g.drawImage(img, X - Math.floor(img.width / 2), Y - img.height + 3 - (p.hop || 0));
       else if (sliding) g.drawImage(img, X - 8, Y - 9); else if (down) g.drawImage(img, X - 8, Y - 8); else g.drawImage(img, X - 6, Y - 13);
-      if (p === this.carrier && !down && this.ball.state === 'held') {
+      if (p === this.carrier && !down && !party && this.ball.state === 'held') {
         const bx = X + (p.face ? -6 : 3);
         g.fillStyle = '#10182a'; g.fillRect(bx - 1, Y - 7, 5, 4);
         g.fillStyle = '#8a4b22'; g.fillRect(bx, Y - 6, 3, 2); g.fillStyle = '#ffffff'; g.fillRect(bx + 1, Y - 6, 1, 1);

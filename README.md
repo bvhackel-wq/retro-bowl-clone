@@ -105,6 +105,9 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
   follows him to the run side. In Cover 0 the blitzing linebacker comes off the tight end's edge and keeps
   the runner inside; on outside runs the tight end kicks out the edge defender, and on inside runs he blocks
   the man covering him. Cover 0 is a real all-out blitz: quick throws beat it, slow ones get sacked.
+- **Touchdown celebrations.** Whoever scores (either team, including on a kick or punt return) carries on a
+  few yards deeper into the end zone, drops the ball, turns to the field and jumps with his arms up while
+  teammates nearby jog over; then the game moves on to the extra point (or the kickoff).
 - **Kickoffs.** Every half, and every score, starts with a kickoff from the kicking team's 35 (you receive the
   opening kickoff and kick to start the second half; you receive in overtime). Kicking: the same tap, aim and
   meter as a punt, with the same stretch past the range (64 yards at 71 kick distance, about to the goal

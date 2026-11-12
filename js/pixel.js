@@ -95,6 +95,11 @@
     slide: ['..HHHH........', '.HHhhHH.......', '.HHHHFFM......', '.HHHHFFM......', '..JJJJJ.......', '.JJJNNJS......',
             'SJJJJJJPPPPPLB', 'S.JJJJPPPPPPLB', '..............'],
   };
+  // touchdown celebration: both arms straight up, then a jump with the legs kicked out
+  POSES.cheer1 = ['.S......S.', '.S.HHHH.S.', '.SHHHHHHS.', '.SHhhHFFMS', '.SHHHHFFMS', '.SJJJJJJS.', '..JJNNJJ..', '..JJJJJJ..',
+                  '..PPPPPP..', '..PP..PP..', '..PP..PP..', '..LL..LL..', '..LL..LL..', '..BB..BBB.'];
+  POSES.cheer2 = ['S........S', '.S.HHHH.S.', '..SHHHHS..', '..HhhHFFM.', '..HHHHFFM.', '.SJJJJJJS.', '..JJNNJJ..', '..JJJJJJ..',
+                  '..PPPPPP..', '.PP....PP.', 'LL......LL', 'BB......BB'];
   const SKIN = ['#f1c9a5', '#c68e5f', '#7a4a2a'], OUTLINE = '#10182a';
   function render(rows, pal, flip, lying) {
     const w = rows[0].length, hgt = rows.length, c = document.createElement('canvas');
