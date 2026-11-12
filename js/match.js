@@ -304,66 +304,17 @@
       const r = this.cv.getBoundingClientRect();
       return { x: ((e.clientX - r.left) / r.width) * W, y: ((e.clientY - r.top) / r.height) * H };
     }
-    // a point on the field (yards) from a screen position
-    fieldPt(p) { return { x: (p.x / 2 + this.camPx) / YA, y: (p.y / 2 - TOPA) / YA }; }
-    // the defender you control (by his place in the lineup, which survives re-forming the defense)
-    ctlD() { return this.defending && this.ctlIdx != null ? this.def[this.ctlIdx] : null; }
-    // switch to the defender nearest the ball (the carrier, or where a throw will land), not the one you have
-    ctlSwitch() {
-      const b = this.ball, ref = b.state === 'air' ? { x: b.tx, y: b.ty } : this.carrier || this.qb;
-      if (!ref) return;
-      // skip anyone locked in a block or on the ground: you want a man who can get there
-      const free = (d) => !d.held && !(d.stun > 0) && !(d.eng > 0 && d.eng < d.shed && d.role === 'DL');
-      const order = this.def.map((d, i) => [hyp(d.x - ref.x, d.y - ref.y) + (free(d) ? 0 : 100), i]).sort((a, b) => a[0] - b[0]);
-      const pick = order.find(([, i]) => i !== this.ctlIdx) || order[0];
-      this.ctlIdx = pick[1];
-    }
-    // Defense, phase 2: tap a defender before the snap to take him (tap anywhere else to snap); during the
-    // play, touch and hold to run him toward your finger, tap to switch to the man nearest the ball, flick
-    // to dive. Let go and he plays his assignment again.
-    defDown(p) {
-      const f = this.fieldPt(p);
-      if (this.phase === 'presnap') {
-        let best = -1, bd = 2.6;
-        this.def.forEach((d, i) => { const x = hyp(d.x - f.x, d.y - f.y); if (x < bd) { bd = x; best = i; } });
-        if (best >= 0) { this.ctlIdx = best; return; }
-        this.hidePanel(); return this.snap();
-      }
-      if (this.phase !== 'live') return;
-      this.ctl = { hold: true, tx: f.x, ty: f.y, x0: p.x, y0: p.y, t0: performance.now(), flicked: false };
-    }
-    defMove(p) {
-      const c = this.ctl; if (!c || !c.hold) return;
-      const f = this.fieldPt(p); c.tx = f.x; c.ty = f.y;
-      // a quick flick: dive that way
-      const dx = p.x - c.x0, dy = p.y - c.y0, dt = performance.now() - c.t0;
-      if (!c.flicked && dt < 220 && hyp(dx, dy) > 38) { c.flicked = true; this.dive(dx, dy); }
-    }
-    defUp(p) {
-      const c = this.ctl; if (!c) return;
-      if (!c.flicked && performance.now() - c.t0 < 220 && (!p || hyp(p.x - c.x0, p.y - c.y0) < 14)) this.ctlSwitch();
-      this.ctl = null;
-    }
-    // Dive: a burst of about two yards; reach a ball carrier in it and it's a tackle attempt with a bonus,
-    // miss and he's on the ground for a moment.
-    dive(dx, dy) {
-      const d = this.ctlD(); if (!d || d.dive || d.stun > 0 || d.held) return;
-      const n = hyp(dx, dy) || 1;
-      d.dive = { dx: dx / n, dy: dy / n, t: 0.3 };
-    }
     pDown(e) {
       e.preventDefault();
       const p = this.pos(e);
-      if (this.defending && (this.phase === 'presnap' || this.phase === 'live')) return this.defDown(p);
       if (this.phase === 'presnap') { this.hidePanel(); return this.snap(); }
       if (this.phase === 'kick') return this.kickTap(p);
-      if (this.phase !== 'live') return;
+      if (this.phase !== 'live' || this.defending) return;      // on defense you watch your call play out
       if (this.passing()) this.aim = { sx: p.x, sy: p.y, cx: p.x, cy: p.y };
       else this.gesture = { x: p.x, y: p.y, t: performance.now(), done: false };
     }
     pMove(e) {
       const p = this.pos(e);
-      if (this.defending && this.ctl) return this.defMove(p);
       if (this.kaim) { this.kaim.cx = p.x; this.kaim.cy = p.y; return; }
       if (this.aim) { this.aim.cx = p.x; this.aim.cy = p.y; return; }
       const g = this.gesture;
@@ -374,8 +325,7 @@
       if (Math.abs(dy) > 22 && Math.abs(dy) > Math.abs(dx) * 0.8) { g.done = true; this.swipe(Math.sign(dy)); }
       else if (Math.abs(dx) > 22 && Math.abs(dx) > Math.abs(dy) * 1.2) { g.done = true; dx > 0 ? this.lunge() : this.hesitate(); }
     }
-    pUp(e) {
-      if (this.defending && this.ctl) return this.defUp(e && e.clientX != null ? this.pos(e) : null);
+    pUp() {
       if (this.kaim) return this.kickRelease();
       if (this.aim && this.phase === 'live' && this.passing()) {
         const a = this.aim, dx = a.cx - a.sx, dy = a.cy - a.sy;
@@ -436,15 +386,6 @@
       if (this.paused) return;
       if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' '].includes(k)) e.preventDefault();
       this.keys[k] = down;
-      if (this.defending && down && !e.repeat && (this.phase === 'presnap' || this.phase === 'live')) {
-        if (k === ' ') { if (this.phase === 'presnap') { this.hidePanel(); this.snap(); } else this.ctlSwitch(); }
-        else if (k === 'x' && this.phase === 'live') {
-          const kk = this.keys, dx = (kk.arrowright || kk.d ? 1 : 0) - (kk.arrowleft || kk.a ? 1 : 0), dy = (kk.arrowdown || kk.s ? 1 : 0) - (kk.arrowup || kk.w ? 1 : 0);
-          this.dive(dx || -1, dy);
-        }
-        return;
-      }
-      if (this.defending) return;
       if (down && !e.repeat) {
         if (k === ' ') {
           if (this.phase === 'presnap') this.snap();
@@ -512,8 +453,6 @@
       this.play = this.cpuCall();
       this.dcall = this.dcRec = this.callDefense(); this.defNote = null;
       this.setupFormation();
-      if (this.ctlIdx == null) this.ctlIdx = 7;          // start with the safety; tap another defender to switch
-      this.ctl = null;
       this.phase = 'presnap'; this.hidePanel();
     }
     defList(title) {
@@ -638,7 +577,6 @@
       const d = hyp(lx - qb.x, ly - qb.y), max = this.maxRange;
       if (d > max) { lx = qb.x + (lx - qb.x) * max / d; ly = qb.y + (ly - qb.y) * max / d; }
       this.throwBall(lx, ly);
-      if (!(this.ctl && this.ctl.hold)) this.ctlSwitch();
     }
     // Their ball carrier: slides away from a defender closing in front of him, jukes one about to hit him
     // (more often the more agile he is), and lunges for the marker when he's just short.
@@ -1212,19 +1150,8 @@
 
       // defense
       const recs = this.off.filter((p) => p.route);
-      const me = this.ctlD(), kk = this.keys;
       for (const d of this.def) {
-        if (d.dive) {                                          // diving: a burst, then down if he missed
-          d.dive.t -= dt; go(d, d.x + d.dive.dx * 5, d.y + d.dive.dy * 5, 9.5, dt, 60);
-          if (d.dive.t <= 0) { d.dive = null; d.stun = 0.6; }
-          continue;
-        }
         if (d.stun > 0) { d.stun -= dt; continue; }
-        if (d === me) {                                        // yours: toward your finger (or the arrow keys)
-          const kx = (kk.arrowright || kk.d ? 1 : 0) - (kk.arrowleft || kk.a ? 1 : 0), ky = (kk.arrowdown || kk.s ? 1 : 0) - (kk.arrowup || kk.w ? 1 : 0);
-          const tgt = this.ctl && this.ctl.hold ? { x: this.ctl.tx, y: this.ctl.ty } : kx || ky ? { x: d.x + kx * 4, y: d.y + ky * 4 } : null;
-          if (tgt) { const f = this.blockFactor(d, dt); go(d, tgt.x, tgt.y, d.spd * f, dt, 9); d.y = clamp(d.y, 0.5, FW - 0.5); continue; }
-        }
         if (d.bite > 0 && !runPhase) { d.bite -= dt; go(d, this.los + 1, d.y, d.spd * 0.8, dt, 6); continue; }   // biting on the fake
         const f = this.blockFactor(d, dt);
         let tx, ty, sp = d.spd;
@@ -1272,7 +1199,7 @@
 
       // tackles (none while he's in the air on a lunge)
       for (const d of (runPhase && c.lunge ? [] : this.def)) {
-        if (d.stun > 0 || d.held || hyp(d.x - c.x, d.y - c.y) > (d.dive ? 1.8 : 1.15)) continue;
+        if (d.stun > 0 || d.held || hyp(d.x - c.x, d.y - c.y) > 1.15) continue;
         const tkl = d.info.tkl;
         if (c === qb && !this.scramble) {
           if (Math.random() > clamp(0.86 + (tkl - 70) * 0.006, 0.75, 0.97)) { d.stun = 1; this.pop('Slipped the sack!'); continue; }
@@ -1289,7 +1216,6 @@
           this.pop(`#${d.info.num} read the juke!`, '#ff8a5c');
         }
         const hit = this.contact(d, c);
-        if (d.dive) { hit.p = Math.min(0.97, hit.p + 0.12); d.dive = null; }
         if (Math.random() > hit.p) {
           d.stun = 1.1; this.stats.broken++;
           this.pop(hit.angle < -0.3 ? 'Outran the tackle!' : 'Missed tackle!');
@@ -2039,14 +1965,10 @@
         this.drawBall();
       }
       if (this.aim && this.passing()) this.drawAim();
-      if (this.defending && this.ctl && this.ctl.hold && this.phase === 'live') {
-        const X = this.ax(this.ctl.tx), Y = this.ay(this.ctl.ty);
-        g.fillStyle = 'rgba(93,242,255,.8)'; g.fillRect(X - 3, Y, 7, 1); g.fillRect(X, Y - 3, 1, 7);
-      }
       if (this.kick) this.drawKick();
 
-      if (this.phase === 'presnap') this.hint(this.defending ? 'TAP A DEFENDER TO PLAY HIM · TAP THE FIELD TO SNAP' : 'TAP THE FIELD TO SNAP');
-      else if (this.phase === 'live' && this.defending) this.hint('HOLD: MOVE · TAP: SWITCH · FLICK: DIVE');
+      if (this.phase === 'presnap') this.hint(this.defending ? 'DEFENSE · TAP THE FIELD WHEN READY' : 'TAP THE FIELD TO SNAP');
+      else if (this.phase === 'live' && this.defending) this.hint('YOUR DEFENSE · ' + (this.dcall ? callName(this.dcall).toUpperCase() : ''));
       else if (this.phase === 'live' && this.passing() && !this.aim) this.hint('DRAG BACK TO THROW · SWIPE TOWARD THE END ZONE TO RUN');
       else if (this.phase === 'kick' && this.kick) this.hint({ set: 'TAP THE FIELD TO START THE KICK', aim: 'DRAG BACK TO AIM · RELEASE TO KICK',
         meter: 'TAP WHEN THE MARKER IS IN THE GREEN', flight: '' }[this.kick.stage] || '');
@@ -2092,10 +2014,6 @@
       const side = this.defending ? (p.team === 'O' ? 'D' : 'O') : p.team;   // on defense their offense wears their kit
       const img = this.kits[side][p.skin || 0][pose][p.face];
       g.fillStyle = 'rgba(0,0,0,.28)'; g.fillRect(X - 4, Y + 1, 9, 2); g.fillRect(X - 3, Y + 3, 7, 1);
-      if (p === this.ctlD() && (this.phase === 'presnap' || this.phase === 'live' || this.phase === 'tackling')) {
-        Px.ring(g, X, Y + 2, 9, 4, 'rgba(16,24,42,.55)'); Px.ring(g, X, Y + 1, 9, 4, '#5df2ff'); Px.ring(g, X, Y + 1, 8, 3, '#5df2ff');
-        g.fillStyle = '#5df2ff'; g.fillRect(X - 1, Y - 22, 3, 2); g.fillRect(X, Y - 20, 1, 2);    // a little arrow over his head
-      }
       if (p === this.carrier && !down) {
         // ring at the ball carrier's feet; yellow and doubled while a juke is live
         // solid white with a dark edge so it reads on any grass; yellow and doubled while a juke is live
