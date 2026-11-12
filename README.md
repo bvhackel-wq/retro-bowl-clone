@@ -97,8 +97,11 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
   0.18s at 60 coverage, 0.36s at 90). On time and close enough: he goes for the pick (an interception or a
   breakup). Too early: pass interference, a spot foul and an automatic first down. Too late, just after the
   catch: he whiffs on the tackle. One try per pass.
-- **Camera zoom** (pause menu, remembered on the device): during plays the view closes in on the ball,
-  about 1.6x, and eases back out for kicks; the scoreboard and hints stay full size.
+- **Camera zoom** (pause menu, remembered on the device): framed from behind the offense, with the line of
+  scrimmage near the back (left) of the screen and the field ahead. Before the snap and while the
+  quarterback has the ball it only crops the stands, so every receiver stays on screen; once someone's
+  running with the ball it closes in to about 1.6x, and moves up with him once he's about three-quarters of
+  the way across. It eases back out for kicks; the scoreboard and hints stay full size.
 - **Play defense (Phase 1: you call it).** When the opponent has the ball you play their drive: the field
   flips so they attack your end zone, their offense calls a play (hidden from you), and your defensive
   coordinator calls a coverage. Keep it or tap Change for four groups: Man (Cover 1, Cover 1 Press, 2-Man),

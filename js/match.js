@@ -1921,7 +1921,8 @@
         if (b.state === 'air' || b.state === 'dead') fx = b.sx + (b.tx - b.sx) * Math.min(1, b.u);
         else if (this.carrier) fx = this.carrier.x;
       }
-      let target = clamp(fx - VIEW * 0.36, -3, 123 - VIEW);
+      // zoomed: hold the line near the back until the ball is well downfield
+      let target = clamp(GP.prefs().zoom ? Math.max(this.los - VIEW * 0.18, fx - VIEW * 0.6) : fx - VIEW * 0.36, -3, 123 - VIEW);
       if (this.phase === 'kick' && this.kick) {
         const k = this.kick;
         if (k.type !== 'punt') target = 123 - VIEW;                 // keep the uprights in view for a kick
@@ -2083,18 +2084,27 @@
       m.drawImage(this.art, z.sx, z.sy, z.sw, z.sh, 0, 0, this.cv.width, this.cv.height);
       m.drawImage(this.ui, 0, 0, this.cv.width, this.cv.height);
     }
-    // Camera zoom (an option in the pause menu): during plays the view closes in on the ball, about 1.6x,
-    // and eases back out for kicks and between possessions. Returns the part of the field picture to show.
+    // Camera zoom (an option in the pause menu): before the snap and while the quarterback has the ball the
+    // view crops the stands but keeps the whole field width; once someone's running with the ball it closes
+    // in to about 1.6x. It eases back out for kicks and between possessions. Framed like a broadcast from behind the offense: the line of
+    // scrimmage sits near the back (left) of the screen with the field ahead of it; when the ball or a runner
+    // gets far downfield the view moves up to keep him about three-quarters of the way across. Vertically it
+    // follows the ball. Returns the part of the field picture to show.
     zoomView() {
       const on = GP.prefs().zoom && (this.phase === 'presnap' || this.phase === 'live' || this.phase === 'tackling' || this.phase === 'dead') && !this.kick;
-      this.zf = (this.zf || 1) + ((on ? 1.6 : 1) - (this.zf || 1)) * 0.12;
       const b = this.ball, c = this.carrier;
+      // before the snap and while the quarterback reads the field, only close enough to crop the stands, so
+      // every receiver stays on screen; once someone's running with it, all the way in on him
+      const fit = AH / (FW * YA + 18), close = this.phase === 'tackling' || (this.phase === 'live' && this.running(c)) || (this.phase === 'dead' && (this.zf || 1) > fit + 0.05);
+      this.zf = (this.zf || 1) + ((on ? (close ? 1.6 : fit) : 1) - (this.zf || 1)) * 0.1;
       const f = b.state === 'air' ? { x: b.sx + (b.tx - b.sx) * Math.min(1, b.u), y: b.sy + (b.ty - b.sy) * Math.min(1, b.u) }
-        : c ? { x: c.x, y: c.y } : this.qb ? { x: this.qb.x + 6, y: this.qb.y } : { x: this.los, y: MID };
-      this.zx = this.zx == null ? f.x : this.zx + (f.x - this.zx) * 0.15;
+        : c ? { x: c.x, y: c.y } : this.qb ? { x: this.qb.x, y: this.qb.y } : { x: this.los, y: MID };
+      const sw = AW / this.zf, sh = AH / this.zf, wy = sw / YA;          // the view's width in yards
+      let left = Math.max(this.los - wy * 0.2, f.x - wy * 0.75);         // line near the back, unless the ball is deep
+      left = Math.min(left, f.x - wy * 0.1);                             // never lose the ball off the back
+      this.zl = this.zl == null ? left : this.zl + (left - this.zl) * 0.15;
       this.zy = this.zy == null ? f.y : this.zy + (f.y - this.zy) * 0.15;
-      const sw = AW / this.zf, sh = AH / this.zf;
-      return { sx: clamp(this.ax(this.zx) - sw / 2, 0, AW - sw), sy: clamp(this.ay(this.zy) - sh / 2, 0, AH - sh), sw, sh };
+      return { sx: clamp(this.ax(this.zl), 0, AW - sw), sy: clamp(this.ay(this.zy) - sh / 2, 0, AH - sh), sw, sh };
     }
     hint(t) {
       const g = this.ug, Px = GP.Pixel, w = Px.width(t) + 10;
