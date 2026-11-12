@@ -133,14 +133,43 @@
     ['rblk', 'Run block', 'How long he holds his man on run plays'],
     ['spd', 'Speed', 'Getting into position; a faster rusher beats a slow lineman around the edge'],
     ['sta', 'Stamina', 'How slowly his blocking fades over a long drive']];
+  // the defense: every stat feeds something on the field
+  GP.STATS.DL = [
+    ['rush', 'Pass rush', 'How fast he beats his blocker on pass plays: sacks and pressure'],
+    ['run', 'Run stop', 'How fast he sheds his blocker on runs'],
+    ['pow', 'Strength', 'Driving his blocker back into the quarterback'],
+    ['spd', 'Speed', 'Closing on the quarterback and chasing plays down'],
+    ['tkl', 'Tackling', 'Finishing the tackle once he gets there']];
+  GP.STATS.LB = [
+    ['tkl', 'Tackling', 'Finishing tackles: head-on hits land, arm tackles miss'],
+    ['run', 'Run stop', 'How fast he reads a run and fills his gap'],
+    ['cov', 'Coverage', 'Staying with backs and tight ends, breaking up throws'],
+    ['spd', 'Speed', 'Range in coverage and pursuit'],
+    ['pow', 'Strength', 'Shedding blockers in the run game']];
+  GP.STATS.CB = [
+    ['cov', 'Coverage', 'Staying with his man through cuts, breaking up throws'],
+    ['spd', 'Speed', 'Keeping up with fast receivers'],
+    ['ball', 'Ball skills', 'Interceptions, and your swipe-up timing window when he plays the ball'],
+    ['tkl', 'Tackling', 'Bringing the receiver down after the catch']];
+  GP.STATS.S = [
+    ['cov', 'Coverage', 'Covering deep and breaking up throws'],
+    ['spd', 'Speed', 'Range over the top and in pursuit'],
+    ['tkl', 'Tackling', 'The last line: tackles in the open field'],
+    ['ball', 'Ball skills', 'Interceptions, and your swipe-up timing window when he plays the ball'],
+    ['run', 'Run stop', 'How fast he reads a run and comes up to fill']];
   GP.statsFor = (key) => GP.STATS[key] || [['ovr', 'Overall', '']];
-  GP.derived = (key) => ['QB', 'RB', 'WR', 'WR1', 'WR2', 'TE', 'OL', 'K'].includes(key);   // overall is computed from the stats
+  GP.derived = (key) => ['QB', 'RB', 'WR', 'WR1', 'WR2', 'TE', 'OL', 'K', 'DL', 'LB', 'CB', 'S'].includes(key);   // overall is computed from the stats
+  GP.DEF_POS = ['DL', 'LB', 'CB', 'S'];
+  GP.isDef = (pos) => GP.DEF_POS.includes(pos);
 
-  // The roster: up to 12 players at these positions (three linemen start). The defense is a team-wide unit.
-  GP.ROSTER_MAX = 12;
-  GP.PLAYER_POS = { QB: 'Quarterback', RB: 'Running Back', WR: 'Wide Receiver', TE: 'Tight End', OL: 'Offensive Lineman', K: 'Kicker' };
+  // The roster: up to 22 players, 18 of them starting (9 on offense with the kicker, 9 on defense).
+  GP.ROSTER_MAX = 22;
+  GP.PLAYER_POS = { QB: 'Quarterback', RB: 'Running Back', WR: 'Wide Receiver', TE: 'Tight End', OL: 'Offensive Lineman', K: 'Kicker',
+                    DL: 'Defensive Lineman', LB: 'Linebacker', CB: 'Cornerback', S: 'Safety' };
   GP.SLOTS = [['QB', 'QB'], ['RB', 'RB'], ['WR1', 'WR'], ['WR2', 'WR'], ['TE', 'TE'], ['OL1', 'OL'], ['OL2', 'OL'], ['OL3', 'OL'], ['K', 'K']];   // a game's starters
-  GP.UNITS = [['DEF', 'Defense', 'Sets your defenders’ speed, coverage and tackling']];
+  // the defense's starters (the second safety plays in two-deep coverages; otherwise a third lineman does)
+  GP.DEF_SLOTS = [['DL1', 'DL'], ['DL2', 'DL'], ['DL3', 'DL'], ['LB1', 'LB'], ['LB2', 'LB'], ['CB1', 'CB'], ['CB2', 'CB'], ['S', 'S'], ['S2', 'S']];
+  GP.UNITS = [];
   const PHYSICAL = { spd: 1, agi: 1, sta: 1 };      // fade from 29; skills (and overall) from 31
 
   // Stars (0-5, fixed for life) set the general level of a player's caps; each stat gets its own cap
@@ -155,6 +184,10 @@
         : key === 'TE' ? t.hands * 0.3 + t.blk * 0.25 + t.pow * 0.2 + t.spd * 0.15 + t.sta * 0.1
         : key === 'OL' ? t.pblk * 0.3 + t.rblk * 0.3 + t.pow * 0.2 + t.spd * 0.1 + t.sta * 0.1
         : key === 'K' ? (t.leg + t.acc) / 2
+        : key === 'DL' ? t.rush * 0.3 + t.run * 0.25 + t.pow * 0.2 + t.tkl * 0.15 + t.spd * 0.1
+        : key === 'LB' ? t.tkl * 0.3 + t.run * 0.25 + t.cov * 0.2 + t.spd * 0.15 + t.pow * 0.1
+        : key === 'CB' ? t.cov * 0.4 + t.spd * 0.3 + t.ball * 0.15 + t.tkl * 0.15
+        : key === 'S' ? t.cov * 0.3 + t.spd * 0.2 + t.tkl * 0.2 + t.ball * 0.15 + t.run * 0.15
         : t.hands * 0.3 + t.spd * 0.3 + t.agi * 0.15 + t.sta * 0.15 + t.pow * 0.1);
     } else r.ovr = r.stats.ovr;
     if (r.stats.agi != null) r.agi = r.stats.agi;
@@ -176,9 +209,16 @@
     const taken = new Set([...(s.players || []), ...((s.draft && s.draft.pool) || []), ...Object.values(s.blocks || {}).flat()].map((p) => p.name));
     for (let i = 0; i < 20 && taken.has(r.name); i++) r.name = GP.pick(FIRST) + ' ' + GP.pick(LAST);
     r.id = s.nextId++; r.pos = pos;
+    if (GP.isDef(pos)) r.num = jersey(s, pos);
     return r;
   }
   GP.newPlayer = newPlayer;
+  // a defender's number, by position, not worn by anyone else on the roster
+  function jersey(s, pos) {
+    const [lo, hi] = { DL: [90, 99], LB: [50, 59], CB: [20, 29], S: [30, 39] }[pos], used = new Set((s.players || []).map((p) => p.num));
+    for (let i = 0; i < 40; i++) { const n = GP.rint(lo, hi); if (!used.has(n)) return n; }
+    return GP.rint(lo, hi);
+  }
   // A nameless reserve fielded when no one on the roster plays a starting spot: 0-1 stars, stats
   // 40-55, at his caps so he can't be upgraded. A fresh one each season.
   function genFiller(pos) {
@@ -190,18 +230,20 @@
   GP.depth = (s, pos) => s.players.filter((p) => p.pos === pos).sort((a, b) => b.ovr - a.ovr);
   // The starters for a game: the best players at each position, a reserve wherever there is none.
   GP.lineup = function (s) {
-    const L = { DEF: s.units.DEF }, used = new Set();
+    const L = {}, used = new Set();
     s.fillers = s.fillers || {};
-    for (const [slot, pos] of GP.SLOTS) {
+    for (const [slot, pos] of GP.SLOTS.concat(GP.DEF_SLOTS)) {
       const best = GP.depth(s, pos).find((p) => !used.has(p.id));
       if (best) { L[slot] = best; used.add(best.id); }
       else L[slot] = s.fillers[slot] || (s.fillers[slot] = genFiller(pos));
     }
     // the line as a whole, for team ratings and simulated drives
     L.OL = { ovr: Math.round((L.OL1.ovr + L.OL2.ovr + L.OL3.ovr) / 3) };
+    // the defense as a whole: the average of its starters, for team ratings and simulated drives
+    L.DEF = { ovr: Math.round(GP.DEF_SLOTS.reduce((a, [slot]) => a + L[slot].ovr, 0) / GP.DEF_SLOTS.length) };
     return L;
   };
-  GP.findPlayer = (s, id) => s.units[id] || s.players.find((p) => p.id === id);
+  GP.findPlayer = (s, id) => (s.units || {})[id] || s.players.find((p) => p.id === id);
   GP.release = function (s, id) {
     s.players = s.players.filter((p) => p.id !== id);
     GP.syncUser(s); GP.save(s);
@@ -243,7 +285,7 @@
       v: 3, teamId, season: 1, week: 0, credits: 4, phase: 'regular', playoff: null, champion: null, history: [],
       players: [], nextId: 1, fillers: {}, news: [], difficulty: difficulty || 'normal',
       staff: { OC: genCoach('OC', 1), DC: genCoach('DC', 1) },
-      units: { DEF: genPlayer('DEF', GP.pick([2, 2, 3, 3, 3]), null, true) },
+      units: {},
       teams: GP.TEAMS.map((t) => ({ id: t.id, off: GP.rint(64, 84), def: GP.rint(64, 84), w: 0, l: 0, pf: 0, pa: 0 })),
       schedule: buildSchedule(1),
     };
@@ -251,6 +293,10 @@
     const starters = ['QB', 'RB', 'WR', 'WR', 'TE', 'K'];
     starters.splice(GP.rint(1, 4), 1);
     for (const pos of starters.concat(['OL', 'OL', 'OL'])) s.players.push(newPlayer(s, pos, GP.pick([2, 2, 3, 3, 3]), GP.rint(22, 29)));
+    // the defense: a full set of starters minus one, anywhere on the field
+    const defense = GP.DEF_SLOTS.map(([, pos]) => pos);
+    defense.splice(GP.rint(0, defense.length - 1), 1);
+    for (const pos of defense) s.players.push(newPlayer(s, pos, GP.pick([2, 2, 3, 3, 3]), GP.rint(22, 29)));
     GP.syncUser(s);
     return s;
   };
@@ -412,7 +458,7 @@
     s.blocks = s.blocks || {};
     if (!s.blocks[teamId]) {
       const t = GP.rec(s, teamId), level = GP.clamp(Math.round(((t.off + t.def) / 2 - 58) / 6), 0, 5);
-      s.blocks[teamId] = [0, 1, 2].map(() => newPlayer(s, GP.pick(['QB', 'RB', 'WR', 'WR', 'TE', 'OL', 'OL', 'K']),
+      s.blocks[teamId] = [0, 1, 2].map(() => newPlayer(s, GP.pick(['QB', 'RB', 'WR', 'WR', 'TE', 'OL', 'OL', 'K', 'DL', 'DL', 'LB', 'CB', 'CB', 'S']),
         GP.clamp(level + GP.rint(-1, 1), 0, 5), GP.rint(23, 31)));
       GP.save(s);
     }
@@ -426,7 +472,7 @@
     return out;
   };
   // what things are worth, in one common currency
-  const POS_WEIGHT = { QB: 1.3, RB: 1, WR: 1, TE: 0.9, OL: 0.8, K: 0.5 };   // quarterbacks matter most, kickers least
+  const POS_WEIGHT = { QB: 1.3, RB: 1, WR: 1, TE: 0.9, OL: 0.8, K: 0.5, DL: 0.9, LB: 0.85, CB: 0.9, S: 0.85 };   // quarterbacks matter most, kickers least
   GP.playerValue = (p) => (Math.max(0, p.ovr - 45) ** 1.6 * 0.5 + p.stars * 6 + (p.age <= 25 ? 6 : p.age >= 31 ? -8 : 0)) * (POS_WEIGHT[p.pos] || 1);
   GP.pickValue = function (s, key) {
     const [, round, team] = key.split('-'), order = GP.standings(s).reverse().map((t) => t.id);   // worst first
@@ -477,7 +523,7 @@
   GP.pickOwner = (s, season, round, team) => (s.pickOwners && s.pickOwners[pickKey(season, round, team)]) || team;
   const weighted = (pairs) => { let r = Math.random() * pairs.reduce((a, p) => a + p[1], 0); for (const [v, w] of pairs) if ((r -= w) < 0) return v; return pairs[0][0]; };
   function genProspect(s) {
-    const pos = weighted([['QB', 10], ['RB', 16], ['WR', 26], ['TE', 14], ['OL', 26], ['K', 8]]);
+    const pos = weighted([['QB', 6], ['RB', 9], ['WR', 14], ['TE', 8], ['OL', 14], ['K', 4], ['DL', 15], ['LB', 10], ['CB', 12], ['S', 8]]);
     const stars = weighted([[0, 10], [1, 20], [2, 30], [3, 22], [4, 12], [5, 6]]);
     const r = newPlayer(s, pos, stars, GP.rint(21, 23));
     // what your scouts can tell without a closer look
@@ -653,6 +699,18 @@
 
         changed = true;
       }
+      // the defense unit becomes nine real players at its level (they fit: the roster limit grew to 22)
+      if (s.units && s.units.DEF) {
+        const u = s.units.DEF, st = u.stars != null ? u.stars : 2;
+        for (const [, pos] of GP.DEF_SLOTS) {
+          const r = newPlayer(s, pos, st, GP.rint(23, 29));
+          for (const k in r.stats) { r.stats[k] = GP.clamp(u.ovr + GP.rint(-5, 5), 35, 99); r.caps[k] = Math.max(r.caps[k], r.stats[k]); }
+          GP.refresh(r, pos); s.players.push(r);
+        }
+        delete s.units.DEF;
+        changed = true;
+      }
+      s.units = s.units || {};
       if (!s.staff) { s.staff = { OC: genCoach('OC', 1), DC: genCoach('DC', 1) }; changed = true; }
       for (const r of s.players) changed = addMissingStats(r, r.pos) || changed;
       if (changed) { GP.syncUser(s); GP.save(s); }

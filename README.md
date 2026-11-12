@@ -10,7 +10,7 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
 
 ## How to play
 
-- **You run the offense.** Opponent drives are simulated from your Defense rating vs. their Offense.
+- **You run the offense,** and call the defense (or simulate opponent drives from your defense's rating vs. their offense).
 - **Pass:** after the snap, drag backwards anywhere on the field and release. The ring is where the
   ball lands, so lead the receiver. Nearby defenders can break it up or intercept.
 - **Scramble:** instead of throwing, swipe toward the end zone (keyboard: right arrow or D) and the
@@ -121,7 +121,7 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
   to what's in front of him, a few times a second. Their play-caller
   learns which coverages you lean on and calls plays that beat them. On 4th down they go for it, kick a
   field goal or punt. Interceptions and recovered fumbles give you the ball at the spot; a safety scores
-  you 2. Your defenders come from your defense rating plus your coordinator's stars, which also set how
+  you 2. Your defenders are your defensive players (below), plus your coordinator's stars, which also set how
   often they bust. "Simulate drive" in the menu hands one drive to the old simulation, and your team page
   has a Play it / Simulate switch for whole games. Balance: tuned over thousands of simulated drives so an
   even matchup ends close to an NFL drive (about 25-30% touchdowns, ~57% completions, ~8 yards a throw,
@@ -160,11 +160,12 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
   half a second at 50, over two seconds at 90, varying block to block). A poor blocker loses his man
   and hurts the run game; above about 70 the unblocked safety becomes the limit. His overall is
   computed from these. Agility stays fixed at 55 for now.
-- **Roster:** up to 12 players (quarterbacks, backs, receivers, tight ends, offensive linemen,
-  kickers); the defense is a team-wide unit. Nine start each game, including three linemen. Each game starts your best player at each spot. If nobody on
+- **Roster:** up to 22 players. Eighteen start: nine on offense (quarterback, back, two receivers, tight
+  end, three linemen, kicker) and nine on defense (three linemen, two linebackers, two cornerbacks, two
+  safeties; the second safety plays in two-deep coverages). Each game starts your best player at each spot. If nobody on
   the roster plays a starting spot, a nameless 0-1★ reserve with stats of 40-55 is fielded, and he
   can't be upgraded. Players who retire (at 36) leave their spot open; you can also release players.
-  New careers start one back, receiver or tight end short.
+  New careers start one back, receiver or tight end short, and one defender short.
 - **Draft:** three rounds after each season, worst record first and the champion last, from about
   110 prospects aged 21-23. Unscouted prospects show only a star range and an overall range;
   scouting one costs a coaching point and reveals his real stars, stats and caps. Other teams draft
@@ -172,7 +173,19 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
 - **Trades:** open in the offseason and during the season until the deadline after week 9. Each team
   has three players on its trade block each season, plus its picks in the next draft. Players are
   valued by overall, stars, age and position; picks by round and how high they are likely to fall.
-  Other teams accept only if they come out about 10% ahead. A trade can't take you over 12 players.
+  Other teams accept only if they come out about 10% ahead. A trade can't take you over 22 players.
+- **Defensive players:** each has 0-5 stars, per-stat ceilings, an overall from his stats, upgrades and
+  a jersey number, like the offense. Every stat does something on the field:
+  - **DL:** pass rush (how fast he beats his blocker on throws), run stop (how fast he sheds him on runs),
+    strength (driving the blocker back), speed, tackling.
+  - **LB:** tackling, run stop (how fast he reads and fills a run), coverage, speed, strength (shedding blocks).
+  - **CB:** coverage (staying with his man, breakups), speed, ball skills (interceptions and your swipe-up
+    window when he plays the ball), tackling.
+  - **S:** coverage, speed, tackling, ball skills, run stop.
+  Your coordinator's stars add to every defender on the field, and the rating gap against their offense is
+  narrowed the same way as before, so balance is unchanged (measured: player-built and rating-built
+  defenses give up touchdowns at the same rate). Defenders are drafted, traded, develop and retire like
+  everyone else. Older careers' defense unit becomes nine players at its level.
 - **Offensive line stats:** strength (holding ground against the pass rush), pass block (how long he
   holds his man on passes), run block (how long he holds on runs), speed (a faster rusher gets around
   a slow lineman sooner) and stamina (blocking fades up to 25% over a long drive; fresh each drive).

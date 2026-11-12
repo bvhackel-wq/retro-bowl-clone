@@ -108,7 +108,8 @@
   // the roster in screen order: starters by slot (a reserve in any empty spot), the bench, then the defense unit
   function rosterOrder() {
     const lineup = GP.lineup(S), ids = new Set(), out = [];
-    for (const [slot, pos] of GP.SLOTS) { const r = lineup[slot]; if (!r.filler) ids.add(r.id); out.push({ r, pos, slot, starter: true }); }
+    for (const [slot, pos] of GP.SLOTS) { const r = lineup[slot]; if (!r.filler) ids.add(r.id); out.push({ r, pos, slot, starter: true, side: 'O' }); }
+    for (const [slot, pos] of GP.DEF_SLOTS) { const r = lineup[slot]; if (!r.filler) ids.add(r.id); out.push({ r, pos, slot, starter: true, side: 'D' }); }
     S.players.filter((p) => !ids.has(p.id)).sort((a, b) => a.pos.localeCompare(b.pos) || b.ovr - a.ovr)
       .forEach((r) => out.push({ r, pos: r.pos, slot: null, starter: false }));
     for (const [key, label] of GP.UNITS) out.push({ r: S.units[key], pos: key, unit: key, label });
@@ -127,8 +128,9 @@
       h('div', { class: 'nm' }, 'Empty'), h('div', { class: 'dim sub' }, `${r.stars}★ reserve fills in`), h('div', { class: 'ovr' }, String(r.ovr)));
     const pot = potential(r);
     return h('button', { class: 'pcard' + (e.starter === false ? ' bench' : ''), onclick: () => renderPlayer(i) },
-      h('div', { class: 'top', style: `background:${e.unit ? me.c2 : me.c1};color:${e.unit ? me.c1 : me.c2}` },
-        h('span', { class: 'pos' }, e.unit ? 'DEF' : e.pos), e.unit ? h('span', { class: 'unitmark' }, 'UNIT') : portrait(r)),
+      h('div', { class: 'top' + (GP.isDef(r.pos) ? ' def' : ''), style: `background-color:${e.unit ? me.c2 : me.c1};color:${e.unit ? me.c1 : me.c2}` },
+        h('span', { class: 'pos' }, e.unit ? 'DEF' : e.pos), r.num ? h('span', { class: 'num' }, '#' + r.num) : null,
+        e.unit ? h('span', { class: 'unitmark' }, 'UNIT') : portrait(r)),
       h('div', { class: 'nm' }, e.unit ? e.label : lastName(r.name)), stars(r.stars),
       h('div', { class: 'ovrline' }, h('span', { class: 'ovr' }, String(r.ovr)), h('span', { class: 'dim' }, ` / ${pot}`)),
       h('div', { class: 'bar grow' }, h('i', { style: `width:${clamp01(r.ovr / Math.max(1, pot)) * 100}%` })));
@@ -141,10 +143,12 @@
     hub.append(backBar(`Roster ${S.players.length}/${GP.ROSTER_MAX}`, renderHub));
     const grid = (list) => h('div', { class: 'pcards' }, ...list.map(([e, i]) => playerCard(e, i)));
     const idx = order.map((e, i) => [e, i]);
-    hub.append(h('h2', null, 'Starters'), grid(idx.filter(([e]) => e.starter)));
+    const avg = (side) => { const st = order.filter((e) => e.side === side); return Math.round(st.reduce((a, e) => a + e.r.ovr, 0) / st.length); };
+    hub.append(h('h2', null, `Offense · ${avg('O')} avg`), grid(idx.filter(([e]) => e.starter && e.side === 'O')));
+    hub.append(h('h2', null, `Defense · ${avg('D')} avg`), grid(idx.filter(([e]) => e.starter && e.side === 'D')));
     const bench = idx.filter(([e]) => e.starter === false);
     hub.append(h('h2', null, 'Bench'), bench.length ? grid(bench) : h('div', { class: 'card dim' }, 'Nobody on the bench yet.'));
-    hub.append(h('h2', null, 'Units'), grid(idx.filter(([e]) => e.unit)));
+    if (idx.some(([e]) => e.unit)) hub.append(h('h2', null, 'Units'), grid(idx.filter(([e]) => e.unit)));
     show('hub');
   }
 
@@ -160,13 +164,13 @@
     const pot = potential(r);
     const profile = h('div', { class: 'card profile' },
       h('div', { class: 'phead', style: `background:${me.c1};color:${me.c2}` }, e.unit ? h('span', { class: 'unitmark big' }, 'UNIT') : portrait(r),
-        h('div', null, h('div', { class: 'px' }, e.unit ? e.label : GP.PLAYER_POS[r.pos]), h('div', { class: 'role' }, e.unit ? 'Defense' : e.starter ? `Starter · ${e.slot}` : 'Bench'))),
+        h('div', null, h('div', { class: 'px' }, e.unit ? e.label : GP.PLAYER_POS[r.pos]), h('div', { class: 'role' }, e.unit ? 'Defense' : (r.num ? `#${r.num} · ` : '') + (e.starter ? `${e.side === 'D' ? 'Defense' : 'Offense'} starter · ${e.slot}` : 'Bench')))),
       h('div', { class: 'facts' },
         e.unit ? null : h('div', null, h('span', { class: 'dim' }, 'Age'), h('b', null, String(r.age))),
         h('div', null, h('span', { class: 'dim' }, 'Overall'), h('b', null, String(r.ovr))),
         h('div', null, h('span', { class: 'dim' }, 'Potential'), h('b', null, String(pot))),
         h('div', null, h('span', { class: 'dim' }, 'Stars'), stars(r.stars))),
-      h('div', { class: 'dim note' }, e.unit ? (GP.UNITS.find((u) => u[0] === e.unit) || [])[2] : GP.derived(key) ? 'His overall comes from his attributes. Stars are fixed for life and set his ceilings.' : ''),
+      h('div', { class: 'dim note' }, e.unit ? (GP.UNITS.find((u) => u[0] === e.unit) || [])[2] : GP.derived(key) ? 'His overall comes from his attributes. Stars are fixed for life and set his ceilings.' + (GP.isDef(r.pos) ? ' On the field your coordinator\'s stars add to every defender.' : '') : ''),
       e.unit ? null : h('button', { class: 'btn ghost small', onclick: () => {
         if (confirm(`Release ${r.name}? He leaves the team for good.`)) { GP.release(S, r.id); renderRoster(); }
       } }, 'Release'));
@@ -380,7 +384,7 @@
       mine ? h('button', { class: 'btn ghost', onclick: () => { GP.draftPass(S); renderDraft(); } }, 'Pass this pick') : null,
       h('div', { class: 'dim' }, myLeft.length ? 'Your picks: ' + myLeft.map((p) => `#${p.no}`).join(', ') : 'No picks left')));
 
-    const tabs = h('div', { class: 'tabs' }, ...['ALL', 'QB', 'RB', 'WR', 'TE', 'OL', 'K'].map((t) =>
+    const tabs = h('div', { class: 'tabs' }, ...['ALL', 'QB', 'RB', 'WR', 'TE', 'OL', 'K', 'DL', 'LB', 'CB', 'S'].map((t) =>
       h('button', { class: 'btn small' + (t === draftPos ? '' : ' ghost'), onclick: () => { draftPos = t; renderDraft(); } }, t)));
     const list = h('div', { class: 'card' }, tabs);
     const est = (p) => (p.scouted ? p.stars * 10 + p.ovr / 10 : (p.est.stars[0] + p.est.stars[1]) * 5 + p.est.ovr[0] / 10);

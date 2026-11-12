@@ -136,6 +136,7 @@
       // the two are pulled toward each other before the players are made: the better unit still wins its
       // matchup, by about as much as the simulation gives it.
       const myDef = cfg.roster.DEF.ovr + (cfg.staff ? cfg.staff.DC.stars * 1.5 : 0), mid = (cfg.oppOff + myDef) / 2;
+      this.myDefRaw = cfg.roster.DEF.ovr;
       this.oppRoster = GP.oppOffense(Math.round(mid + (cfg.oppOff - mid) * GAP_K));
       this.myDefEff = Math.round(mid + (myDef - mid) * GAP_K);
       // kicker: distance sets how far he can aim, accuracy the meter's green zone and speed
@@ -151,7 +152,9 @@
       // rating. Yours come from your defense unit plus your coordinator's stars.
       this.oppDefRoster = this.dRoster = Match.defRoster(cfg.oppDef);
       this.myDef = this.myDefEff;
-      this.myDefRoster = Match.defRoster(this.myDef);
+      // your defenders are your players: each keeps his own strengths, all shifted by your coordinator's
+      // bonus and the same gap squeeze as above (older careers without defensive players: from the rating)
+      this.myDefRoster = cfg.roster.DL1 ? Match.defFromLineup(cfg.roster, this.myDefEff - this.myDefRaw) : Match.defRoster(this.myDef);
       this.oppDC = cfg.oppDC != null ? cfg.oppDC : 2;   // their defensive coordinator's stars
       // their offense's tuning: seconds per read, how open a man must be beyond what his accuracy needs, how
       // much wilder his throws are than yours, and how often their runner tries a juke
@@ -210,7 +213,23 @@
         const so = { DL: [-10, -15], LB: [-4, -6], CB: [4, 4], S: [1, 2] }[pos];
         const r = out[slot] = { slot, pos, num: n, tkl: clamp(Math.round(rating + off + rnd(-5, 5)), 45, 99), tk: 0, ints: 0, sacks: 0,
           spd: clamp(Math.round(rating + so[0] + rnd(-6, 6)), 40, 99), cov: clamp(Math.round(rating + so[1] + rnd(-6, 6)), 40, 99) };
+        // the rest, set so a rated defense plays exactly as before: ball skills track coverage, the line's pass
+        // rush and run stop are the rating, strength scatters around it
+        r.ball = r.cov; r.rush = pos === 'DL' ? Math.round(rating) : 50; r.run = Math.round(rating);
+        r.pow = clamp(Math.round(rating + (pos === 'DL' ? rnd(-6, 6) : 0)), 40, 99);
         r.stars = clamp(Math.round(((r.tkl - off) + (r.spd - so[0]) + (r.cov - so[1])) / 3 / 6 - 58 / 6), 0, 5);   // stars follow his ratings
+      }
+      return out;
+    }
+    // Your defense from your lineup: each starter's own stats (a stat his position doesn't have falls back to
+    // his overall), shifted by `shift`.
+    static defFromLineup(L, shift) {
+      const out = {};
+      for (const [slot, pos] of DSLOTS) {
+        const r = L[slot] || {}, st = r.stats || {}, v = (k) => clamp(Math.round((st[k] != null ? st[k] : r.ovr || 60) + shift), 35, 99);
+        out[slot] = { slot, pos, num: r.num || GP.rint(...{ DL: [90, 99], LB: [50, 59], CB: [20, 29], S: [30, 39] }[pos]), name: r.name,
+          tkl: v('tkl'), spd: v('spd'), cov: v('cov'), ball: v('ball'), run: v('run'), rush: v('rush'), pow: v('pow'),
+          stars: r.stars != null ? r.stars : 2, tk: 0, ints: 0, sacks: 0 };
       }
       return out;
     }
@@ -727,12 +746,13 @@
       // defensive backs in man watch their receiver, not the backfield, so they find the run late too;
       // linebackers in man play pass first and are a step slow to fill
       if (this.play.type === 'run') for (const d of this.def) {
-        if (d.role !== 'DL') d.shed *= 1.7;
+        if (d.role !== 'DL') d.shed *= 1.7 * clamp(1 + (((d.info && d.info.pow) || 70) - 70) * 0.01, 0.75, 1.3);
         // safeties: with one high, he's the run-support player and comes fast (the rotated-down safety of a real
         // one-high shell); with two high, both read pass first and come late, which is why you run against them
         const twoHigh = TWO_HIGH[this.dcall.type];
         d.react = (d.react || 0) + 0.25 + (d.role === 'S' && d.job === 'deep' ? (twoHigh ? 1.1 : 0.1) : d.job === 'deep' ? 0.6 : d.job === 'zone' && d.anchor && d.anchor[0] - this.los >= 8 ? 0.3
           : d.job === 'man' && d.role !== 'LB' && d.mark && d.mark.role !== 'RB' ? 0.45 : d.job === 'man' ? 0.35 : 0);
+        if (d.role === 'LB' || d.role === 'S') d.react = Math.max(0.05, d.react - (((d.info && d.info.run) || 70) - 70) * 0.006);   // run stop
       }
       // a man defender whose man stays in to block drops into the hole over the middle (where slants are caught)
       for (const d of this.def) if (d.job === 'man' && d.mark && d.mark.route && d.mark.route.block) {
@@ -916,14 +936,15 @@
       this.off = [...ol, this.qb, rb, w1, w2, te];
       this.rb = rb;
 
-      const db = 6.7 + (d - 60) * 0.03, lb = 6.6 + (d - 60) * 0.03, dls = 5.8 + (d - 60) * 0.02;
+      const db = 6.7 + (d - 60) * 0.03, lb = 6.6 + (d - 60) * 0.03;
       const dl = [-2.6, 0, 2.6].map((o, i) => {
-        const p = M('D', 'DL', L + 1, MID + o, dls); p.job = 'rush'; p.pow = d + rnd(-6, 6);
+        const di = this.dRoster[DSLOTS[i][0]];
+        const p = M('D', 'DL', L + 1, MID + o, 5.8 + (di.spd - 60) * 0.02); p.job = 'rush'; p.pow = di.pow;
         // how long the lineman across from him holds him. Passes: his pass-block stat. Runs are decided in
         // about 1.5s, so there run block (with a quarter strength) sets a hold of ~1-3s that varies block to block.
-        if (isRun) p.shed = clamp(2.2 + ((ol[i].blk * 0.75 + ol[i].pow * 0.25) - d) * 0.06, 0.4, 4) * rnd(0.5, 1.5)
+        if (isRun) p.shed = clamp(2.2 + ((ol[i].blk * 0.75 + ol[i].pow * 0.25) - di.run) * 0.06, 0.4, 4) * rnd(0.5, 1.5)
           * (!this.defending && GP.hasSkill(this.cfg.staff, 'OC', 'ground') ? 1.2 : 1);                              // OC skill: Ground Game
-        else p.shed = clamp(2.6 + rnd(0, 2.4) + (ol[i].blk - d) * 0.05, 1.5, 7) * (this.dif ? this.dif.rush : 1);
+        else p.shed = clamp(2.6 + rnd(0, 2.4) + (ol[i].blk - di.rush) * 0.05, 1.5, 7) * (this.dif ? this.dif.rush : 1);
         ol[i].mark = p; return p;
       });
       // the back seven line up according to the coverage they show; the alignment is the pre-snap tell
@@ -1371,7 +1392,8 @@
       if (this.defending && this.intTry && this.intTry.kind !== 'late') { const r = this.intResolve(b); if (r !== false) return r; }
       // how much a nearby defender disrupts the catch depends on his coverage
       const dcov = d && d.info ? d.info.cov : 70, dskill = clamp(0.6 + (dcov - 60) * 0.015, 0.4, 1.2) * ((this.cfg.difficulty || 'normal') === 'hard' ? 1.15 : 1);
-      if (d && (!o || dd < od) && Math.random() < (o ? 0.22 : 0.35) * this.dif.pick * dskill) return this.intercepted(b.tx);
+      const dball = d && d.info ? (d.info.ball != null ? d.info.ball : dcov) : 70, bskill = clamp(0.6 + (dball - 60) * 0.015, 0.4, 1.2) * ((this.cfg.difficulty || 'normal') === 'hard' ? 1.15 : 1);
+      if (d && (!o || dd < od) && Math.random() < (o ? 0.22 : 0.35) * this.dif.pick * bskill) return this.intercepted(b.tx);
       if (!o) return this.incomplete(d ? 'Broken up' : 'Incomplete');
       const hands = o.hands != null ? o.hands : o.ovr;   // a back's catching stat
       // Uncontested, a catchable ball is almost always caught: about 2% drops at 70 catching (3-4% at 50,
@@ -1393,7 +1415,7 @@
 
     // ---------- going for the interception (defense) ----------
     // Swipe up as their pass arrives. The defender nearest where it will come down plays the ball; his
-    // coverage sets the timing window (about 0.17s at 60 coverage, 0.34s at 90). On time: he goes for the
+    // ball skills set the timing window (about 0.17s at 60, 0.34s at 90). On time: he goes for the
     // pick (an interception or a breakup, better the closer he is and the better he covers). Too early:
     // pass interference, a spot foul and a first down. Too late (just after the catch): he whiffs on the
     // tackle. One try per pass.
@@ -1402,7 +1424,7 @@
       const b = this.ball;
       if (b.state === 'air') {
         const d = this.def.reduce((a, p) => (!a || hyp(p.x - b.tx, p.y - b.ty) < hyp(a.x - b.tx, a.y - b.ty) ? p : a), null);
-        const left = (1 - b.u) * b.dur, win = clamp(0.18 + ((d.info ? d.info.cov : 70) - 60) * 0.006, 0.15, 0.4) * 0.95;
+        const left = (1 - b.u) * b.dur, win = clamp(0.18 + ((d.info ? (d.info.ball != null ? d.info.ball : d.info.cov) : 70) - 60) * 0.006, 0.15, 0.4) * 0.95;
         this.intTry = { kind: left <= win ? 'good' : 'early', d };
         if (this.intTry.kind === 'good') this.pop(`#${d.info.num} goes for it!`, '#5df2ff');
         return;
@@ -1422,7 +1444,7 @@
       }
       const dist = hyp(d.x - b.tx, d.y - b.ty);
       if (dist > 3) { this.pop(`#${d.info.num} couldn't get there`, '#ffb43a'); return false; }
-      if (Math.random() < clamp(0.18 + (d.info.cov - 70) * 0.01 + (3 - dist) * 0.08, 0.06, 0.6)) return this.intercepted(b.tx);
+      if (Math.random() < clamp(0.18 + ((d.info.ball != null ? d.info.ball : d.info.cov) - 70) * 0.01 + (3 - dist) * 0.08, 0.06, 0.6)) return this.intercepted(b.tx);
       return this.incomplete(`Broken up by #${d.info.num}`);
     }
     // the next down, for whichever side has the ball
@@ -1927,7 +1949,7 @@
     defLine() {
       const o = this.oppStats, d = Object.values(this.myDefRoster);
       if (!o.att && !o.ryd && !o.rtd) return 'Defense: simulated';
-      const tk = d.filter((r) => r.tk > 0).sort((a, b) => b.tk - a.tk).slice(0, 2).map((r) => `#${r.num} ${r.pos} ${r.tk}`).join(', ');
+      const tk = d.filter((r) => r.tk > 0).sort((a, b) => b.tk - a.tk).slice(0, 2).map((r) => `${r.name ? r.name.split(' ').slice(-1)[0] : '#' + r.num} (${r.pos}) ${r.tk}`).join(', ');
       const sacks = d.reduce((a, r) => a + (r.sacks || 0), 0), ints = d.reduce((a, r) => a + (r.ints || 0), 0);
       return `Your defense: allowed ${o.comp}/${o.att} passing for ${o.pyd} yds, ${o.ryd} rushing · ${sacks} sacks, ${ints} INT${tk ? ` · Tackles ${tk}` : ''}`;
     }
