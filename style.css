@@ -127,7 +127,12 @@ body.playing #app{max-width:none;padding:0;height:100%}
 .rost.reserve i{font-style:normal;font-weight:700}
 button.link{background:none;color:var(--dim);font-size:12px;margin-left:8px;padding:0;text-decoration:underline}
 button.link:hover{color:var(--bad)}
-.news{margin-top:12px;border-left:4px solid var(--accent)}
+#toasts{position:fixed;top:max(10px,env(safe-area-inset-top));left:50%;transform:translateX(-50%);z-index:40;
+  display:flex;flex-direction:column;gap:6px;width:min(560px,calc(100% - 32px));pointer-events:none}
+.toast{pointer-events:auto;background:var(--card);border-left:4px solid var(--accent);border-radius:6px;padding:10px 14px;
+  font-size:14px;box-shadow:inset 0 0 0 1px var(--line),0 6px 18px rgba(0,0,0,.45);cursor:pointer;animation:toastIn .25s ease-out}
+.toast.out{opacity:0;transform:translateY(-8px);transition:opacity .3s,transform .3s}
+@keyframes toastIn{from{opacity:0;transform:translateY(-8px)}}
 
 .stack{display:flex;flex-direction:column;gap:6px;align-items:stretch}
 .prospect{display:grid;grid-template-columns:44px 1fr auto auto;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}

@@ -9,6 +9,17 @@
     document.querySelectorAll('.screen').forEach((e) => e.classList.toggle('on', e.id === id));
     document.body.classList.toggle('playing', id === 'match');   // pins the page during a game
     window.scrollTo(0, 0);
+    // news (a trade, a hire, a draft pick, a retirement) pops up once, then it's gone
+    if (id !== 'match' && S && S.news && S.news.length) { S.news.forEach((n, i) => toast(n, i)); S.news = []; GP.save(S); }
+  }
+  // a short notice that slides in at the top and leaves by itself (or on a tap)
+  function toast(text, i) {
+    let box = document.getElementById('toasts');
+    if (!box) { box = document.createElement('div'); box.id = 'toasts'; document.body.append(box); }
+    const t = document.createElement('div'); t.className = 'toast'; t.textContent = text;
+    const bye = () => { t.classList.add('out'); setTimeout(() => t.remove(), 300); };
+    t.onclick = bye; box.append(t);
+    setTimeout(bye, 5000 + (i || 0) * 1200);
   }
   // During a game, a drag anywhere but the play-call strip must not scroll, zoom or refresh the page.
   document.addEventListener('touchmove', (e) => {
@@ -224,7 +235,6 @@
       h('span', { class: 'pill' }, 'Coaching points ', h('b', null, String(S.credits))),
       h('button', { class: 'btn ghost small', onclick: renderTitle }, 'Menu')));
 
-    if (S.news && S.news.length) hub.append(h('div', { class: 'card news' }, ...S.news.map((n) => h('div', null, n))));
 
     // next game / bye / offseason on the left, your team on the right (side by side in landscape)
     const L = h('div', { class: 'hub-col' }), Rt = h('div', { class: 'hub-col' });
