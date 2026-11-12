@@ -438,6 +438,7 @@
       this.toChoose();
     }
     downText() {
+      if (this.conv) return '2-point try · opp 2';
       const togo = this.fdx >= 110 ? 'Goal' : Math.max(1, Math.round(this.fdx - this.los));
       const yl = Math.round(this.los - 10);
       // field position from your point of view: on defense the opponent is on "their" side of the field
@@ -617,6 +618,7 @@
       else if (this.down >= 2) sit.quick += 1;
       else { sit.inside += 0.5; sit.pa += 0.5; }                                                          // 1st & 10: balanced
       if (this.los >= 90) { sit.deep -= 3; sit.pa -= 1; sit.quick += 1; sit.inside += 1; }                 // red zone: no room deep
+      if (this.los >= 105) { sit.inside -= 2.5; sit.outside -= 1; sit.quick += 1.5; sit.pa += 2; }        // goal line: the box is loaded, throw it
       if (late && diff < 0) { sit.inside -= 3; sit.outside -= 2; sit.screen -= 1; sit.deep += 1; sit.quick += 0.5; }   // hurry
       if (this.q >= 4 && diff > 0 && !late) { sit.inside += 3; sit.outside += 2; }                         // protect the lead
       const runShare = this.tend && this.tend.n ? this.tend.run / this.tend.n : 0.35;
@@ -664,7 +666,7 @@
       const opts = PLAY_TYPES.map(([cat, label, desc]) => ({ label, sub: this.play && this.play.cat === cat ? `Now: ${this.play.name} · tap for another` : desc,
         rec: !call.kick && call.play.cat === cat, fn: () => this.pickType(cat) }));
       // a field goal on any down once you're past midfield; a punt on 4th down
-      if (this.los > 60) {
+      if (this.los > 60 && !this.conv) {
         const dist = Math.round(110 - this.los + 17), far = dist > this.kickRange;
         opts.push({ label: 'Field Goal', sub: `${dist} yds · range ${this.kickRange}${far ? ' · a long shot' : ''}`, kick: true, rec: call.kick === 'fg', fn: () => this.startKick('fg') });
       }
@@ -924,7 +926,7 @@
     }
 
     // ---------- live play ----------
-    tick(dt) { if (this.clock !== Infinity) this.clock = Math.max(0, this.clock - dt); }
+    tick(dt) { if (this.clock !== Infinity && !this.conv) this.clock = Math.max(0, this.clock - dt); }   // no clock on a try
 
     // Lead assist: nudge a throw released near a receiver toward the right lead for where he'll be when the
     // ball arrives. Normal: partial, stronger for more accurate quarterbacks. Easy: full. Hard: none.
@@ -979,7 +981,7 @@
       const d = hyp(tx - qb.x, ty - qb.y), sd = d * this.scatter * (1 + this.fatigue() * 0.9 * this.dif.tire);  // tired: less accurate
       tx += gauss() * sd; ty += gauss() * sd;
       this.ball = { state: 'air', sx: qb.x, sy: qb.y, tx, ty, u: 0, dur: 0.3 + d / this.ballSpeed, t0: this.t, dist: d };
-      this.carrier = null; this.stats.att++;
+      this.carrier = null; if (!this.conv) this.stats.att++;
       let best = null, bd = 12;
       for (const p of this.off) {
         if (p.role === 'OL' || p.role === 'QB') continue;
@@ -1272,6 +1274,7 @@
       this.finishRun(x, false);
     }
     fumble(x) {
+      if (this.conv) return this.convOver(false);
       this.credit(x);
       if (Math.random() < 0.6 && this.defending) {    // your defense recovers
         this.stats.fum++;
@@ -1344,7 +1347,8 @@
       if (d) pc -= 0.4 * dskill * (this.dif.pick < 1 ? 0.75 : 1) * (1 - dd / 1.7) * (o.pow != null ? clamp(1 - (o.pow - 65) * 0.008, 0.75, 1.2) : 1);
       if (Math.random() > pc) return this.incomplete(d ? 'Broken up' : 'Dropped');
       // caught
-      this.stats.comp++; this.caught = true; this.carrier = o; b.state = 'held';
+      if (!this.conv) this.stats.comp++;
+      this.caught = true; this.carrier = o; b.state = 'held';
       const bust = this.def.find((x) => x.bust && x.bust !== 'run' && (x.bustHit || x.bust === 'zone' || x.bust === 'pa')
         && (x.mark === o || hyp(x.x - b.tx, x.y - b.ty) < 9));
       if (bust && o.x - this.los > 8) this.pop(`Busted coverage! #${bust.info.num} blew it`, '#ffd84a');
@@ -1360,11 +1364,13 @@
       this.endPlay(msg + ' — TURNOVER ON DOWNS', () => this.checkClock(() => this.oppDrive(this.los - 10, 'They take over on downs.')));
     }
     incomplete(msg) {
+      if (this.conv) return this.convOver(false);
       if (this.down >= 4) return this.downsTurnover(msg);
       this.down++;
       this.endPlay(msg, () => this.checkClock(() => this.nextDown()));
     }
     intercepted(x) {
+      if (this.conv) return this.convOver(false);
       this.stats.int++;
       if (this.defending) {                             // your defense picks it off: your ball at the spot
         const d = this.def.reduce((a, p) => (!a || hyp(p.x - x, p.y - this.ball.ty) < hyp(a.x - x, a.y - this.ball.ty) ? p : a), null);
@@ -1379,6 +1385,7 @@
       if (this.caught) this.stats.pyd += y; else if (this.running(this.carrier)) this.stats.ryd += y;
     }
     touchdown() {
+      if (this.conv) return this.convOver(true);
       this.credit(110);
       if (this.caught) this.stats.ptd++; else this.stats.rtd++;
       if (this.defending) {                             // they score; the extra point is automatic, then they kick off
@@ -1386,13 +1393,36 @@
         return this.endPlay(`TOUCHDOWN ${this.cfg.opp.name}`, () => this.checkClock(() => this.startDrive(35)), 2);
       }
       this.score.me += 6;
-      this.endPlay('TOUCHDOWN!', () => (this.q === 5 ? this.final() : this.startKick('pat')), 2);
+      this.endPlay('TOUCHDOWN!', () => (this.q === 5 ? this.final() : this.afterTD()), 2);
+    }
+    // After your touchdown: kick the extra point, or go for two from the 2. The coordinator recommends the
+    // usual chart in the second half: go for two down 2, 5 or 10, or up 1, 4 or 5 (after the six points).
+    afterTD() {
+      const m = this.score.me - this.score.opp, two = this.q >= 3 && [-10, -5, -2, 1, 4, 5].includes(m);
+      this.phase = 'convert';                            // its own phase: not the play menu
+      this.showPanel('After the touchdown', '', [
+        { label: 'Extra point', sub: 'Kick it through for 1', kick: true, rec: !two, fn: () => this.startKick('pat') },
+        { label: 'Go for 2', sub: 'One play from the 2-yard line', rec: two, fn: () => this.goForTwo() }]);
+    }
+    goForTwo() {
+      this.setSide(false);
+      this.conv = true; this.los = 108; this.down = 1; this.fdx = 110;
+      this.toChoose();
+    }
+    // the try is over: 2 points if it got in, then you kick off either way
+    convOver(good) {
+      this.conv = false;
+      if (good) this.score.me += 2;
+      this.endPlay(good ? 'TWO-POINT CONVERSION IS GOOD' : 'Two-point try fails',
+        () => this.checkClock(() => this.oppDrive(75, 'You kick off.')), 2);
     }
     finishRun(x, oob) {
+      if (this.conv) return this.convOver(false);
       this.credit(x);
       this.gainResult(x, null, oob);
     }
     gainResult(x, label, oob) {
+      if (this.conv) return this.convOver(false);
       const gain = Math.round(x - this.los);
       if (x <= 10) {
         if (this.defending) { this.score.me += 2; return this.endPlay('SAFETY! Two points for you', () => this.checkClock(() => this.startDrive(45)), 2); }
@@ -1920,7 +1950,7 @@
       this.pauseX = px;
       const clock = c === Infinity ? '-:--' : Math.floor(Math.ceil(c) / 60) + ':' + String(Math.ceil(c) % 60).padStart(2, '0');
       const q = this.q === 5 ? 'OT' : 'Q' + this.q;
-      const down = this.phase === 'opp' || this.phase === 'final' ? '' : '   ' + this.downText().replace(' · ', '  ');
+      const down = this.phase === 'opp' || this.phase === 'final' || this.phase === 'convert' ? '' : '   ' + this.downText().replace(' · ', '  ');
       const mid = `${q} ${clock}${down}`;
       Px.text(g, `${q} ${clock}`, AW / 2 - Px.width(mid) / 2, 3, '#ffffff', 1);
       if (down) Px.text(g, down, AW / 2 - Px.width(mid) / 2 + Px.width(`${q} ${clock}`) + 1, 3, '#ffd84a', 1);

@@ -35,6 +35,11 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
   much less) and both players' speed. Tackled runners fall forward up to about 2.5 yards. Big
   head-on hits fumble about 1-2% of the time, and the defense recovers 60% of those. The box
   score lists broken tackles, yards after contact, fumbles lost and the opponent's top tacklers.
+- **After a touchdown:** kick the extra point or go for 2: one play from the 2-yard line, called and run
+  like any other (no field goal option, no clock, and the play doesn't count in your season stats). Only
+  a touchdown on that play scores. Your coordinator highlights the usual chart in the second half: go for
+  two when the touchdown leaves you down 2, 5 or 10, or up 1, 4 or 5. Inside the 5 he leans to quick throws
+  and play action, since the defense loads the box.
 - **4th down:** go for it, punt, or kick a field goal. Past midfield, Change also offers a field goal on
   any down (marked "a long shot" beyond your kicker's range).
 - **Kicking:** tap the field to start the kick, drag back to aim (like a pass), and release to open the
