@@ -1599,7 +1599,8 @@
     celebrateTD(p, dir) {
       if (!p) return;
       p.stun = 0; p.lunge = null; p.juke = null; if (this.downed === p) this.downed = null;
-      this.celebrate = { who: p, dir, t: 0, x: dir > 0 ? clamp(p.x + 4, 112, 117) : clamp(p.x - 4, 3, 8), y: clamp(p.y + (MID - p.y) * 0.3, 3, FW - 3) };
+      // half the time a jump with the arms up, half the time the griddy
+      this.celebrate = { who: p, dir, kind: Math.random() < 0.5 ? 'jump' : 'griddy', t: 0, x: dir > 0 ? clamp(p.x + 4, 112, 117) : clamp(p.x - 4, 3, 8), y: clamp(p.y + (MID - p.y) * 0.3, 3, FW - 3) };
     }
     celebrateStep(dt) {
       const c = this.celebrate, p = c.who; c.t += dt;
@@ -1608,8 +1609,17 @@
         if (hyp(p.x - c.x, p.y - c.y) < 0.4 || c.t > 1.1) c.arrived = c.t;
       } else {
         p.vx = 0; p.vy = 0; p.face = c.dir > 0 ? 1 : 0;           // turned back to face the field
-        const up = Math.floor((c.t - c.arrived) * 4) % 2;
-        p.pose = up ? 'cheer2' : 'cheer1'; p.hop = up ? 2 : 0;
+        const t = c.t - c.arrived;
+        if (c.kind === 'griddy') {
+          // four heel taps shuffling side to side, then the glasses, over and over
+          const beat = Math.floor(t * 6) % 6;
+          if (beat === 0 && !c.said) { c.said = true; this.pop('THE GRIDDY!', '#ffd84a'); }
+          p.pose = beat >= 4 ? 'griddy3' : beat % 2 ? 'griddy2' : 'griddy1'; p.hop = 0;
+          p.y = c.y + (beat >= 4 ? 0 : (beat % 2 ? 0.35 : -0.35));
+        } else {
+          const up = Math.floor(t * 4) % 2;
+          p.pose = up ? 'cheer2' : 'cheer1'; p.hop = up ? 2 : 0;
+        }
       }
       const team = this.off.includes(p) ? this.off : this.def, other = team === this.off ? this.def : this.off;
       team.forEach((q, i) => {

@@ -100,6 +100,11 @@
                   '..PPPPPP..', '..PP..PP..', '..PP..PP..', '..LL..LL..', '..LL..LL..', '..BB..BBB.'];
   POSES.cheer2 = ['S........S', '.S.HHHH.S.', '..SHHHHS..', '..HhhHFFM.', '..HHHHFFM.', '.SJJJJJJS.', '..JJNNJJ..', '..JJJJJJ..',
                   '..PPPPPP..', '.PP....PP.', 'LL......LL', 'BB......BB'];
+  // the griddy: heel taps out to alternate sides with the arms swinging opposite, then the "glasses" (hands
+  // up around the eyes)
+  POSES.griddy1 = [...HEAD, '.SJJJJJJ..', 'S.JJNNJJS.', '..JJJJJJ.S', '..PPPPPP..', '..PP..PP..', '..PP...PP.', '..LL....LL', '..LL....BB', '..BB......'];
+  POSES.griddy2 = [...HEAD, '..JJJJJJS.', '.SJJNNJJ.S', 'S.JJJJJJ..', '..PPPPPP..', '..PP..PP..', '.PP...PP..', 'LL....LL..', 'BB....LL..', '......BB..'];
+  POSES.griddy3 = ['...HHHH...', '..HHHHHH..', '.SHhhHFFMS', '.SHHHHFFMS', '.SJJJJJJS.', '..JJNNJJ..', '..JJJJJJ..', '..PPPPPP..', '..PP..PP..', '..PP..PP..', '..LL..LL..', '..LL..LL..', '..BB..BBB.'];
   const SKIN = ['#f1c9a5', '#c68e5f', '#7a4a2a'], OUTLINE = '#10182a';
   function render(rows, pal, flip, lying) {
     const w = rows[0].length, hgt = rows.length, c = document.createElement('canvas');
