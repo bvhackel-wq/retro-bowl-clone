@@ -49,8 +49,11 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
   for a weak kicker up to 28% for a maxed one, the same for every kick and distance) goes where you aimed; the yellow
   around it does so about half the time; outside it the kick is pushed wide.
   Tapping to start is the snap: seven rushers fight the kick unit's blockers (your line's pass block
-  sets how long they hold), then charge the ball. Kick quickly: a rusher near the ball when the kicker
-  connects may block it, and one who reaches it first blocks it outright. A blocked field goal gives
+  sets how long they hold), then charge the ball. On a field goal the line holds at the line of scrimmage
+  and only two rushers really try to get through, so the block comes at a different moment each kick:
+  with an even matchup, about 1 in 100 at 2.5 seconds from the snap to the kick, 1 in 8 at 3, 1 in 3 at
+  3.5, half at 4, and nearly certain by 5. A rusher who has beaten his block and is near the ball when
+  the kicker connects may block it, and one who reaches it first blocks it outright. A blocked field goal gives
   the other team the ball at the spot. The kicker takes his steps and swings through on every kick.
 - **Landing marker:** once a pass is in the air, a yellow marker on the turf shows where it will come down
   (after the throw's scatter), so you can see whether it's leading your receiver or floating to a defender.

@@ -7,6 +7,7 @@
   let W = 960; const H = 540;
   const FW = 36;                   // field width in yards
   const PPY = 13;                  // pixels per yard
+  let FG_SLIP = 2.0;               // field goals: extra time a rusher needs to beat his block (the hold is a yard back)
   const TOP = (H - FW * PPY) / 2;
   let VIEW = W / PPY;              // yards visible horizontally
   const MID = FW / 2;
@@ -1632,9 +1633,17 @@
         const ru = M('D', i === 0 || i === 6 ? 'CB' : i === 3 ? 'DL' : 'LB', L + 0.9, MID + y * 1.15, 2.6 * rnd(0.85, 1.15) + (d - 75) * 0.02);
         ru.skin = (i * 5 + 1) % 3; ru.face = 1;
         // how long his man holds him: the blocker's pass-block (or blocking) stat against the defense
-        ru.shed = clamp(1.4 + (b - d) * 0.05, 0.4, 4) * rnd(0.55, 1.6); ru.blocker = o; ru.info = { num: 0, pos: ru.role, tkl: 70 };
+        // plus the time to fight off the block and get around it: the hold is only a yard behind the line
+        ru.shed = k.type === 'punt' ? clamp(1.4 + (b - d) * 0.05, 0.4, 4) * rnd(0.55, 1.6) : FG_SLIP + clamp(2.2 + (b - d) * 0.06, 0.8, 5) * rnd(0.4, 1.9); ru.blocker = o; ru.info = { num: 0, pos: ru.role, tkl: 70 };
         this.def.push(ru);
       });
+      // on a field goal most of the rush is just holding its ground: only two rushers (picked at random) really
+      // try to get through, so when a block comes varies from kick to kick instead of the quickest of seven
+      if (k.type !== 'punt') {
+        const live = this.def.filter((p) => p.blocker), threats = new Set();
+        while (threats.size < 2) threats.add(live[Math.floor(Math.random() * live.length)]);
+        for (const p of live) if (!threats.has(p)) p.shed = 99;
+      }
       for (const y of [MID - 6, MID + 6]) { const p = M('D', 'S', Math.min(L + 25, 118), y, 5); p.face = 1; p.idle = true; this.def.push(p); }
       if (k.type === 'punt') {
         this.kicker = M('O', 'K', k.sx - 0.8, k.sy + 0.3, 5); this.kicker.skin = 0; this.holder = null;
@@ -1654,9 +1663,12 @@
       for (const ru of this.def) {
         if (ru.idle) continue;
         if (k.rt < ru.shed) {
-          go(ru, ru.x - 1, ru.y, 0.55, dt, 6);                        // pushing the pile
+          // pushing the pile, but the line holds at the line of scrimmage: only a man who beats his block gets to the ball
+          if (ru.x > this.los + 0.3) go(ru, ru.x - 1, ru.y, 0.55, dt, 6); else { ru.vx = 0; ru.vy = 0; }
           ru.blocker.x = ru.x - 0.9; ru.blocker.y += (ru.y - ru.blocker.y) * Math.min(1, dt * 4); ru.blocker.vx = ru.vx;
-        } else go(ru, spot.x, spot.y, ru.spd, dt, 10);                // free and charging
+          continue;
+        }
+        go(ru, spot.x, spot.y, ru.spd, dt, 10);                       // free and charging
         nearest = Math.min(nearest, hyp(ru.x - spot.x, ru.y - spot.y));
       }
       k.nearest = nearest;
