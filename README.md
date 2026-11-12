@@ -99,6 +99,14 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
   cut, tap then swipe to juke (a timed juke can break a tackle), swipe left to lunge, right to stop. If he
   can't get to it, or it's inside your 10, he lets it bounce. A return touchdown goes to your extra point or
   two-point choice; a blocked punt is your ball. Keyboard: space calls the fair catch, then arrows.
+- **Your lineman's dive.** On defense your best pass rusher among the linemen rushing on that call wears a
+  white ring. He plays his assignment; swipe left (or press left) and he goes for whoever has the ball, the
+  quarterback or the back on a run. If he's blocked he first has to beat his man (his pass rush, or run stop on
+  runs, against the blocker, much easier as the play goes on), then he bursts and dives up to about 6.5 yards.
+  A hit is a tackle attempt with a bonus (on the quarterback, almost always a sack). Lose the block or miss
+  and he's on the ground with the ball carrier free. One dive a play; the ring goes when the quarterback
+  throws. Measured on pass plays: diving too early (0.4s) gives up more than not diving, about 1.6s is the
+  sweet spot (sacks on ~14% of plays against ~2% without), and by 2.2s the ball's usually gone.
 - **Go for the interception.** On defense, swipe up (or press up/space) as their pass arrives. The
   defender nearest where it will come down plays the ball, and his coverage sets the timing window (about
   0.17s at 60 coverage, 0.34s at 90). On time and close enough: he goes for the pick (an interception or a

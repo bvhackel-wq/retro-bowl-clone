@@ -351,7 +351,11 @@
       if (this.aim) { this.aim.cx = p.x; this.aim.cy = p.y; return; }
       const g = this.gesture;
       if (!g || g.done) return;
-      if (this.defending && !this.kick) { if (p.y - g.y < -22 && Math.abs(p.y - g.y) > Math.abs(p.x - g.x)) { g.done = true; this.intSwipe(); } return; }
+      if (this.defending && !this.kick) {
+        if (p.y - g.y < -22 && Math.abs(p.y - g.y) > Math.abs(p.x - g.x)) { g.done = true; this.intSwipe(); }
+        else if (p.x - g.x < -22 && Math.abs(p.x - g.x) > Math.abs(p.y - g.y)) { g.done = true; this.lineDive(); }
+        return;
+      }
       const fw = this.kick && this.kick.cpu ? -1 : 1;     // on a punt return, forward is to the left
       // a swipe of 22px+ counts as soon as it happens, no need to lift the finger:
       // up/down cuts (or jukes after a tap), forward lunges, back stops for a moment
@@ -435,6 +439,7 @@
       if (this.defending) {                                 // on defense: space snaps, up goes for the ball
         if (down && !e.repeat && this.phase === 'presnap' && k === ' ') { this.hidePanel(); this.snap(); }
         else if (down && !e.repeat && this.phase === 'live' && (k === 'arrowup' || k === 'w' || k === ' ')) this.intSwipe();
+        else if (down && !e.repeat && this.phase === 'live' && (k === 'arrowleft' || k === 'a')) this.lineDive();
         return;
       }
       if (down && !e.repeat) {
@@ -977,6 +982,11 @@
       }
       this.carrier = this.qb;
       this.ball = { state: 'held' };
+      // on defense, your best pass rusher among the linemen rushing on this call wears the ring
+      if (this.defending) {
+        const rushers = this.def.filter((d) => d.role === 'DL' && d.job === 'rush');
+        this.ringD = rushers.sort((a, b) => ((b.info && b.info.rush) || 0) - ((a.info && a.info.rush) || 0))[0] || null;
+      } else this.ringD = null;
     }
 
     // ---------- live play ----------
@@ -1207,6 +1217,11 @@
       // defense
       const recs = this.off.filter((p) => p.route);
       for (const d of this.def) {
+        if (d.dive) {                                          // diving: a burst at the ball carrier, then down if he missed
+          d.dive.t -= dt; d.held = false; go(d, d.x + d.dive.dx * 5, d.y + d.dive.dy * 5, 11, dt, 60);
+          if (d.dive.t <= 0) { d.dive = null; d.stun = 1.0; this.pop(`#${d.info.num} missed!`, '#ff8a5c'); }
+          continue;
+        }
         if (d.stun > 0) { d.stun -= dt; continue; }
         if (d.bite > 0 && !runPhase) { d.bite -= dt; go(d, this.los + 1, d.y, d.spd * 0.8, dt, 6); continue; }   // biting on the fake
         const f = this.blockFactor(d, dt);
@@ -1255,10 +1270,11 @@
 
       // tackles (none while he's in the air on a lunge)
       for (const d of (runPhase && c.lunge ? [] : this.def)) {
-        if (d.stun > 0 || d.held || hyp(d.x - c.x, d.y - c.y) > 1.15) continue;
+        if (d.stun > 0 || d.held || hyp(d.x - c.x, d.y - c.y) > (d.dive ? 1.8 : 1.15)) continue;
         const tkl = d.info.tkl;
         if (c === qb && !this.scramble) {
-          if (Math.random() > clamp(0.86 + (tkl - 70) * 0.006, 0.75, 0.97)) { d.stun = 1; this.pop('Slipped the sack!'); continue; }
+          if (Math.random() > (d.dive ? 0.94 : clamp(0.86 + (tkl - 70) * 0.006, 0.75, 0.97))) { d.dive = null; d.stun = 1; this.pop('Slipped the sack!'); continue; }
+          d.dive = null;
           this.stats.sack++; d.info.tk++; d.info.sacks = (d.info.sacks || 0) + 1; this.downed = c; this.energy = Math.max(0, this.energy - 4);
           return this.gainResult(c.x, `SACKED by #${d.info.num} — loss of ${Math.max(0, Math.round(L - c.x))}`);
         }
@@ -1272,6 +1288,7 @@
           this.pop(`#${d.info.num} read the juke!`, '#ff8a5c');
         }
         const hit = this.contact(d, c);
+        if (d.dive) { hit.p = Math.min(0.97, hit.p + 0.15); d.dive = null; }
         if (Math.random() > hit.p) {
           d.stun = 1.1; this.stats.broken++;
           this.pop(hit.angle < -0.3 ? 'Outran the tackle!' : 'Missed tackle!');
@@ -1446,6 +1463,34 @@
       if (dist > 3) { this.pop(`#${d.info.num} couldn't get there`, '#ffb43a'); return false; }
       if (Math.random() < clamp(0.18 + ((d.info.ball != null ? d.info.ball : d.info.cov) - 70) * 0.01 + (3 - dist) * 0.08, 0.06, 0.6)) return this.intercepted(b.tx);
       return this.incomplete(`Broken up by #${d.info.num}`);
+    }
+    // ---------- your lineman's dive (defense) ----------
+    // The ringed lineman plays his assignment; swipe left and he goes for whoever has the ball (the quarterback,
+    // or the back on a run). If he's blocked he first tries to beat his man: his pass rush (run stop on runs)
+    // against the blocker, easier the longer the play goes. Win, and he bursts and dives up to about 6.5 yards:
+    // a hit is a tackle attempt with a bonus (on the quarterback, very likely a sack). Lose the block or miss
+    // the dive and he's on the ground, the ball carrier free. Once the quarterback throws, the ring goes.
+    ringOn() {
+      const c = this.carrier;
+      return this.defending && this.ringD && (this.phase === 'presnap' || (this.phase === 'live' && this.ball.state === 'held' && (c === this.qb || c === this.rb)));
+    }
+    lineDive() {
+      const d = this.ringD, c = this.carrier;
+      if (!this.ringOn() || this.phase !== 'live' || !d || d.dove || d.stun > 0) return;
+      d.dove = true;
+      const tied = d.held || (d.eng > 0 && d.eng < d.shed);
+      if (tied) {
+        const blocker = this.off.find((o) => o.role === 'OL' && (o.mark === d || o.otarget === d)) || { blk: 65 };
+        const stat = this.play.type === 'run' ? d.info.run : d.info.rush;
+        if (Math.random() > clamp(0.12 + (stat - blocker.blk) * 0.015 + Math.min(this.t, 3) * 0.16, 0.08, 0.85)) {
+          d.stun = 1.0; d.eng = d.shed; this.pop(`#${d.info.num} stonewalled!`, '#ff8a5c'); return;   // lost the battle, on the ground
+        }
+        d.eng = d.shed;                                                  // beat his man
+      }
+      const lead = Math.min(0.5, hyp(c.x - d.x, c.y - d.y) / 11);
+      const tx = c.x + c.vx * lead, ty = c.y + c.vy * lead, dx = tx - d.x, dy = ty - d.y, n = hyp(dx, dy) || 1;
+      d.dive = { dx: dx / n, dy: dy / n, t: 0.6 };
+      this.pop(`#${d.info.num} dives!`, '#ffffff');
     }
     // the next down, for whichever side has the ball
     nextDown() { if (this.defending) this.defChoose(); else this.toChoose(); }
@@ -2143,8 +2188,8 @@
       const u = this.ug; u.clearRect(0, 0, AW, AH);
       if (this.kick) this.drawKick();
 
-      if (this.phase === 'presnap') this.hint(this.defending ? 'DEFENSE · TAP THE FIELD WHEN READY' : 'TAP THE FIELD TO SNAP');
-      else if (this.phase === 'live' && this.defending) this.hint('SWIPE UP AS THE BALL ARRIVES TO GO FOR THE PICK');
+      if (this.phase === 'presnap') this.hint(this.defending ? (this.ringD ? `RINGED #${this.ringD.info.num}: SWIPE LEFT TO DIVE · TAP TO SNAP` : 'DEFENSE · TAP THE FIELD WHEN READY') : 'TAP THE FIELD TO SNAP');
+      else if (this.phase === 'live' && this.defending) this.hint(this.ringOn() && !this.ringD.dove ? `SWIPE LEFT: #${this.ringD.info.num} DIVES AT THE BALL CARRIER` : 'SWIPE UP AS THE BALL ARRIVES TO GO FOR THE PICK');
       else if (this.phase === 'live' && this.passing() && !this.aim) this.hint('DRAG BACK TO THROW · SWIPE TOWARD THE END ZONE TO RUN');
       else if (this.phase === 'kick' && this.kick && this.kick.cpu) this.hint({ flight: this.kick.fairCall ? 'FAIR CATCH CALLED' : 'TAP TO CALL A FAIR CATCH',
         return: 'UP/DOWN: CUT · TAP+SWIPE: JUKE · SWIPE LEFT: LUNGE · RIGHT: STOP' }[this.kick.stage] || '');
@@ -2211,6 +2256,9 @@
       const side = this.defending ? (p.team === 'O' ? 'D' : 'O') : p.team;   // on defense their offense wears their kit
       const img = this.kits[side][p.skin || 0][pose][p.face];
       g.fillStyle = 'rgba(0,0,0,.28)'; g.fillRect(X - 4, Y + 1, 9, 2); g.fillRect(X - 3, Y + 3, 7, 1);
+      if (p === this.ringD && this.ringOn() && !p.dive) {
+        Px.ring(g, X, Y + 2, 9, 4, 'rgba(16,24,42,.55)'); Px.ring(g, X, Y + 1, 9, 4, '#ffffff'); Px.ring(g, X, Y + 1, 8, 3, '#ffffff');
+      }
       if (p === this.carrier && !down) {
         // ring at the ball carrier's feet; yellow and doubled while a juke is live
         // solid white with a dark edge so it reads on any grass; yellow and doubled while a juke is live
