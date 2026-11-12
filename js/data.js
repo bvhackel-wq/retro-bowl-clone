@@ -209,6 +209,7 @@
     const taken = new Set([...(s.players || []), ...((s.draft && s.draft.pool) || []), ...Object.values(s.blocks || {}).flat()].map((p) => p.name));
     for (let i = 0; i < 20 && taken.has(r.name); i++) r.name = GP.pick(FIRST) + ' ' + GP.pick(LAST);
     r.id = s.nextId++; r.pos = pos;
+    r.face = GP.rint(0, 999999999);            // which portrait he gets (see Pixel.portrait)
     if (GP.isDef(pos)) r.num = jersey(s, pos);
     return r;
   }
@@ -713,6 +714,9 @@
       s.units = s.units || {};
       if (!s.staff) { s.staff = { OC: genCoach('OC', 1), DC: genCoach('DC', 1) }; changed = true; }
       for (const r of s.players) changed = addMissingStats(r, r.pos) || changed;
+      // careers from before portraits: everyone gets a face now, saved so it never changes
+      for (const r of [...s.players, ...Object.values(s.blocks || {}).flat(), ...((s.draft && s.draft.pool) || [])])
+        if (r.face == null) { r.face = GP.rint(0, 999999999); changed = true; }
       if (changed) { GP.syncUser(s); GP.save(s); }
       return s;
     } catch (e) { return null; }

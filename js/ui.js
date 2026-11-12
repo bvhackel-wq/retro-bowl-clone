@@ -95,10 +95,10 @@
   // ---------- team screens: the dashboard, the roster grid, a player's card, the standings ----------
   const lastName = (n) => (n || '').split(' ').slice(-1)[0];
   const stars = (n) => h('span', { class: 'stars' }, '★'.repeat(n), h('span', { class: 'off' }, '★'.repeat(5 - n)));
-  // a player's portrait: the game's own sprite in your home uniform, his skin tone fixed by his id
-  const portrait = (r) => {
-    const id = String(r.id || r.name || 'x'), hsh = [...id].reduce((a, ch) => a + ch.charCodeAt(0), 0);
-    const set = GP.Pixel.sprites(GP.kit(S.teamId, 'home')), c = set[hsh % set.length].stand[0];
+  // a player's portrait: his own face (picked at random when he was created, and kept) in a team's home jersey
+  const portrait = (r, teamId) => {
+    if (r.face == null) r.face = GP.rint(0, 999999999);      // players from before portraits get one now
+    const c = GP.Pixel.portrait(r.face, GP.kit(teamId || S.teamId, 'home'));
     const img = document.createElement('canvas'); img.width = c.width; img.height = c.height;
     img.getContext('2d').drawImage(c, 0, 0); img.className = 'portrait';
     return img;

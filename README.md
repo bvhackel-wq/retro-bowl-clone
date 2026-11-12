@@ -207,12 +207,17 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
   gives you a random team.
 - **Team page:** your team's banner, the next game (tap Play), uniforms and the defense setting, then a
   tile for each part of running the team: Roster, Standings, Coaching staff, Trades, Draft (offseason) and
-  Difficulty. The **roster** is a grid of cards (position, a pixel portrait in your home uniform, name,
+  Difficulty. The **roster** is a grid of cards (position, his own pixel portrait in your home jersey, name,
   stars, overall against potential, and a bar for how far he's grown); empty spots show as dimmed reserve
   cards. Tap a card for the **player card**: his profile on the left, attributes on the right (each bar
   filled to his value, outlined up to his ceiling) with upgrade buttons, and arrows to step through the
   roster. Menus use a pixel font (Silkscreen, from Google Fonts; plain monospace offline) and keep clear of the
   notch / Dynamic Island in landscape.
+- **Player portraits:** every player gets a head-and-shoulders portrait in the game's pixel style, built
+  from parts picked at random when he's created and kept for his career: 6 skin tones, 12 hairstyles
+  (bald, buzz, short, flat top, afro, long, mohawk, locs, curly, swept fringe, headband, high top), hair
+  colors, 6 kinds of facial hair, eyebrows and eye black. Players from older careers get one when the save
+  loads.
 - **Franchise:** 32 teams in two conferences (American, National), each with four divisions of four,
   laid out like the NFL: the American Conference is the AFC and the National the NFC, every team plays in
   its NFL counterpart's city and division, in that team's colors. Teams go by their city alone; where two

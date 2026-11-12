@@ -128,6 +128,74 @@
     });
   };
 
+  // ---------- player portraits ----------
+  // A head-and-shoulders portrait in the same pixel style, built from parts picked by the player's face number:
+  // 6 skin tones x 12 hairstyles x hair colors x 6 kinds of facial hair, plus eyebrows, eye black and a
+  // headband on some. The same number always draws the same face; the jersey comes from the kit.
+  const FACE_SKIN = ['#f6d3b3', '#e8b98f', '#c68e5f', '#a36b3f', '#7a4a2a', '#553220'];
+  const HAIR_COL = ['#17130f', '#3b2414', '#6b4423', '#b8862f', '#a3421c', '#8d8f94'];
+  const shade = (hex, f) => '#' + [1, 3, 5].map((i) => Math.round(parseInt(hex.slice(i, i + 2), 16) * f).toString(16).padStart(2, '0')).join('');
+  const faceCache = {};
+  P.FACES = FACE_SKIN.length * 12 * 6;      // distinct looks before color and extras
+  P.portrait = function (face, kit) {
+    const key = face + '|' + kit.jersey + kit.number;
+    if (faceCache[key]) return faceCache[key];
+    let t = (face >>> 0) + 0x6d2b79f5;        // a small seeded generator, so a face number is always the same face
+    const rnd = () => { t = (t + 0x6d2b79f5) | 0; let x = Math.imul(t ^ (t >>> 15), 1 | t); x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x; return ((x ^ (x >>> 14)) >>> 0) / 4294967296; };
+    const pick = (n) => Math.floor(rnd() * n);
+    const W = 16, H = 17, g = Array.from({ length: H }, () => Array(W).fill(null));
+    const set = (x, y, c) => { if (x >= 0 && x < W && y >= 0 && y < H) g[y][x] = c; };
+    const row = (y, x0, x1, c) => { for (let x = x0; x <= x1; x++) set(x, y, c); };
+    const si = pick(FACE_SKIN.length), skin = FACE_SKIN[si], dark = shade(skin, 0.78);
+    // darker skin tones mostly have black or dark brown hair; any tone can be gray
+    const hair = HAIR_COL[si >= 3 ? [0, 0, 0, 0, 1, 1, 1, 5][pick(8)] : [0, 1, 1, 2, 2, 3, 3, 4, 5][pick(9)]];
+    const style = pick(12), beard = [0, 0, 0, 0, 1, 2, 3, 4, 5][pick(9)];
+    // shoulders and jersey
+    row(12, 4, 11, kit.jersey); row(13, 2, 13, kit.jersey);
+    for (let y = 14; y < H; y++) row(y, 1, 14, kit.jersey);
+    row(14, 1, 2, kit.number); row(14, 13, 14, kit.number);            // sleeve stripes
+    set(6, 12, kit.number); set(9, 12, kit.number); row(13, 7, 8, kit.number);   // collar
+    row(11, 7, 8, dark); row(12, 7, 8, skin);                          // neck
+    // head
+    for (let y = 3; y <= 9; y++) row(y, 5, 10, skin);
+    row(10, 6, 9, skin);
+    set(4, 6, skin); set(4, 7, dark); set(11, 6, skin); set(11, 7, dark);        // ears
+    set(6, 6, '#1b1b22'); set(9, 6, '#1b1b22');                        // eyes
+    if (rnd() < 0.7) { set(6, 5, shade(hair, 0.9)); set(9, 5, shade(hair, 0.9)); }   // eyebrows
+    set(8, 7, dark);                                                   // nose
+    row(9, 7, 8, shade(skin, 0.6));                                    // mouth
+    // hair
+    const top = () => { row(1, 6, 9, hair); row(2, 5, 10, hair); row(3, 5, 10, hair); };
+    if (style === 1) { row(2, 5, 10, hair); set(5, 3, hair); set(10, 3, hair); }                       // buzz cut
+    else if (style === 2) top();                                                                       // short
+    else if (style === 3) { row(0, 5, 10, hair); row(1, 5, 10, hair); row(2, 5, 10, hair); set(5, 3, hair); set(10, 3, hair); }   // flat top
+    else if (style === 4) { row(0, 6, 9, hair); row(1, 4, 11, hair); row(2, 3, 12, hair); row(3, 3, 12, hair); for (const y of [4, 5]) { row(y, 3, 4, hair); row(y, 11, 12, hair); } }   // afro
+    else if (style === 5) { top(); for (let y = 3; y <= 11; y++) { set(4, y, hair); set(11, y, hair); } for (let y = 5; y <= 10; y++) { set(3, y, hair); set(12, y, hair); } }   // long
+    else if (style === 6) { for (let y = 0; y <= 3; y++) row(y, 7, 8, hair); row(2, 5, 10, shade(skin, 0.88)); row(2, 7, 8, hair); }   // mohawk
+    else if (style === 7) { top(); for (let y = 4; y <= 12; y++) { set(4, y, hair); set(11, y, hair); if (y % 2) { set(3, y, hair); set(12, y, hair); } } }   // locs
+    else if (style === 8) { for (const x of [5, 7, 9]) set(x, 0, hair); row(1, 4, 11, hair); row(2, 4, 11, hair); row(3, 4, 5, hair); row(3, 10, 11, hair); }   // curly
+    else if (style === 9) { row(1, 5, 10, hair); row(2, 4, 10, hair); row(3, 4, 7, hair); set(4, 4, hair); }   // swept fringe
+    else if (style === 10) { top(); row(3, 5, 10, kit.number); set(4, 3, kit.number); set(11, 3, kit.number); }   // short with a headband
+    else if (style === 11) { row(0, 6, 9, hair); row(1, 6, 9, hair); row(2, 5, 10, hair); row(3, 5, 10, shade(skin, 0.88)); }   // high top fade
+    // facial hair
+    if (beard === 1) row(8, 6, 9, hair);                                                               // mustache
+    else if (beard === 2) { row(8, 6, 9, hair); set(6, 9, hair); set(9, 9, hair); row(10, 7, 8, hair); }   // goatee
+    else if (beard === 3) { set(5, 7, hair); set(10, 7, hair); row(8, 5, 10, hair); set(5, 9, hair); set(6, 9, hair); set(9, 9, hair); set(10, 9, hair); row(10, 6, 9, hair); }   // full beard
+    else if (beard === 4) { row(9, 5, 6, dark); row(9, 9, 10, dark); row(10, 6, 9, dark); }             // stubble
+    else if (beard === 5) { set(5, 8, hair); set(10, 8, hair); set(5, 9, hair); set(10, 9, hair); row(10, 6, 9, hair); }   // chin strap
+    if (rnd() < 0.15) { set(6, 7, '#1b1b22'); set(9, 7, '#1b1b22'); }                                    // eye black
+    // paint, with the same dark outline as the player sprites
+    const c = document.createElement('canvas'); c.width = W + 2; c.height = H + 1;
+    const cx = c.getContext('2d');
+    for (let y = -1; y < H; y++) for (let x = -1; x <= W; x++) {
+      const at = (xx, yy) => (g[yy] && g[yy][xx]) || null;
+      let col = at(x, y);
+      if (!col) { if (!(at(x - 1, y) || at(x + 1, y) || at(x, y - 1) || at(x, y + 1))) continue; col = OUTLINE; }
+      cx.fillStyle = col; cx.fillRect(x + 1, y + 1, 1, 1);
+    }
+    return (faceCache[key] = c);
+  };
+
   // ---------- the field, drawn once ----------
   // ya: art pixels per yard; top: height of the band above and below the field; fw: field width in yards.
   // The canvas covers x from -pad to 120+pad yards.

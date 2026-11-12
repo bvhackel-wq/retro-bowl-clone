@@ -211,7 +211,7 @@ button.link:hover{color:var(--bad)}
 button.pcard:hover{box-shadow:inset 0 0 0 2px var(--accent),0 3px 0 rgba(0,0,0,.35)}
 .pcard .top{position:relative;height:74px;display:flex;align-items:flex-end;justify-content:center}
 .pcard .pos{position:absolute;left:6px;top:4px;font-family:Silkscreen,monospace;font-size:15px;color:#fff;text-shadow:0 2px 0 rgba(0,0,0,.5)}
-.pcard .portrait{width:52px;height:auto;image-rendering:pixelated;image-rendering:crisp-edges;margin-bottom:2px}
+.pcard .portrait{width:62px;height:auto;image-rendering:pixelated;image-rendering:crisp-edges;margin-bottom:0}
 .pcard .unitmark{font-family:Silkscreen,monospace;font-size:20px;margin-bottom:22px}
 .pcard .nm{font-family:Silkscreen,monospace;font-size:15px;margin:6px 4px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .pcard .stars{font-size:13px}
@@ -229,7 +229,7 @@ button.pcard:hover{box-shadow:inset 0 0 0 2px var(--accent),0 3px 0 rgba(0,0,0,.
 @media(max-width:700px){.pbody{grid-template-columns:1fr}}
 .profile{padding:0;overflow:hidden}
 .profile .phead{display:flex;align-items:flex-end;gap:12px;padding:10px 14px;min-height:96px}
-.profile .phead .portrait{width:64px;image-rendering:pixelated;image-rendering:crisp-edges}
+.profile .phead .portrait{width:84px;margin-bottom:-10px;image-rendering:pixelated;image-rendering:crisp-edges}
 .profile .phead .px{font-size:18px}
 .profile .role{font-size:13px;opacity:.85}
 .profile .facts{display:grid;grid-template-columns:1fr 1fr;gap:8px 14px;padding:14px}
