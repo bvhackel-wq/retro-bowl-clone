@@ -74,8 +74,10 @@ body.playing #app{max-width:none;padding:0;height:100%}
 #match.on #hud{flex:none}
 #match button{touch-action:manipulation}
 #rotate{display:none}
+/* the whole game is landscape: on a phone held upright, every screen asks to be turned */
 @media (orientation:portrait) and (max-width:700px){
-  body.playing:not(.rotate-ok) #rotate{display:flex;position:absolute;inset:0;z-index:5;background:rgba(16,24,39,.96);
+  #app{visibility:hidden}
+  #rotate{display:flex;position:fixed;inset:0;z-index:50;background:rgba(16,24,39,.96);
     flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center;padding:24px}
   #rotate span{color:var(--dim)}
   .rot-phone{width:34px;height:58px;border:4px solid var(--accent);border-radius:8px;animation:rot 1.8s ease-in-out infinite}
@@ -247,3 +249,31 @@ button.pcard:hover{box-shadow:inset 0 0 0 2px var(--accent),0 3px 0 rgba(0,0,0,.
 
 .pcard .num{position:absolute;right:6px;top:4px;font-family:Silkscreen,monospace;font-size:13px;opacity:.9}
 .pcard .top.def{background-image:repeating-linear-gradient(135deg,rgba(0,0,0,.12) 0 6px,transparent 6px 12px)}
+
+/* landscape is the only way to play, so the menus are laid out for a wide, short screen */
+.hub-cols>.hub-col>h2:first-child{margin-top:18px}
+@media (orientation:landscape) and (max-height:600px){
+  .screen{padding:10px 0 20px}
+  #title.on{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);gap:8px 24px;align-items:start}
+  #title .logo{font-size:clamp(30px,7vh,52px);margin-top:12px}
+  #title .how{grid-column:1/-1}
+  .hub-head h1{font-size:20px}
+  .hub-head{gap:10px}
+  .hub-cols{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:0 16px;align-items:start}
+  .hub-cols .tiles{grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px}
+  .hub-cols .tile{padding:10px 30px 10px 12px}
+  .hub-cols .tile .tt{font-size:15px}
+  .hub-cols .card{padding:10px 12px;margin-bottom:8px}
+  .hub-cols .next .vs{font-size:18px}
+  .hub-cols>.hub-col>h2:first-child{margin-top:10px}
+  .hub-head{flex-wrap:nowrap;padding:8px 12px}
+  .hub-head h1{font-size:clamp(14px,2.9vw,18px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .hub-head>div>.dim{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:13px}
+  .hub-head>div{min-width:0}
+  .hub-head .pill{white-space:nowrap;padding:4px 8px;font-size:13px}
+  .hub-cols .next{flex-wrap:wrap;gap:6px 12px}
+  .hub-cols .next>div{flex:1 1 0;min-width:0}
+  .hub-cols .next>span:not(.badge):empty{display:none}
+  .hub-cols .next .btn.play,.hub-cols .next>.btn{flex:1 0 100%}
+  .hub-cols .next .dim{font-size:13px}
+}

@@ -20,8 +20,10 @@
 <body>
 <main id="app">
   <section id="title" class="screen on">
-    <h1 class="logo">POCKET<span>GRIDIRON</span></h1>
-    <p class="tag">Call the plays. Sling the ball. Build a dynasty.</p>
+    <div class="title-brand">
+      <h1 class="logo">POCKET<span>GRIDIRON</span></h1>
+      <p class="tag">Call the plays. Sling the ball. Build a dynasty.</p>
+    </div>
     <div id="title-actions"></div>
     <details class="how">
       <summary>How to play</summary>
@@ -72,14 +74,13 @@
         </div>
       </div>
     </div>
-    <div id="rotate">
-      <div class="rot-phone"></div>
-      <b>Turn your phone sideways</b>
-      <span>The field is wide, so it plays best in landscape.</span>
-      <button id="rotate-ok" class="btn ghost small">Play anyway</button>
-    </div>
   </section>
 </main>
+<div id="rotate">
+  <div class="rot-phone"></div>
+  <b>Turn your phone sideways</b>
+  <span>Pocket Gridiron plays in landscape.</span>
+</div>
 <script src="js/data.js"></script>
 <script src="js/uniforms.js"></script>
 <script src="js/pixel.js"></script>

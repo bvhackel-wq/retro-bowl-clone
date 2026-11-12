@@ -25,7 +25,6 @@
       else fsReq.call(root).then(() => screen.orientation && screen.orientation.lock && screen.orientation.lock('landscape').catch(() => {})).catch(() => {});
     };
   }
-  document.getElementById('rotate-ok').onclick = () => document.body.classList.add('rotate-ok');
   function h(tag, attrs, ...kids) {
     const e = document.createElement(tag);
     for (const k in attrs || {}) {
@@ -47,6 +46,13 @@
       const t = GP.team(saved.teamId);
       act.append(h('button', { class: 'btn', onclick: () => { S = saved; viewConf = t.conf; renderHub(); } }, `Continue — ${full(t)}, season ${saved.season}`));
     }
+    // New career: the team is picked during setup (not built yet); until then you get a random team
+    act.append(h('button', { class: 'btn' + (saved ? ' ghost' : ''), onclick: () => {
+      if (saved && !confirm('Start a new career? This replaces your current save.')) return;
+      const t = GP.TEAMS[Math.floor(Math.random() * GP.TEAMS.length)];
+      S = GP.newCareer(t.id, newDiff); GP.save(S); viewConf = t.conf; renderHub();
+    } }, 'New career'));
+    act.append(h('div', { class: 'dim', style: 'width:100%;font-size:13px' }, 'For now a new career gives you a random team; choosing one will be part of career setup.'));
     // iPhone Safari can't go full screen from a web page; the Home Screen version can
     const iphone = /iPhone|iPod/.test(navigator.userAgent) && !navigator.standalone;
     if (iphone) act.append(h('div', { class: 'card tip' },
@@ -60,13 +66,6 @@
       h('div', { class: 'tabs' }, ...Object.entries(GP.DIFFICULTY).map(([k, label]) =>
         h('button', { class: 'btn small' + (k === newDiff ? '' : ' ghost'), onclick: () => { newDiff = k; renderTitle(); } }, label))),
       h('div', { class: 'dim' }, diffDesc[newDiff])));
-    // New career: the team is picked during setup (not built yet); until then you get a random team
-    act.append(h('button', { class: 'btn' + (saved ? ' ghost' : ''), onclick: () => {
-      if (saved && !confirm('Start a new career? This replaces your current save.')) return;
-      const t = GP.TEAMS[Math.floor(Math.random() * GP.TEAMS.length)];
-      S = GP.newCareer(t.id, newDiff); GP.save(S); viewConf = t.conf; renderHub();
-    } }, 'New career'));
-    act.append(h('div', { class: 'dim', style: 'width:100%;font-size:13px' }, 'For now a new career gives you a random team; choosing one will be part of career setup.'));
     show('title');
   }
 
@@ -227,32 +226,34 @@
 
     if (S.news && S.news.length) hub.append(h('div', { class: 'card news' }, ...S.news.map((n) => h('div', null, n))));
 
-    // next game / bye / offseason
+    // next game / bye / offseason on the left, your team on the right (side by side in landscape)
+    const L = h('div', { class: 'hub-col' }), Rt = h('div', { class: 'hub-col' });
+    hub.append(h('div', { class: 'hub-cols' }, L, Rt));
     if (game && game.bye) {
-      hub.append(h('h2', null, 'Playoffs — ' + game.label), h('div', { class: 'card next' },
+      L.append(h('h2', null, 'Playoffs — ' + game.label), h('div', { class: 'card next' },
         h('div', null, h('div', { class: 'vs' }, 'First-round bye'),
           h('div', { class: 'dim' }, 'You earned a top-two seed. Rest up while the wild cards play.')),
         h('span', { style: 'flex:1' }),
         h('button', { class: 'btn', onclick: () => { GP.advance(S, null, null); renderHub(); } }, 'Advance')));
     } else if (game) {
       const o = GP.team(game.oppId), or = GP.rec(S, game.oppId);
-      hub.append(h('h2', null, (S.phase === 'playoffs' ? 'Playoffs — ' : '') + game.label), h('div', { class: 'card next gameday' },
+      L.append(h('h2', null, (S.phase === 'playoffs' ? 'Playoffs — ' : '') + game.label), h('div', { class: 'card next gameday' },
         badge(o),
         h('div', null, h('div', { class: 'vs px' }, (game.home === false ? 'at ' : 'vs ') + full(o)),
           h('div', { class: 'dim' }, `${or.w}-${or.l} · Offense ${or.off} · Defense ${or.def} · DC ${starText(GP.oppDC(S, game.oppId))}`),
           h('div', { class: 'dim' }, `You: Offense ${rec.off} · Defense ${rec.def}`)),
         h('span', { style: 'flex:1' }),
         h('button', { class: 'btn play', onclick: () => startMatch(game) }, 'Play game')));
-      hub.append(uniformCard(game));
+      L.append(uniformCard(game));
       const pd = S.playDefense !== false, setPD = (v) => { S.playDefense = v; GP.save(S); renderHub(); };
-      hub.append(h('div', { class: 'card next' }, h('div', null, h('b', null, 'Defense'),
+      L.append(h('div', { class: 'card next' }, h('div', null, h('b', null, 'Defense'),
         h('div', { class: 'dim' }, pd ? 'You call the coverage on every opponent snap' : 'Opponent drives are simulated')),
         h('span', { style: 'flex:1' }),
         h('div', { class: 'seg' }, h('button', { class: 'btn small' + (pd ? '' : ' ghost'), onclick: () => setPD(true) }, 'Play it'),
           h('button', { class: 'btn small' + (pd ? ' ghost' : ''), onclick: () => setPD(false) }, 'Simulate'))));
     } else {
       const ch = GP.team(S.champion);
-      hub.append(h('h2', null, `Season ${S.season} complete`), h('div', { class: 'card next' },
+      L.append(h('h2', null, `Season ${S.season} complete`), h('div', { class: 'card next' },
         badge(ch),
         h('div', null, h('div', { class: 'vs px' }, S.champion === S.teamId ? 'You are the champions!' : `${full(ch)} win the title`),
           h('div', { class: 'dim' }, `Your season: ${rec.w}-${rec.l} · ${S.seasonNote}`),
@@ -274,7 +275,7 @@
     const ts = GP.tradeStatus(S);
     const tile = (title, line, fn, opts) => h('button', { class: 'tile' + (opts && opts.off ? ' off' : ''), disabled: !!(opts && opts.off), onclick: fn },
       h('div', { class: 'tt px' }, title), h('div', { class: 'tl dim' }, line), h('span', { class: 'go' }, '›'));
-    hub.append(h('h2', null, 'Your team'), h('div', { class: 'tiles' },
+    Rt.append(h('h2', null, 'Your team'), h('div', { class: 'tiles' },
       tile('Roster', `${S.players.length}/${GP.ROSTER_MAX} players · starters avg ${avgStars}★` + (holes ? ` · ${holes} empty spot${holes > 1 ? 's' : ''}` : ''), renderRoster),
       tile('Standings', `${['1st', '2nd', '3rd', '4th'][place - 1] || ''} in the ${GP.CONFS[me.conf]} ${GP.DIVS[me.div]}`, renderStandings),
       tile('Coaching staff', `OC ${starText(S.staff.OC.stars)} · DC ${starText(S.staff.DC.stars)}`, renderStaff),

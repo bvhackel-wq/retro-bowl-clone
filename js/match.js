@@ -273,6 +273,10 @@
       // switching apps or locking the phone pauses the game
       this.onHide = () => { if (document.hidden) this.pause(); };
       document.addEventListener('visibilitychange', this.onHide);
+      // so does turning the phone upright: the rotate prompt covers the field (same test as the CSS)
+      this.upright = window.matchMedia('(orientation: portrait) and (max-width: 700px)');
+      this.onUpright = () => { if (this.upright.matches) this.pause(); };
+      this.upright.addEventListener('change', this.onUpright); this.onUpright();
       this.pz.btn.hidden = false;
     }
     pause() {
@@ -307,6 +311,7 @@
       window.removeEventListener('keyup', this.onKeyUp);
       window.removeEventListener('resize', this.onResize);
       window.removeEventListener('orientationchange', this.onResize);
+      if (this.upright) this.upright.removeEventListener('change', this.onUpright);
       this.hidePanel();
     }
 

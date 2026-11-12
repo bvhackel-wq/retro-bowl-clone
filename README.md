@@ -222,6 +222,12 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
   filled to his value, outlined up to his ceiling) with upgrade buttons, and arrows to step through the
   roster. Menus use a pixel font (Silkscreen, from Google Fonts; plain monospace offline) and keep clear of the
   notch / Dynamic Island in landscape.
+- **Landscape only:** every screen is laid out for a phone held sideways. Held upright, a phone shows a
+  "turn your phone sideways" prompt over every screen, and a game in progress pauses. On a landscape phone
+  the title and team page split into two columns (the next game and Play on the left, your team's tiles on
+  the right) so Play is on screen without scrolling. Tablets and computers keep the wider layout. A web page
+  can't lock the rotation in iPhone Safari; the Home Screen version, and Android in full screen, do lock to
+  landscape.
 - **Player portraits:** every player gets a head-and-shoulders portrait in the game's pixel style, built
   from parts picked at random when he's created and kept for his career: 6 skin tones, 12 hairstyles
   (bald, buzz, short, flat top, afro, long, mohawk, locs, curly, swept fringe, headband, high top), hair
