@@ -189,6 +189,13 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
   defenders read a thrown ball sooner and from farther away the better they cover. Easy also throws
   straighter, tires less, gets more time and a bigger catch window; Hard makes defenders read throws faster.
   Choose the difficulty on the title screen; change it any time from the team page.
+- **Team page:** your team's banner, the next game (tap Play), uniforms and the defense setting, then a
+  tile for each part of running the team: Roster, Standings, Coaching staff, Trades, Draft (offseason) and
+  Difficulty. The **roster** is a grid of cards (position, a pixel portrait in your home uniform, name,
+  stars, overall against potential, and a bar for how far he's grown); empty spots show as dimmed reserve
+  cards. Tap a card for the **player card**: his profile on the left, attributes on the right (each bar
+  filled to his value, outlined up to his ceiling) with upgrade buttons, and arrows to step through the
+  roster. Menus use a pixel font (Silkscreen, from Google Fonts; plain monospace offline).
 - **Franchise:** 32 teams in two conferences (American, National), each with four divisions of four,
   laid out like the NFL: the American Conference is the AFC and the National the NFC, every team plays in
   its NFL counterpart's city and division, in that team's colors. Teams go by their city alone; where two

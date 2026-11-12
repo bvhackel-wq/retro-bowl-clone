@@ -66,12 +66,12 @@
       S = GP.newCareer(t.id, newDiff); GP.save(S); viewConf = t.conf; renderHub();
     };
     GP.CONFS.forEach((cn, c) => {
-      grid.append(h('h3', { class: 'conf' }, cn + ' Conference'));
+      grid.append(h('h3', { class: 'conf px' }, cn + ' Conference'));
       const row = h('div', { class: 'divs' });
       GP.DIVS.forEach((dn, d) => {
         row.append(h('div', { class: 'card' }, h('h2', null, dn),
           ...GP.TEAMS.filter((t) => t.conf === c && t.div === d).map((t) =>
-            h('button', { class: 'team-card', onclick: () => start(t) }, badge(t), h('span', null, h('b', null, t.name), h('br'), h('small', null, t.abbr))))));
+            h('button', { class: 'team-card', style: `--c1:${t.c1};--c2:${t.c2}`, onclick: () => start(t) }, badge(t), h('span', null, h('b', { class: 'px' }, t.name), h('br'), h('small', null, t.abbr))))));
       });
       grid.append(row);
     });
@@ -100,69 +100,138 @@
         h('span', { class: 'kitvs' }, 'vs'), h('span', { class: 'kitopt' }, kitSprite(pick.opp), h('small', null, GP.team(game.oppId).abbr))));
   }
   const starText = (n) => '★'.repeat(n) + '☆'.repeat(5 - n);
-  // A stat bar with a marker at the player's cap for it.
-  const capBar = (val, cap, color) => h('div', { class: 'bar capbar' },
-    h('i', { style: `width:${val}%` + (color ? `;background:${color}` : '') }),
-    h('u', { style: `left:${cap}%`, title: `Max ${cap}` }));
-  // One upgradable stat under a player's name (id is a player id or a unit key).
-  function statRow(r, id, stat, label, hint) {
-    const val = r.stats[stat], cap = r.caps[stat], cost = GP.upgradeCost(val, cap);
-    return h('div', { class: 'substat', title: hint || '' },
-      h('span', { class: 'dim' }, label),
-      capBar(val, cap, 'var(--accent)'),
-      h('b', null, String(val), h('small', { class: 'dim' }, '/' + cap)),
-      h('button', { class: 'btn small ghost', disabled: S.credits < cost, onclick: () => { if (GP.upgrade(S, id, stat)) renderHub(); } },
-        cost === Infinity ? 'MAX' : `+1 (${cost})`));
+  // ---------- team screens: the dashboard, the roster grid, a player's card, the standings ----------
+  const lastName = (n) => (n || '').split(' ').slice(-1)[0];
+  const stars = (n) => h('span', { class: 'stars' }, '★'.repeat(n), h('span', { class: 'off' }, '★'.repeat(5 - n)));
+  // a player's portrait: the game's own sprite in your home uniform, his skin tone fixed by his id
+  const portrait = (r) => {
+    const id = String(r.id || r.name || 'x'), hsh = [...id].reduce((a, ch) => a + ch.charCodeAt(0), 0);
+    const set = GP.Pixel.sprites(GP.kit(S.teamId, 'home')), c = set[hsh % set.length].stand[0];
+    const img = document.createElement('canvas'); img.width = c.width; img.height = c.height;
+    img.getContext('2d').drawImage(c, 0, 0); img.className = 'portrait';
+    return img;
+  };
+  // how close he is to his ceiling: his overall against the overall his caps would give
+  const potential = (r) => { const ks = Object.keys(r.caps || {}).filter((k) => k !== 'ovr'); return ks.length ? Math.round(ks.reduce((a, k) => a + r.caps[k], 0) / ks.length) : (r.caps ? r.caps.ovr : r.ovr); };
+  // the roster in screen order: starters by slot (a reserve in any empty spot), the bench, then the defense unit
+  function rosterOrder() {
+    const lineup = GP.lineup(S), ids = new Set(), out = [];
+    for (const [slot, pos] of GP.SLOTS) { const r = lineup[slot]; if (!r.filler) ids.add(r.id); out.push({ r, pos, slot, starter: true }); }
+    S.players.filter((p) => !ids.has(p.id)).sort((a, b) => a.pos.localeCompare(b.pos) || b.ovr - a.ovr)
+      .forEach((r) => out.push({ r, pos: r.pos, slot: null, starter: false }));
+    for (const [key, label] of GP.UNITS) out.push({ r: S.units[key], pos: key, unit: key, label });
+    return out;
   }
-  // A roster row: a player (stats and upgrades), a unit, or the reserve filling an empty spot.
-  function playerRow(r, posLabel, opts) {
-    opts = opts || {};
-    const key = opts.unit || r.pos, derived = GP.derived(key), id = opts.unit || r.id;
-    if (r.filler) {
-      return h('div', { class: 'rost reserve' },
-        h('span', { class: 'pos' }, posLabel),
-        h('div', null, h('div', null, h('i', null, `No ${GP.PLAYER_POS[r.pos].toLowerCase()} on the roster`)),
-          h('div', { class: 'dim', style: 'font-size:13px' }, `A ${r.stars}★ reserve fills in. Draft or trade for a real one.`)),
-        h('span', { class: 'ovr' }, String(r.ovr)), h('span'));
-    }
-    const cost = derived ? null : GP.upgradeCost(r.stats.ovr, r.caps.ovr);
-    return h('div', { class: 'rost' },
-      h('span', { class: 'pos' }, posLabel),
-      h('div', null,
-        h('div', null, opts.unit ? opts.label : r.name, opts.unit ? null : h('span', { class: 'dim' }, `  age ${r.age}`),
-          h('span', { class: 'stars', title: `${r.stars}-star ceiling` }, ' ' + starText(r.stars)),
-          opts.unit ? null : h('button', { class: 'link', title: 'Release him to open a roster spot', onclick: () => {
-            if (confirm(`Release ${r.name}? He leaves the team for good.`)) { GP.release(S, r.id); renderHub(); }
-          } }, 'Release')),
-        h('div', { class: 'dim', style: 'font-size:13px' }, derived ? 'Overall comes from his stats' : opts.desc || ''),
-        derived ? null : capBar(r.stats.ovr, r.caps.ovr),
-        ...GP.statsFor(key).filter(([k]) => k !== 'ovr').map(([k, label, hint]) => statRow(r, id, k, label, hint))),
-      h('span', { class: 'ovr' }, String(r.ovr)),
-      derived ? h('span') : h('button', {
-        class: 'btn small', disabled: S.credits < cost,
-        onclick: () => { if (GP.upgrade(S, id, 'ovr')) renderHub(); },
-      }, cost === Infinity ? 'MAX' : `+1 (${cost})`));
+  const backBar = (title, back) => h('div', { class: 'hub-head' },
+    h('button', { class: 'btn ghost small', onclick: back }, '‹ Back'), h('h1', { class: 'px' }, title), h('span', { class: 'sp' }),
+    h('span', { class: 'pill' }, 'Coaching points ', h('b', null, String(S.credits))));
+
+  // A roster card: position and portrait on your team color, then name, stars, overall and a bar showing how
+  // far he's grown toward his ceiling. Tap for his card.
+  function playerCard(e, i) {
+    const me = GP.team(S.teamId), r = e.r;
+    if (r.filler) return h('div', { class: 'pcard reserve' },
+      h('div', { class: 'top', style: `background:${me.c1}` }, h('span', { class: 'pos' }, e.pos)),
+      h('div', { class: 'nm' }, 'Empty'), h('div', { class: 'dim sub' }, `${r.stars}★ reserve fills in`), h('div', { class: 'ovr' }, String(r.ovr)));
+    const pot = potential(r);
+    return h('button', { class: 'pcard' + (e.starter === false ? ' bench' : ''), onclick: () => renderPlayer(i) },
+      h('div', { class: 'top', style: `background:${e.unit ? me.c2 : me.c1};color:${e.unit ? me.c1 : me.c2}` },
+        h('span', { class: 'pos' }, e.unit ? 'DEF' : e.pos), e.unit ? h('span', { class: 'unitmark' }, 'UNIT') : portrait(r)),
+      h('div', { class: 'nm' }, e.unit ? e.label : lastName(r.name)), stars(r.stars),
+      h('div', { class: 'ovrline' }, h('span', { class: 'ovr' }, String(r.ovr)), h('span', { class: 'dim' }, ` / ${pot}`)),
+      h('div', { class: 'bar grow' }, h('i', { style: `width:${clamp01(r.ovr / Math.max(1, pot)) * 100}%` })));
+  }
+  const clamp01 = (x) => Math.max(0, Math.min(1, x));
+
+  function renderRoster() {
+    const hub = $('#hub'); hub.innerHTML = '';
+    const order = rosterOrder();
+    hub.append(backBar(`Roster ${S.players.length}/${GP.ROSTER_MAX}`, renderHub));
+    const grid = (list) => h('div', { class: 'pcards' }, ...list.map(([e, i]) => playerCard(e, i)));
+    const idx = order.map((e, i) => [e, i]);
+    hub.append(h('h2', null, 'Starters'), grid(idx.filter(([e]) => e.starter)));
+    const bench = idx.filter(([e]) => e.starter === false);
+    hub.append(h('h2', null, 'Bench'), bench.length ? grid(bench) : h('div', { class: 'card dim' }, 'Nobody on the bench yet.'));
+    hub.append(h('h2', null, 'Units'), grid(idx.filter(([e]) => e.unit)));
+    show('hub');
   }
 
+  // A player's card: profile on the left, attributes on the right (each bar is his value, the outlined part
+  // up to his ceiling), arrows to step through the roster.
+  function renderPlayer(i) {
+    const order = rosterOrder(), e = order[i];
+    if (!e || e.r.filler) return renderRoster();
+    const r = e.r, me = GP.team(S.teamId), key = e.unit || r.pos, id = e.unit || r.id;
+    const hub = $('#hub'); hub.innerHTML = '';
+    const step = (d) => { let j = i; do { j = (j + d + order.length) % order.length; } while (order[j].r.filler && j !== i); renderPlayer(j); };
+    hub.append(backBar(e.unit ? e.label : `${e.pos} · ${r.name}`, renderRoster));
+    const pot = potential(r);
+    const profile = h('div', { class: 'card profile' },
+      h('div', { class: 'phead', style: `background:${me.c1};color:${me.c2}` }, e.unit ? h('span', { class: 'unitmark big' }, 'UNIT') : portrait(r),
+        h('div', null, h('div', { class: 'px' }, e.unit ? e.label : GP.PLAYER_POS[r.pos]), h('div', { class: 'role' }, e.unit ? 'Defense' : e.starter ? `Starter · ${e.slot}` : 'Bench'))),
+      h('div', { class: 'facts' },
+        e.unit ? null : h('div', null, h('span', { class: 'dim' }, 'Age'), h('b', null, String(r.age))),
+        h('div', null, h('span', { class: 'dim' }, 'Overall'), h('b', null, String(r.ovr))),
+        h('div', null, h('span', { class: 'dim' }, 'Potential'), h('b', null, String(pot))),
+        h('div', null, h('span', { class: 'dim' }, 'Stars'), stars(r.stars))),
+      h('div', { class: 'dim note' }, e.unit ? (GP.UNITS.find((u) => u[0] === e.unit) || [])[2] : GP.derived(key) ? 'His overall comes from his attributes. Stars are fixed for life and set his ceilings.' : ''),
+      e.unit ? null : h('button', { class: 'btn ghost small', onclick: () => {
+        if (confirm(`Release ${r.name}? He leaves the team for good.`)) { GP.release(S, r.id); renderRoster(); }
+      } }, 'Release'));
+    const attrs = h('div', { class: 'card attrs' }, h('h3', { class: 'px' }, 'Attributes'),
+      ...GP.statsFor(key).filter(([k]) => !GP.derived(key) || k !== 'ovr').map(([k, label, hint]) => {
+        const val = r.stats[k], cap = r.caps[k], cost = GP.upgradeCost(val, cap);
+        return h('div', { class: 'attr', title: hint || '' },
+          h('div', { class: 'alabel' }, h('span', null, label), h('b', null, String(val), h('small', { class: 'dim' }, ' / ' + cap))),
+          h('div', { class: 'abar' }, h('u', { style: `width:${cap}%` }), h('i', { style: `width:${val}%` })),
+          h('button', { class: 'btn small', disabled: S.credits < cost, onclick: () => { if (GP.upgrade(S, id, k)) renderPlayer(i); } },
+            cost === Infinity ? 'MAX' : `+1 · ${cost}`));
+      }));
+    hub.append(h('div', { class: 'pview' },
+      h('button', { class: 'arrow', title: 'Previous', onclick: () => step(-1) }, '‹'),
+      h('div', { class: 'pbody' }, profile, attrs),
+      h('button', { class: 'arrow', title: 'Next', onclick: () => step(1) }, '›')));
+    show('hub');
+  }
+
+  function renderStandings() {
+    const hub = $('#hub'); hub.innerHTML = '';
+    hub.append(backBar('Standings', renderHub));
+    const seeds = S.phase === 'regular' ? GP.seeds(S, viewConf) : S.playoff.seeds[viewConf];
+    const tabs = h('div', { class: 'tabs' }, ...GP.CONFS.map((cn, c) =>
+      h('button', { class: 'btn small' + (c === viewConf ? '' : ' ghost'), onclick: () => { viewConf = c; renderStandings(); } }, cn)));
+    const tables = h('div', { class: 'card' }, tabs, h('div', { class: 'dim', style: 'font-size:13px;margin:4px 0 8px' }, 'Numbered teams hold a playoff seed'));
+    GP.DIVS.forEach((dn, d) => {
+      const tb = h('tbody');
+      for (const t of GP.divStandings(S, viewConf, d)) {
+        const tm = GP.team(t.id), seed = seeds.indexOf(t.id);
+        tb.append(h('tr', { class: t.id === S.teamId ? 'me' : '' },
+          h('td', null, seed >= 0 ? h('span', { class: 'seed' }, String(seed + 1)) : ''), h('td', null, full(tm)),
+          h('td', null, String(t.w)), h('td', null, String(t.l)), h('td', null, String(t.pf)), h('td', null, String(t.pa))));
+      }
+      tables.append(h('table', null, h('thead', null, h('tr', null, ...['', dn, 'W', 'L', 'PF', 'PA'].map((x) => h('th', null, x)))), tb));
+    });
+    hub.append(tables);
+    if (S.history.length) hub.append(h('h2', null, 'History'), h('div', { class: 'card' }, ...S.history.map((x) => h('div', { class: 'dim' }, `Season ${x.season}: ${x.w}-${x.l} — ${x.note}`))));
+    show('hub');
+  }
+
+  // The team page: next game up top, game-day settings, then a tile for each part of running the team.
   function renderHub() {
     if (S.phase === 'offseason' && !S.draft) GP.startDraft(S);     // saves made before the draft existed
     const hub = $('#hub'); hub.innerHTML = '';
     const me = GP.team(S.teamId), rec = GP.rec(S, S.teamId), game = GP.currentGame(S);
 
-    hub.append(h('div', { class: 'hub-head' },
-      badge(me), h('h1', null, full(me)),
+    hub.append(h('div', { class: 'hub-head teamhead', style: `--c1:${me.c1};--c2:${me.c2}` },
+      badge(me), h('div', null, h('h1', { class: 'px' }, full(me)), h('div', { class: 'dim' }, `${GP.CONFS[me.conf]} ${GP.DIVS[me.div]} · Season ${S.season}`)),
       h('span', { class: 'sp' }),
-      h('span', { class: 'pill' }, `Season ${S.season} · ${rec.w}-${rec.l}`),
+      h('span', { class: 'pill big' }, h('b', null, `${rec.w}-${rec.l}`)),
       h('span', { class: 'pill' }, 'Coaching points ', h('b', null, String(S.credits))),
-      h('button', { class: 'btn ghost small', title: 'Change difficulty', onclick: () => {
-        const order = ['easy', 'normal', 'hard'], next = order[(order.indexOf(S.difficulty || 'normal') + 1) % 3];
-        S.difficulty = next; GP.save(S); renderHub();
-      } }, 'Difficulty: ' + GP.DIFFICULTY[S.difficulty || 'normal']),
       h('button', { class: 'btn ghost small', onclick: renderTitle }, 'Menu')));
 
     if (S.news && S.news.length) hub.append(h('div', { class: 'card news' }, ...S.news.map((n) => h('div', null, n))));
 
-    // next game / offseason
+    // next game / bye / offseason
     if (game && game.bye) {
       hub.append(h('h2', null, 'Playoffs — ' + game.label), h('div', { class: 'card next' },
         h('div', null, h('div', { class: 'vs' }, 'First-round bye'),
@@ -171,15 +240,14 @@
         h('button', { class: 'btn', onclick: () => { GP.advance(S, null, null); renderHub(); } }, 'Advance')));
     } else if (game) {
       const o = GP.team(game.oppId), or = GP.rec(S, game.oppId);
-      hub.append(h('h2', null, (S.phase === 'playoffs' ? 'Playoffs — ' : '') + game.label), h('div', { class: 'card next' },
+      hub.append(h('h2', null, (S.phase === 'playoffs' ? 'Playoffs — ' : '') + game.label), h('div', { class: 'card next gameday' },
         badge(o),
-        h('div', null, h('div', { class: 'vs' }, (game.home === false ? 'at ' : 'vs ') + full(o)),
+        h('div', null, h('div', { class: 'vs px' }, (game.home === false ? 'at ' : 'vs ') + full(o)),
           h('div', { class: 'dim' }, `${or.w}-${or.l} · Offense ${or.off} · Defense ${or.def} · DC ${starText(GP.oppDC(S, game.oppId))}`),
           h('div', { class: 'dim' }, `You: Offense ${rec.off} · Defense ${rec.def}`)),
         h('span', { style: 'flex:1' }),
-        h('button', { class: 'btn', onclick: () => startMatch(game) }, 'Play game')));
+        h('button', { class: 'btn play', onclick: () => startMatch(game) }, 'Play game')));
       hub.append(uniformCard(game));
-      // play your defense, or let it be simulated as before
       const pd = S.playDefense !== false, setPD = (v) => { S.playDefense = v; GP.save(S); renderHub(); };
       hub.append(h('div', { class: 'card next' }, h('div', null, h('b', null, 'Defense'),
         h('div', { class: 'dim' }, pd ? 'You call the coverage on every opponent snap' : 'Opponent drives are simulated')),
@@ -190,7 +258,7 @@
       const ch = GP.team(S.champion);
       hub.append(h('h2', null, `Season ${S.season} complete`), h('div', { class: 'card next' },
         badge(ch),
-        h('div', null, h('div', { class: 'vs' }, S.champion === S.teamId ? 'You are the champions!' : `${full(ch)} win the title`),
+        h('div', null, h('div', { class: 'vs px' }, S.champion === S.teamId ? 'You are the champions!' : `${full(ch)} win the title`),
           h('div', { class: 'dim' }, `Your season: ${rec.w}-${rec.l} · ${S.seasonNote}`),
           h('div', { class: 'dim' }, 'Young players develop and veterans decline over the offseason.')),
         h('span', { style: 'flex:1' }),
@@ -202,58 +270,23 @@
           } }, 'Start next season'))));
     }
 
-    // coaching staff
-    const coachLine = (c) => h('div', null, h('b', null, `${c.role} `), c.name, h('span', { class: 'stars' }, ' ' + starText(c.stars)),
-      h('span', { class: 'dim' }, ' · ' + c.skills.map((k) => GP.SKILLS[c.role][k][0]).join(', ')));
-    hub.append(h('div', { class: 'card next tradecard' },
-      h('div', null, h('b', null, 'Coaching staff'), coachLine(S.staff.OC), coachLine(S.staff.DC)),
-      h('span', { style: 'flex:1' }),
-      h('button', { class: 'btn ghost small', onclick: renderStaff }, 'Hire coordinators')));
+    // tiles
+    const order = rosterOrder(), starters = order.filter((e) => e.starter && !e.r.filler);
+    const avgStars = starters.length ? (starters.reduce((a, e) => a + e.r.stars, 0) / starters.length).toFixed(1) : '0';
+    const holes = order.filter((e) => e.r.filler).length;
+    const place = GP.divStandings(S, me.conf, me.div).findIndex((t) => t.id === S.teamId) + 1;
     const ts = GP.tradeStatus(S);
-    hub.append(h('div', { class: 'card next tradecard' },
-      h('div', null, h('b', null, 'Trades'), h('div', { class: 'dim' }, ts.note)),
-      h('span', { style: 'flex:1' }),
-      h('button', { class: 'btn ghost small', disabled: !ts.open, onclick: () => renderTrade() }, 'Make a trade')));
-
-    // roster: starters (a reserve wherever a spot is empty), bench, then the two units
-    const lineup = GP.lineup(S), starterIds = new Set();
-    const roster = h('div', { class: 'card' });
-    roster.append(h('h3', { class: 'rhead' }, 'Starters'));
-    for (const [slot, pos] of GP.SLOTS) {
-      const r = lineup[slot];
-      if (!r.filler) starterIds.add(r.id);
-      roster.append(playerRow(r, pos));
-    }
-    const bench = S.players.filter((p) => !starterIds.has(p.id)).sort((a, b) => a.pos.localeCompare(b.pos) || b.ovr - a.ovr);
-    roster.append(h('h3', { class: 'rhead' }, 'Bench', h('span', { class: 'dim' }, bench.length ? '' : '  nobody yet')));
-    for (const r of bench) roster.append(playerRow(r, r.pos));
-    roster.append(h('h3', { class: 'rhead' }, 'Units'));
-    for (const [key, label, desc] of GP.UNITS) roster.append(playerRow(S.units[key], key, { unit: key, label, desc }));
-
-    // standings: one table per division, with a conference switcher
-    const seeds = S.phase === 'regular' ? GP.seeds(S, viewConf) : S.playoff.seeds[viewConf];
-    const tabs = h('div', { class: 'tabs' }, ...GP.CONFS.map((cn, c) =>
-      h('button', { class: 'btn small' + (c === viewConf ? '' : ' ghost'), onclick: () => { viewConf = c; renderHub(); } }, cn)));
-    const tables = h('div', { class: 'card' }, tabs);
-    GP.DIVS.forEach((dn, d) => {
-      const tb = h('tbody');
-      for (const t of GP.divStandings(S, viewConf, d)) {
-        const tm = GP.team(t.id), seed = seeds.indexOf(t.id);
-        tb.append(h('tr', { class: t.id === S.teamId ? 'me' : '' },
-          h('td', null, seed >= 0 ? h('span', { class: 'seed' }, String(seed + 1)) : ''), h('td', null, full(tm)),
-          h('td', null, String(t.w)), h('td', null, String(t.l)),
-          h('td', null, String(t.pf)), h('td', null, String(t.pa))));
-      }
-      tables.append(h('table', null, h('thead', null, h('tr', null,
-        ...['', dn, 'W', 'L', 'PF', 'PA'].map((x) => h('th', null, x)))), tb));
-    });
-    const table = tables;
-
-    hub.append(h('div', { class: 'grid2' },
-      h('div', null, h('h2', null, `Roster ${S.players.length}/${GP.ROSTER_MAX}`), roster),
-      h('div', null, h('h2', null, 'Standings — numbered teams hold a playoff seed'), table,
-        S.history.length ? h('h2', null, 'History') : null,
-        S.history.length ? h('div', { class: 'card' }, ...S.history.map((x) => h('div', { class: 'dim' }, `Season ${x.season}: ${x.w}-${x.l} — ${x.note}`))) : null)));
+    const tile = (title, line, fn, opts) => h('button', { class: 'tile' + (opts && opts.off ? ' off' : ''), disabled: !!(opts && opts.off), onclick: fn },
+      h('div', { class: 'tt px' }, title), h('div', { class: 'tl dim' }, line), h('span', { class: 'go' }, '›'));
+    hub.append(h('h2', null, 'Your team'), h('div', { class: 'tiles' },
+      tile('Roster', `${S.players.length}/${GP.ROSTER_MAX} players · starters avg ${avgStars}★` + (holes ? ` · ${holes} empty spot${holes > 1 ? 's' : ''}` : ''), renderRoster),
+      tile('Standings', `${['1st', '2nd', '3rd', '4th'][place - 1] || ''} in the ${GP.CONFS[me.conf]} ${GP.DIVS[me.div]}`, renderStandings),
+      tile('Coaching staff', `OC ${starText(S.staff.OC.stars)} · DC ${starText(S.staff.DC.stars)}`, renderStaff),
+      tile('Trades', ts.note, () => renderTrade(), { off: !ts.open }),
+      S.phase === 'offseason' ? tile('Draft', S.draft && !S.draft.done ? 'On the clock soon' : 'Review the picks', renderDraft) : null,
+      tile('Difficulty', GP.DIFFICULTY[S.difficulty || 'normal'] + ' · tap to change', () => {
+        const ord = ['easy', 'normal', 'hard']; S.difficulty = ord[(ord.indexOf(S.difficulty || 'normal') + 1) % 3]; GP.save(S); renderHub();
+      })));
     show('hub');
   }
 
