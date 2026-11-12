@@ -13,14 +13,20 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
 - **You run the offense,** and call the defense (or simulate opponent drives from your defense's rating vs. their offense).
 - **Pass:** after the snap, drag backwards anywhere on the field and release. The ring is where the
   ball lands, so lead the receiver. Nearby defenders can break it up or intercept.
+- **Bullet pass:** tap a receiver instead (or a spot) and the quarterback fires it flat and fast, about 60%
+  quicker than a lofted throw and led all the way. Range is 80% of a lofted throw. At the catch it's half as
+  likely to be picked off but harder to hold on to (roughly 10% drops in the open, more in traffic). It can't
+  go over anyone: a defender under its path can tip it or pick it off on the way. In testing it came out
+  about even with lofted throws on completions, with fewer interceptions; lofted throws keep the range and
+  the touch over coverage.
 - **Scramble:** instead of throwing, swipe toward the end zone (keyboard: right arrow or D) and the
   quarterback tucks the ball and becomes a runner.
 - **Running:** anyone with the ball except a quarterback still in the pocket (the back, a receiver
   after the catch, a scrambling quarterback) runs straight ahead automatically. Swipe up or down
   to cut toward a sideline, or hold W/S or the up/down arrows.
 - **Lunge and stop:** any ball carrier (not a quarterback still in the pocket) can swipe forward to
-  lunge: a head-first dive of 1 yard (best of speed, power or agility at 50) up to 2 yards (90+), or for
-  a scrambling quarterback a feet-first slide of 0.75 to 1.5 yards. He goes down where he lands and
+  lunge: a head-first dive of 1 yard (best of speed, power or agility at 50) up to 2.5 yards (90+), or for
+  a scrambling quarterback a feet-first slide of 0.75 to 2 yards. He goes down where he lands and
   tacklers can't stop the dive itself. Swiping back stops him for about a second. Keyboard: right arrow / D and left arrow / A.
 - **Juke:** tap, then swipe (keyboard: space, then up/down). For a third of a second the runner
   slips any tackle; time it just before contact. A juke into empty space costs speed, and there is a
@@ -99,6 +105,14 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
   follows him to the run side. In Cover 0 the blitzing linebacker comes off the tight end's edge and keeps
   the runner inside; on outside runs the tight end kicks out the edge defender, and on inside runs he blocks
   the man covering him. Cover 0 is a real all-out blitz: quick throws beat it, slow ones get sacked.
+- **Kickoffs.** Every half, and every score, starts with a kickoff from the kicking team's 35 (you receive the
+  opening kickoff and kick to start the second half; you receive in overtime). Kicking: the same tap, aim and
+  meter as a punt, with the same stretch past the range (64 yards at 71 kick distance, about to the goal
+  line); your coverage team runs down and their returner brings it back. Receiving: your running back
+  returns it with the runner controls; tap while it's in the air for a fair catch (in the end zone, a
+  touchback). Out the back of the end zone, or a fair catch inside your 25: the ball at the 25. Out of
+  bounds: the 40. Their returner takes a knee on a ball caught 3+ yards deep. A kickoff that hits the
+  ground stays live for the returner to pick up.
 - **Punt returns.** When the opponent punts (with playable defense on), it's played out with your return
   team: their punter aims for distance, or to pin you inside your 10 when he's close, and rarely shanks
   one. Tap during the flight to call a fair catch; otherwise your returner (your running back's speed and
@@ -112,7 +126,8 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
   runs, against the blocker, much easier as the play goes on), then he bursts and dives up to about 6.5 yards.
   A hit is a tackle attempt with a bonus (on the quarterback, almost always a sack). Lose the block or miss
   and he's on the ground with the ball carrier free. One dive a play; the ring goes when the quarterback
-  throws. Measured on pass plays: diving too early (0.4s) gives up more than not diving, about 1.6s is the
+  throws. If another defender breaks through the line (past it, free of his blocker) while your ringed man
+  is still tied up, the ring and the dive jump to him (about 7% of snaps). Measured on pass plays: diving too early (0.4s) gives up more than not diving, about 1.6s is the
   sweet spot (sacks on ~14% of plays against ~2% without), and by 2.2s the ball's usually gone.
 - **Go for the interception.** On defense, swipe up (or press up/space) as their pass arrives. The
   defender nearest where it will come down plays the ball, and his coverage sets the timing window (about
