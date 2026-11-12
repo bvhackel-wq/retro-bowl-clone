@@ -46,7 +46,7 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
   a touchdown on that play scores. Your coordinator highlights the usual chart in the second half: go for
   two when the touchdown leaves you down 2, 5 or 10, or up 1, 4 or 5. Inside the 5 he leans to quick throws
   and play action, since the defense loads the box.
-- **4th down:** go for it, punt, or kick a field goal. Past midfield, Change also offers a field goal on
+- **4th down:** go for it, punt, or kick a field goal. Past midfield, the play list also offers a field goal on
   any down (marked "a stretch" past your kicker's range and "out of reach" more than 25% past it).
 - **Kicking:** tap the field to start the kick, drag back to aim (like a pass), and release to open the
   timing meter. A field goal is snapped and kicked from the line of scrimmage (held a yard behind it), so its
@@ -86,8 +86,9 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
   Right/Left: to the edge, then up), Screen (RB Screen: the line releases to lead-block; WR Screen:
   receiver steps back behind blockers) and Play action (PA Post, PA Crossers, PA Deep Shot: linebackers
   and safeties bite on the fake, less if they cover well, more the more you've run that game). The
-  offensive coordinator calls a play each snap; Change shows the six types, and picking one gives his
-  best play of that type for the situation (pick it again for his next one). His read of each coverage
+  play list opens before every snap with the six types; the offensive coordinator's call is marked (with the
+  play's name), and picking a type gives his best play of that type for the situation. The play you picked is
+  named in the hint at the bottom until you snap. His read of each coverage
   comes from measured results of every play against every call.
 - **Defenders have jobs, and make mistakes.** Man defenders play leverage: they shade a yard inside or
   outside and give up the other way (inside in Cover 0, 2-Man and press; outside in Cover 1, where help
@@ -160,9 +161,9 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
   their normal size at any zoom.
 - **Play defense (Phase 1: you call it).** When the opponent has the ball you play their drive: the field
   flips so they attack your end zone, their offense calls a play (hidden from you), and your defensive
-  coordinator calls a coverage. Keep it or tap Change for four groups: Man (Cover 1, Cover 1 Press, 2-Man),
-  Zone (Cover 3, Cover 2, Cover 4), Blitz (Cover 0, Fire Zone, Cover 1 Blitz) and Prevent; picking a group
-  again gives the next call in it. Tap the field to snap and watch it play out. Their offense plays like a human,
+  coordinator recommends a coverage. The call list opens before every snap with four groups: Man (Cover 1,
+  Cover 1 Press, 2-Man), Zone (Cover 3, Cover 2, Cover 4), Blitz (Cover 0, Fire Zone, Cover 1 Blitz) and
+  Prevent; his call is marked, and picking its group gives his call (another group gives his best call in it). Tap the field to snap and watch it play out. Their offense plays like a human,
   mistakes included: the quarterback reads one receiver at a time, misses throws and sometimes throws
   behind his man, sometimes stares down his first read, freezes and takes the sack when nobody's open, and
   now and then forces it into coverage (weaker quarterbacks do all of this more); their runner only reacts
@@ -242,7 +243,7 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
   candidates per job that change each season (free at 0★ up to 14 points at 5★). The offensive
   coordinator calls a play before every snap from the down, distance, field position, clock, score and
   the defense's look; more stars means he reads the coverage more often (about 25% at 0-1★, 50% at 3★,
-  90% at 5★). You can change his call with the button over the field. On 4th down he only recommends.
+  90% at 5★). His call is marked in the play list you open every down; you pick.
   The defensive coordinator's stars and skills improve your simulated defense.
 - **Passing help and difficulty:** a throw released near a receiver is nudged toward the right lead
   (partly on Normal, more for accurate quarterbacks; fully on Easy; not on Hard). Each opposing defender

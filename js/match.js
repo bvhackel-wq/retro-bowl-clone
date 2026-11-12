@@ -489,7 +489,7 @@
         const b = document.createElement('button');
         b.className = modal ? 'btn' : 'opt' + (o.kick ? ' kick' : '') + (o.rec ? ' rec' : '');
         if (modal) b.textContent = o.label;
-        else { const n = document.createElement('b'); n.textContent = o.label; const s = document.createElement('small'); s.textContent = o.rec ? (this.defending ? "DC's call" : "OC's call") : o.sub || ''; b.append(n, s); }
+        else { const n = document.createElement('b'); n.textContent = o.label; const s = document.createElement('small'); s.textContent = o.rec ? (this.defending ? "DC's call" : "OC's call") + (o.recName ? ': ' + o.recName : '') : o.sub || ''; b.append(n, s); }
         b.onclick = () => { this.hidePanel(); o.fn(); };
         row.appendChild(b);
       }
@@ -524,12 +524,12 @@
       this.play = this.cpuCall();
       this.dcall = this.dcRec = this.callDefense(); this.defNote = null;
       this.setupFormation();
-      this.phase = 'presnap'; this.hidePanel();
+      this.defList('Call the defense — ' + this.downText());          // pick a call (the coordinator's is marked), then snap
     }
     defList(title) {
       const rec = defGroup(this.dcRec);
-      const opts = DEF_TYPES.map(([key, label, desc]) => ({ label, sub: defGroup(this.dcall)[0] === key ? `Now: ${callName(this.dcall)} · tap for another` : desc,
-        rec: rec[0] === key, fn: () => this.pickDefType(key) }));
+      const opts = DEF_TYPES.map(([key, label, desc]) => ({ label, sub: desc,
+        rec: rec[0] === key, recName: callName(this.dcRec), fn: () => this.pickDefType(key) }));
       opts.push({ label: 'Simulate drive', sub: 'Let your coordinator run it', kick: true,
         fn: () => this.oppDriveSim(110 - this.los, 'Your coordinator runs the defense.') });
       this.showPanel(title, '', opts);
@@ -541,7 +541,7 @@
       calls.sort((a, b) => score(b) - score(a));
       let i = 0;
       if (this.typePick && this.typePick.key === key) i = (this.typePick.i + 1) % calls.length;
-      else { const cur = calls.indexOf(this.dcall.lbBlitz ? 'cover1b' : this.dcall.type); if (cur === 0 && calls.length > 1) i = 1; }
+      else { const cur = calls.indexOf(this.dcRec.lbBlitz ? 'cover1b' : this.dcRec.type); if (cur > 0) i = cur; }
       this.typePick = { key, i };
       const c = calls[i];
       this.dcall = c === 'cover1b' ? { type: 'cover1', shown: 'cover1', lbBlitz: true } : { type: c, shown: c, lbBlitz: false };
@@ -717,7 +717,7 @@
     }
     // the "Play: ... · Change" button over the field before the snap
     chip() {
-      const c = this.el.chip, show = this.phase === 'presnap' && this.el.panel.hidden && !this.paused;
+      const c = this.el.chip, show = false;   // retired: the play list opens every down instead, and the hint names the call
       const key = this.defending ? 'D:' + (this.dcall ? callName(this.dcall) : '') : this.play && this.play.id;
       if (c.hidden === !show && c.dataset.play === key) return;
       c.hidden = !show; c.dataset.play = key || '';
@@ -735,7 +735,7 @@
       const call = this.ocLast;
       // play types; the coordinator fills in the play
       const opts = PLAY_TYPES.map(([cat, label, desc]) => ({ label, sub: this.play && this.play.cat === cat ? `Now: ${this.play.name} · tap for another` : desc,
-        rec: !call.kick && call.play.cat === cat, fn: () => this.pickType(cat) }));
+        rec: !call.kick && call.play.cat === cat, recName: call.play.name, fn: () => this.pickType(cat) }));
       // a field goal on any down once you're past midfield; a punt on 4th down
       if (this.los > 60 && !this.conv) {
         const dist = this.fgDist(), far = dist > this.kickRange * 1.25 ? ' · out of reach' : dist > this.kickRange ? ' · a stretch' : '';
@@ -749,11 +749,10 @@
       this.phase = 'choose'; this.kick = null; this.play = null;
       this.dcall = this.callDefense(); this.defNote = null; this.typePick = null;
       this.setupFormation();
-      // the offensive coordinator calls the play; on 4th down he only recommends (you decide)
+      // every down the play list is open, with the offensive coordinator's call marked; you pick, then snap
       const call = this.ocLast = this.ocCall();
       this.ocPick = call.play;
-      if (this.down === 4) return this.playList('4th down — your call');
-      this.pickPlay(call.play);
+      this.playList(this.down === 4 ? '4th down — your call' : 'Call the play — ' + this.downText());
     }
     pickPlay(p) {
       this.play = p; this.setupFormation(); this.phase = 'presnap';
@@ -2437,7 +2436,8 @@
       const u = this.ug; u.clearRect(0, 0, AW, AH);
       if (this.kick) this.drawKick();
 
-      if (this.phase === 'presnap') this.hint(this.defending ? (this.ringD ? `RINGED #${this.ringD.info.num}: SWIPE LEFT TO DIVE · TAP TO SNAP` : 'DEFENSE · TAP THE FIELD WHEN READY') : 'TAP THE FIELD TO SNAP');
+      if (this.phase === 'presnap') this.hint(this.defending ? `${callName(this.dcall).toUpperCase()} · ` + (this.ringD ? `RINGED #${this.ringD.info.num}: SWIPE LEFT TO DIVE · TAP TO SNAP` : 'TAP THE FIELD WHEN READY')
+        : `${this.play ? this.play.name.toUpperCase() + ' · ' : ''}TAP THE FIELD TO SNAP`);
       else if (this.phase === 'live' && this.defending) this.hint(this.ringOn() && !this.ringD.dove ? `SWIPE LEFT: #${this.ringD.info.num} DIVES AT THE BALL CARRIER` : 'SWIPE UP AS THE BALL ARRIVES TO GO FOR THE PICK');
       else if (this.phase === 'live' && this.passing() && !this.aim) this.hint('DRAG BACK TO THROW · TAP A RECEIVER: BULLET · SWIPE AHEAD: RUN');
       else if (this.phase === 'kick' && this.kick && this.kick.cpu) this.hint({ flight: this.kick.fairCall ? (this.kick.type === 'ko' ? 'FAIR CATCH / TOUCHBACK CALLED' : 'FAIR CATCH CALLED') : this.kick.type === 'ko' ? 'TAP FOR A FAIR CATCH OR TOUCHBACK' : 'TAP TO CALL A FAIR CATCH',
