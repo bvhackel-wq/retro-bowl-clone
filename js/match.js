@@ -155,10 +155,17 @@
       this.oppDC = cfg.oppDC != null ? cfg.oppDC : 2;   // their defensive coordinator's stars
       // their offense's tuning: seconds per read, how open a man must be beyond what his accuracy needs, how
       // much wilder his throws are than yours, and how often their runner tries a juke
-      // Tuned so a drive against an even defense ends about like an NFL drive (measured over hundreds of drives:
-      // ~20-25% touchdowns, ~6-7 yards a pass, ~4.5 a carry, ~3% interceptions). Their pace (spd) is the
-      // sensitive one: 0.93 already doubles their touchdown rate.
-      this.cpuK = { read: 0.8, open: 2.0, scatter: 2.1, juke: 0.03, hold: 0.45, force: 0.03, cut: 0.1, lead: 0.9, deep: 0.1, run: 1.5, spd: 0.9 };
+      // Their offense plays like a human, with a human's mistakes: reads one receiver at a time (read, seconds
+      // each), wants a clear window (open, more for deep throws: deep), misses (scatter), throws behind his man
+      // (behind), stares down his first read (tunnel, for lockT seconds), freezes and holds the ball when no one
+      // is open (hold, until holdT); forces it into coverage now and then (force). Their runner only sees what's
+      // in front of him and reacts a few times a second (look; cut and juke how often he slides or jukes).
+      // run: how much they lean on the run. spd: their pace, a small handicap still needed because yards after
+      // the catch run high against this defense. Measured over hundreds of drives: an even matchup ends in a
+      // touchdown about 30% of the time (no handicap: about 35%), ~57% completions, ~8.5 yards a throw,
+      // ~4.8 a carry, ~2% interceptions, a sack every few drives.
+      this.cpuK = { read: 0.8, open: 1.4, scatter: 2.4, juke: 0.03, hold: 0.9, holdT: 7, force: 0.03, cut: 0.1, lead: 1, deep: 0.1,
+                    run: 1.5, spd: 0.96, behind: 0.45, tunnel: 0.35, lockT: 1.8, look: 0.35 };
       this.defending = false; this.otherTend = { run: 0, short: 0, deep: 0, n: 0 }; this.covTend = {};
       this.keys = {}; this.gesture = null; this.lastTap = -1e9; this.popup = null; this.aim = null; this.banner = null; this.kick = null;
       this.camX = 0; this.off = []; this.def = []; this.ball = { state: 'held' };
@@ -530,9 +537,15 @@
           return Math.min(...this.def.map((d) => hyp(d.x - cx, d.y - cy) - (d.spd || 6) * T * 0.45)) + 1.5;
         };
         const depth = (p) => { const q = p.route.pts[p.route.pts.length - 1]; return q ? q[0] : 0; };
-        if (!this.reads) this.reads = rs.slice().sort((a, b) => (pl.cat === 'quick' ? depth(a) - depth(b) : depth(b) - depth(a)));
+        if (!this.reads) {
+          this.reads = rs.slice().sort((a, b) => (pl.cat === 'quick' ? depth(a) - depth(b) : depth(b) - depth(a)));
+          // tunnel vision: some dropbacks he stares down his first read and sees nobody else for a while
+          // (weaker quarterbacks more often)
+          this.locked = Math.random() < this.cpuK.tunnel * (1 + Math.max(0, 75 - this.qbs.acc) * 0.03);
+        }
+        const lockOn = this.locked && t < start + this.cpuK.lockT;
         const need = clamp(2.7 - (this.qbs.acc - 60) * 0.025, 1.7, 3.1) + this.cpuK.open;
-        const ri = Math.floor((t - start) / this.cpuK.read), r = this.reads[ri % this.reads.length], fresh = ri !== this.readIdx;
+        const ri = lockOn ? 0 : Math.floor((t - start) / this.cpuK.read), r = this.reads[ri % this.reads.length], fresh = ri !== this.readIdx;
         this.readIdx = ri;
         const pressure = this.def.some((d) => !d.held && !(d.stun > 0) && hyp(d.x - qb.x, d.y - qb.y) < 2.2);
         // a deep window has to be wider: about an extra yard of room for every 12 yards downfield
@@ -541,33 +554,41 @@
         if (r && fresh && r.x > L - 1 && Math.random() < this.cpuK.force * (1 + Math.max(0, 75 - this.qbs.acc) * 0.05)) return this.cpuThrow(r);
         // under pressure or late: the most open man if anyone's open enough; otherwise a mobile quarterback
         // may take off; otherwise he hangs in (and may take the sack) until he throws it away
+        if (lockOn) return;                                   // staring him down: he doesn't see anyone else
         if (pressure || t > 3.1) {
           const most = rs.slice().sort((a, b) => open(b) - open(a))[0];
           if (most && open(most) > 1.5 + this.cpuK.open * 0.5) return this.cpuThrow(most);
           if (!this.cpuDecided) { this.cpuDecided = true; this.cpuHold = Math.random() < this.cpuK.hold; }
           if (this.qbs.spd >= 70 && Math.random() < 0.02) return this.tuck();
-          if (t > (this.cpuHold ? 4.6 : 3.6)) this.throwBall(L + rnd(2, 8), qb.y < MID ? -3 : FW + 3);      // throws it away
+          if (t > (this.cpuHold ? this.cpuK.holdT : 3.6)) this.throwBall(L + rnd(2, 8), qb.y < MID ? -3 : FW + 3);      // throws it away
         }
         return;
       }
       if (this.running(this.carrier)) this.cpuRun(this.carrier);
     }
-    // aim where the receiver will be when the ball gets there
+    // Aim where the receiver will be when the ball gets there; or, the human mistake, behind him, so he has
+    // to stop and come back for it and the defense closes (weaker quarterbacks throw behind more often).
     cpuThrow(p) {
       if (!p) return;
+      const behind = Math.random() < this.cpuK.behind * (1 + Math.max(0, 75 - this.qbs.acc) * 0.04);
+      const lead = behind ? rnd(0.2, 0.55) : this.cpuK.lead;
       const qb = this.qb; let lx = p.x, ly = p.y;
-      for (let i = 0; i < 3; i++) { const T = (0.3 + hyp(lx - qb.x, ly - qb.y) / this.ballSpeed) * this.cpuK.lead; lx = p.x + p.vx * T; ly = p.y + p.vy * T; }
+      for (let i = 0; i < 3; i++) { const T = (0.3 + hyp(lx - qb.x, ly - qb.y) / this.ballSpeed) * lead; lx = p.x + p.vx * T; ly = p.y + p.vy * T; }
       const d = hyp(lx - qb.x, ly - qb.y), max = this.maxRange;
       if (d > max) { lx = qb.x + (lx - qb.x) * max / d; ly = qb.y + (ly - qb.y) * max / d; }
       this.throwBall(lx, ly);
     }
     // Their ball carrier: slides away from a defender closing in front of him, jukes one about to hit him
     // (more often the more agile he is), and lunges for the marker when he's just short.
+    // Like a human with a thumb on the screen, he only sees what's in front of him and reacts a few times a
+    // second, not every instant.
     cpuRun(c) {
       if (c.lunge || (c.cut && c.cut.t > 0) || (c.juke && c.juke.t > 0)) return;
+      if (this.t < (c.nextLook || 0)) return;
+      c.nextLook = this.t + this.cpuK.look;
       let near = null, nd = 99;
       for (const d of this.def) {
-        if (d.held || d.stun > 0 || d.x < c.x - 0.5) continue;
+        if (d.held || d.stun > 0 || d.x < c.x + 0.3 || Math.abs(d.y - c.y) > (d.x - c.x) * 1.2 + 1) continue;
         const x = hyp(d.x - c.x, d.y - c.y); if (x < nd) { nd = x; near = d; }
       }
       if (!near || nd > 4.5) { c.jkTried = false; return; }

@@ -89,16 +89,20 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
   flips so they attack your end zone, their offense calls a play (hidden from you), and your defensive
   coordinator calls a coverage. Keep it or tap Change for four groups: Man (Cover 1, Cover 1 Press, 2-Man),
   Zone (Cover 3, Cover 2, Cover 4), Blitz (Cover 0, Fire Zone, Cover 1 Blitz) and Prevent; picking a group
-  again gives the next call in it. Tap the field to snap and watch it play out. Their quarterback reads his
-  receivers in order, throws to the first one open enough for his accuracy, and under pressure finds the
-  most open man, scrambles, hangs in, or throws it away; their runner cuts and jukes. Their play-caller
+  again gives the next call in it. Tap the field to snap and watch it play out. Their offense plays like a human,
+  mistakes included: the quarterback reads one receiver at a time, misses throws and sometimes throws
+  behind his man, sometimes stares down his first read, freezes and takes the sack when nobody's open, and
+  now and then forces it into coverage (weaker quarterbacks do all of this more); their runner only reacts
+  to what's in front of him, a few times a second. Their play-caller
   learns which coverages you lean on and calls plays that beat them. On 4th down they go for it, kick a
   field goal or punt. Interceptions and recovered fumbles give you the ball at the spot; a safety scores
   you 2. Your defenders come from your defense rating plus your coordinator's stars, which also set how
   often they bust. "Simulate drive" in the menu hands one drive to the old simulation, and your team page
   has a Play it / Simulate switch for whole games. Balance: tuned over thousands of simulated drives so an
-  even matchup ends like an NFL drive (about 25-30% touchdowns, ~7 yards a pass, ~4.5 a carry, ~3%
-  interceptions), with a rating gap mattering about as much as it did in the simulation.
+  even matchup ends close to an NFL drive (about 25-30% touchdowns, ~57% completions, ~8 yards a throw,
+  ~4.8 a carry, ~2% interceptions, a sack every few drives). Those mistakes do most of the balancing; their
+  players also run 4% slower than their ratings, because yards after the catch run high against this
+  defense.
 - **Read the defense.** The opposing coordinator calls a coverage every snap from a nine-call playbook:
   Cover 0 (all-out blitz, nobody deep), Cover 1 and Cover 1 Press (man with one deep safety), Cover 2,
   Cover 3, Cover 4 (quarters), 2-Man (two deep, man under), Fire Zone (linebacker blitz, three deep, a
