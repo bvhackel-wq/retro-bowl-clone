@@ -85,6 +85,13 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
   follows him to the run side. In Cover 0 the blitzing linebacker comes off the tight end's edge and keeps
   the runner inside; on outside runs the tight end kicks out the edge defender, and on inside runs he blocks
   the man covering him. Cover 0 is a real all-out blitz: quick throws beat it, slow ones get sacked.
+- **Control a defender (Phase 2).** On defense you can also play one man. Before the snap, tap a defender to
+  take him (a cyan ring and arrow mark him; you start with the safety); tap open field to snap. During the
+  play, touch and hold to run him toward your finger, tap to switch to the free defender nearest the ball,
+  and flick to dive (a longer tackle reach with a better chance, but miss and he's down for a moment). When
+  they throw, control jumps to the defender nearest where the ball will land, unless you're steering one.
+  Let go and he plays his assignment, so hands off it plays exactly like Phase 1. Keyboard: arrows move,
+  space snaps or switches, X dives.
 - **Play defense (Phase 1: you call it).** When the opponent has the ball you play their drive: the field
   flips so they attack your end zone, their offense calls a play (hidden from you), and your defensive
   coordinator calls a coverage. Keep it or tap Change for four groups: Man (Cover 1, Cover 1 Press, 2-Man),
