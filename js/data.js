@@ -84,7 +84,7 @@
     const div = {};
     for (let c = 0; c < 2; c++) for (let d = 0; d < 4; d++)
       div[c + '' + d] = shuffle(GP.TEAMS.filter((t) => t.conf === c && t.div === d).map((t) => t.id));
-    const weeks = [];
+    const weeks = [];        // the first 6 are division weeks, the other 8 cross-division (see addByes)
     for (let rep = 0; rep < 2; rep++) for (const round of RR4) {
       const wk = [];
       for (const k in div) for (const [i, j] of round) wk.push([div[k][i], div[k][j]]);
@@ -101,7 +101,26 @@
       for (let d = 0; d < 4; d++) cross(wk, div['0' + d], div['1' + ((d + season) % 4)], r);
       weeks.push(wk);
     }
-    return shuffle(weeks);
+    return addByes(weeks, div);
+  }
+  // One bye week per team, as in the NFL. Each division rests together in one of its division weeks: those six
+  // weeks go in weeks 4-11 (the NFL's byes run from about week 5 to 14 of 18), two divisions rest in two of
+  // them and one in each of the rest (8 or 4 teams off), and the division games they skip make up a new last
+  // week, all division games, the way the NFL ends its season. So the season is 15 weeks and everyone still
+  // plays the same 14 games. Built directly, so it always works and costs nothing.
+  function addByes(weeks, div) {
+    const divWeeks = shuffle(weeks.slice(0, 6)), cross = shuffle(weeks.slice(6));
+    const mid = shuffle([...divWeeks, cross[0], cross[1]]);                       // weeks 4-11
+    const order = [cross[2], cross[3], cross[4], ...mid, cross[5], cross[6], cross[7]];
+    const counts = shuffle([2, 2, 1, 1, 1, 1]), keys = shuffle(Object.keys(div)), last = [];
+    divWeeks.forEach((wk, n) => {
+      for (const k of keys.splice(0, counts[n])) {
+        const mine = new Set(div[k]), games = wk.filter(([a, b]) => mine.has(a) && mine.has(b));
+        last.push(...games);
+        for (const g of games) wk.splice(wk.indexOf(g), 1);
+      }
+    });
+    return [...order, last];
   }
 
   // Per-position stats. A QB has five real stats and a derived overall; other positions have a single
@@ -493,7 +512,10 @@
 
   GP.currentGame = function (s) {
     let pair, label;
-    if (s.phase === 'regular') { pair = s.schedule[s.week].find((p) => p.includes(s.teamId)); label = `Week ${s.week + 1} of ${s.schedule.length}`; }
+    if (s.phase === 'regular') {
+      pair = s.schedule[s.week].find((p) => p.includes(s.teamId)); label = `Week ${s.week + 1} of ${s.schedule.length}`;
+      if (!pair) return { bye: true, regular: true, label };     // your bye week
+    }
     else if (s.phase === 'playoffs') {
       label = GP.ROUNDS[s.playoff.round];
       pair = s.playoff.games.find((p) => p.includes(s.teamId));
@@ -719,7 +741,7 @@
         if (a === me || b === me) record(s, me, g.oppId, myPts, oppPts);
         else { const [pa, pb] = simGame(s, a, b); record(s, a, b, pa, pb); }
       }
-      earned = won ? 2 : tied ? 1.5 : 1;   // (points are whole numbers: a tie rounds up below)
+      earned = !played ? 0 : won ? 2 : tied ? 1.5 : 1;   // (points are whole numbers: a tie rounds up below; nothing on a bye)
       s.week++;
       if (s.week >= s.schedule.length) {
         const seeds = [GP.seeds(s, 0), GP.seeds(s, 1)];

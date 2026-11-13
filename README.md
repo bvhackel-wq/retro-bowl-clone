@@ -305,8 +305,10 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
   (monochrome). Games have a home team: the host wears home and the visitor white, and if the jerseys look
   too alike the opponent switches. Pick yours for the next game on your team page (Auto, or any of the four),
   with a preview of each and of what the opponent will wear.
-  14-game season: 6 division games, 4 against another division in your conference, 4 against a
-  division in the other conference (pairings rotate each season). Seven teams per conference make
+  14-game season over 15 weeks: 6 division games, 4 against another division in your conference, 4 against a
+  division in the other conference (pairings rotate each season), and one bye week per team, as in the NFL:
+  each division rests together in one of its division weeks, somewhere in weeks 4-11 (4 or 8 teams off a
+  week), and the last week is all division games. On your bye the team page shows Bye week and Advance. Seven teams per conference make
   the playoffs, as in the NFL since 2020: the four division winners are seeds 1-4 by record, three wild cards
   5-7; only the 1 seed has a bye (Wild Card games: 2 vs 7, 3 vs 6, 4 vs 5), the top remaining seed plays the
   lowest after each round, and the higher seed hosts. Then Divisional, Conference Championship and the

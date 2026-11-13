@@ -248,9 +248,9 @@
     const L = h('div', { class: 'hub-col' }), Rt = h('div', { class: 'hub-col' });
     hub.append(h('div', { class: 'hub-cols' }, L, Rt));
     if (game && game.bye) {
-      L.append(h('h2', null, 'Playoffs — ' + game.label), h('div', { class: 'card next' },
-        h('div', null, h('div', { class: 'vs' }, 'First-round bye'),
-          h('div', { class: 'dim' }, 'You earned the top seed. Rest up while the wild cards play.')),
+      L.append(h('h2', null, (game.regular ? '' : 'Playoffs — ') + game.label), h('div', { class: 'card next' },
+        h('div', null, h('div', { class: 'vs' }, game.regular ? 'Bye week' : 'First-round bye'),
+          h('div', { class: 'dim' }, game.regular ? 'No game this week: the rest of the league plays, and you are back next week.' : 'You earned the top seed. Rest up while the wild cards play.')),
         h('span', { style: 'flex:1' }),
         h('button', { class: 'btn', onclick: () => { GP.advance(S, null, null); renderHub(); } }, 'Advance')));
     } else if (game) {
