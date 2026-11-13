@@ -209,22 +209,26 @@
   // ---------- the field, drawn once ----------
   // ya: art pixels per yard; top: height of the band above and below the field; fw: field width in yards.
   // The canvas covers x from -pad to 120+pad yards.
-  P.field = function (me, opp, ya, top, fw, pad) {
+  // side: rows of sideline between each sideline and the stands; teams: { top, bot, topKit, botKit } for the
+  // benches (your team on the top sideline, theirs on the bottom)
+  P.field = function (me, opp, ya, top0, fw, pad, side, teams) {
+    side = side || 0;
+    const top = top0 + side;                       // the field starts here: stands, then the sideline, then the turf
     const X = (yd) => Math.round((yd + pad) * ya), fh = Math.round(fw * ya), c = document.createElement('canvas');
     c.width = X(120 + pad); c.height = fh + top * 2;
     const g = c.getContext('2d');
     let seed = 7; const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
     // stands and crowd, top and bottom
     const crowd = [me.c1, me.c2, opp.c1, opp.c2, '#e9e4d8', '#c68e5f', '#7a4a2a', '#f1c9a5', '#3b4252'];
-    for (const y0 of [0, top + fh + 4]) {
-      g.fillStyle = '#1c2434'; g.fillRect(0, y0, c.width, top - 4);
-      for (let y = y0 + 1; y < y0 + top - 6; y += 3) for (let x = (y % 2) * 2; x < c.width; x += 4) {
+    for (const y0 of [0, top + fh + side + 4]) {
+      g.fillStyle = '#1c2434'; g.fillRect(0, y0, c.width, top0 - 4);
+      for (let y = y0 + 1; y < y0 + top0 - 6; y += 3) for (let x = (y % 2) * 2; x < c.width; x += 4) {
         if (rnd() < 0.12) continue;
         g.fillStyle = crowd[Math.floor(rnd() * crowd.length)]; g.fillRect(x, y, 2, 2);
       }
     }
-    g.fillStyle = '#8b93a3'; g.fillRect(0, top - 5, c.width, 1); g.fillRect(0, top + fh + 4, c.width, 1);   // rails
-    g.fillStyle = '#1f6b47'; g.fillRect(0, top - 4, c.width, fh + 8);                                       // apron
+    g.fillStyle = '#8b93a3'; g.fillRect(0, top0 - 5, c.width, 1); g.fillRect(0, top + fh + side + 4, c.width, 1);   // rails
+    g.fillStyle = '#1f6b47'; g.fillRect(0, top0 - 4, c.width, fh + 2 * side + 8);                                   // apron
     // turf: alternating five-yard stripes, coloured end zones
     for (let i = 0; i < 24; i++) {
       g.fillStyle = i < 2 ? me.c1 : i >= 22 ? opp.c1 : i % 2 ? '#2f9460' : '#28855a';
@@ -261,6 +265,61 @@
       const x = X(yd) + (yd ? 2 : -3), y0 = mid - Math.round(3 * ya), y1 = mid + Math.round(3 * ya);
       g.fillRect(x, y0, 2, y1 - y0); g.fillRect(x - 1, y0 - 1, 4, 2); g.fillRect(x - 1, y1 - 1, 4, 2);
     }
+    if (side && teams) sideline(g, X, top, fh, side, teams, rnd);
     return c;
   };
+
+  // The sidelines: each team's area between the 25-yard lines (a darker box behind a white restraining line,
+  // benches, a cooler, a loose crowd of players in the game's uniform and coaches in team polos with headsets),
+  // camera operators on tripods further down, and photographers kneeling behind the end zones.
+  const CREW = { helmet: '#262a33', decal: '#262a33', mask: '#c9a07a', jersey: '#2b2f3a', number: '#3a3f4b', pants: '#3b4150', sock: '#2b2f3a' };
+  function sideline(g, X, top, fh, side, teams, rnd) {
+    const crew = P.sprites(CREW), put = (img, x, feet) => g.drawImage(img, Math.round(x - img.width / 2), Math.round(feet - img.height + 1));
+    const camera = (x, feet, up) => {                                   // a TV camera on a tripod
+      g.fillStyle = '#4a4f5a'; g.fillRect(x - 3, feet - 1, 1, 1); g.fillRect(x + 3, feet - 1, 1, 1); g.fillRect(x, feet - 6, 1, 6);
+      g.fillRect(x - 2, feet - 3, 1, 2); g.fillRect(x + 2, feet - 3, 1, 2);
+      g.fillStyle = '#1b1d22'; g.fillRect(x - 4, feet - 11, 9, 5); g.fillStyle = '#6b7280'; g.fillRect(x - 3, feet - 10, 6, 1);
+      g.fillStyle = '#9fb7ff'; g.fillRect(up ? x - 5 : x + 5, feet - 9, 1, 2);                  // the lens
+    };
+    for (const [isTop, team, kit] of [[true, teams.top, teams.topKit], [false, teams.bot, teams.botKit]]) {
+      const edge = isTop ? top : top + fh, dir = isTop ? -1 : 1;       // dir: away from the field
+      const front = isTop ? edge - 3 : edge + 17, back = isTop ? edge - 13 : edge + 27;   // where feet go, two rows
+      // the team area: a slightly darker box, edged by a dashed white line a yard off the field
+      g.fillStyle = 'rgba(0,0,0,.12)'; g.fillRect(X(35), isTop ? edge - side - 4 : edge + 1, X(85) - X(35), side + 3);
+      g.fillStyle = 'rgba(255,255,255,.55)';
+      for (let x = X(35); x < X(85); x += 4) g.fillRect(x, edge + dir * 2, 2, 1);
+      for (let x = X(35); x <= X(85); x += X(85) - X(35)) g.fillRect(x, isTop ? edge - side - 4 : edge + 1, 1, side + 3);
+      // benches (team color) behind the back row, and a cooler
+      g.fillStyle = team.c1;
+      for (const yd of [42, 52, 62, 72]) { g.fillRect(X(yd), back - 2, X(yd + 7) - X(yd), 2); g.fillStyle = 'rgba(0,0,0,.35)'; g.fillRect(X(yd), back, X(yd + 7) - X(yd), 1); g.fillStyle = team.c1; }
+      g.fillStyle = '#ff8a1c'; g.fillRect(X(38), back - 6, 4, 5); g.fillStyle = '#ffffff'; g.fillRect(X(38), back - 6, 4, 1);
+      // players in the game's uniform (two loose rows, some facing each way) and three coaches
+      const players = P.sprites(kit), coachKit = { helmet: team.c1, decal: team.c1, mask: '#c9a07a', jersey: team.c2, number: team.c1, pants: '#c9b28a', sock: '#3a3a3a' };
+      const coaches = P.sprites(coachKit);
+      const row = (feet, from, to, n) => {
+        for (let i = 0; i < n; i++) {
+          const yd = from + (to - from) * (i + 0.5) / n + (rnd() - 0.5) * 2.2, skin = Math.floor(rnd() * 3), face = rnd() < 0.5 ? 0 : 1;
+          put(players[skin].stand[face], X(yd), feet + Math.round((rnd() - 0.5) * 2));
+        }
+      };
+      row(back, 40, 80, 9); row(front, 37, 83, 13);
+      for (const yd of [55, 60, 66]) {
+        const skin = Math.floor(rnd() * 3), x = X(yd + (rnd() - 0.5) * 2), img = coaches[skin].stand[rnd() < 0.5 ? 0 : 1];
+        put(img, x, front + 1);
+        g.fillStyle = '#10182a'; g.fillRect(x - 3, front - 13, 1, 3); g.fillRect(x - 3, front - 10, 2, 1);   // headset and mic
+      }
+      // camera crews outside the team area, both directions
+      for (const yd of [22, 29, 91, 98]) {
+        const x = X(yd + (rnd() - 0.5) * 2), faceRight = yd < 60, skin = Math.floor(rnd() * 3);
+        put(crew[skin].stand[faceRight ? 0 : 1], x, front);
+        camera(x + (faceRight ? 6 : -6), front, !faceRight);
+      }
+      // photographers kneeling along the sideline at each end zone
+      for (const yd of [3, 7, 113, 117]) {
+        const x = X(yd + (rnd() - 0.5)), skin = Math.floor(rnd() * 3), img = crew[skin].kneel[yd < 60 ? 0 : 1];
+        put(img, x, front);
+        g.fillStyle = '#1b1d22'; g.fillRect(yd < 60 ? x + 3 : x - 6, front - 9, 4, 3);
+      }
+    }
+  }
 })();

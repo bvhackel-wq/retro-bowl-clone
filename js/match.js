@@ -13,6 +13,9 @@
   const MID = FW / 2;
   // pixel-art canvas: half the logical size, so one art pixel is 2 logical pixels
   let AW = W / 2; const AH = H / 2, YA = PPY / 2, TOPA = TOP / 2, PAD = 4;
+  // the sidelines: art rows between each sideline and the stands (benches, players, coaches, camera crews). The
+  // unzoomed view doesn't show them (it sees TOPA rows outside the field, as before); a zoomed camera drifts into them.
+  const SIDE = 26, FT = TOPA + SIDE, ARTH = AH + 2 * SIDE;
   const setArtWidth = (aw) => { AW = aw; W = aw * 2; VIEW = W / PPY; };
   const QLEN = 120;                // seconds per quarter
   const RUNOFF = 8;                // extra clock burned after an in-bounds play
@@ -335,9 +338,9 @@
     // ---------- input ----------
     // a point on the screen (canvas units) back to a spot on the field, through the zoom crop and the camera
     fieldAt(p) {
-      const z = this.lastZ || { sx: 0, sy: 0, sw: AW, sh: AH };
+      const z = this.lastZ || { sx: 0, sy: SIDE, sw: AW, sh: AH };
       const ax = z.sx + (p.x / W) * z.sw, ay = z.sy + (p.y / H) * z.sh;
-      return { x: (ax + (this.camPx || 0)) / YA, y: (ay - TOPA) / YA };
+      return { x: (ax + (this.camPx || 0)) / YA, y: (ay - FT) / YA };
     }
     pos(e) {
       const r = this.cv.getBoundingClientRect();
@@ -2381,17 +2384,20 @@
     // ---------- rendering (pixel art) ----------
     // Everything is drawn in whole "art pixels" on a 480x270 canvas, then scaled up without smoothing.
     ax(x) { return Math.round(x * YA) - this.camPx; }
-    ay(y) { return TOPA + Math.round(y * YA); }
+    ay(y) { return FT + Math.round(y * YA); }
+    oy(y) { return this.ay(y) - SIDE; }          // on the overlay (unzoomed, so it starts SIDE rows down the art)
     initArt() {
       const me = this.cfg.me, opp = this.cfg.opp;
-      this.art = this.art || document.createElement('canvas'); this.art.width = AW; this.art.height = AH;
+      this.art = this.art || document.createElement('canvas'); this.art.width = AW; this.art.height = ARTH;
       this.ag = this.art.getContext('2d');
       // the overlay: scoreboard, hints, banners and the kick meter, drawn on top and never zoomed
       this.ui = this.ui || document.createElement('canvas'); this.ui.width = AW; this.ui.height = AH;
       this.ug = this.ui.getContext('2d');
-      this.fieldImg = GP.Pixel.field(me, opp, YA, TOPA, FW, PAD);
-      this.fieldImgDef = GP.Pixel.field(opp, me, YA, TOPA, FW, PAD);   // on defense they attack your end zone
       if (!this.kits0) this.kits0 = GP.matchKits(this.cfg.me.id, this.cfg.opp.id, this.cfg.home !== false, this.cfg.uniform);
+      // your bench on the top sideline, theirs on the bottom (the same on both ends of the field)
+      const side = { top: me, bot: opp, topKit: this.kits0.me, botKit: this.kits0.opp };
+      this.fieldImg = GP.Pixel.field(me, opp, YA, TOPA, FW, PAD, SIDE, side);
+      this.fieldImgDef = GP.Pixel.field(opp, me, YA, TOPA, FW, PAD, SIDE, side);   // on defense they attack your end zone
       this.kits = {
         // each side in its uniform for this game (see uniforms.js)
         O: GP.Pixel.sprites(this.kits0.me),
@@ -2466,8 +2472,8 @@
 
       const show = this.phase !== 'opp' && this.phase !== 'final';
       if (show) {
-        g.fillStyle = '#58b0ff'; g.fillRect(this.ax(this.los), TOPA, 2, FH);
-        if (this.fdx < 110) { g.fillStyle = '#ffd84a'; g.fillRect(this.ax(this.fdx), TOPA, 2, FH); }
+        g.fillStyle = '#58b0ff'; g.fillRect(this.ax(this.los), FT, 2, FH);
+        if (this.fdx < 110) { g.fillStyle = '#ffd84a'; g.fillRect(this.ax(this.fdx), FT, 2, FH); }
       }
 
       // route preview
@@ -2583,9 +2589,11 @@
       else { const e = ease(0.3); this.zl += (left - this.zl) * e; this.zy += (f.y - this.zy) * e; }
       // keep the stands strips (the top one under the scoreboard, the bottom one under the hints) the same
       // height on screen at any zoom: the view never reaches further into the stands than the unzoomed one
-      const FH = FW * YA, top = TOPA - TOPA / this.zf, bot = TOPA + FH - (AH - TOPA) / this.zf;
-      // ...except a little, to follow a runner down a sideline (so the scoreboard and hints don't cover him)
-      const slack = this.zf > 1.01 ? 7 : 0, lo = Math.max(0, top - slack), hi = Math.min(AH - sh, Math.max(top, bot) + slack);
+      const FH = FW * YA, top = SIDE + TOPA - TOPA / this.zf, bot = SIDE + TOPA + FH - (AH - TOPA) / this.zf;
+      // ...except when the play nears a sideline: then, as in Retro Bowl, the camera drifts out over the bench
+      // (the closer it is zoomed in, the further it may go)
+      // (at the top, a little further: the scoreboard covers the top of the screen)
+      const zin = clamp((this.zf - 1) / 0.35, 0, 1), lo = Math.max(0, top - (SIDE + 10) * zin), hi = Math.min(ARTH - sh, Math.max(top, bot) + SIDE * zin);
       return { sx: clamp(this.ax(this.zl), 0, AW - sw), sy: clamp(this.ay(this.zy) - sh / 2, lo, Math.max(lo, hi)), sw, sh };
     }
     // the bottom hint; with a button label, a tappable button just right of it (its box is kept for the tap)
@@ -2679,7 +2687,7 @@
       Px.dots(g, a.sx / 2, a.sy / 2, a.cx / 2, a.cy / 2, 'rgba(255,255,255,.55)', 4);
     }
     drawKick() {
-      const g = this.ug, Px = GP.Pixel, k = this.kick, X0 = this.ax(k.sx), Y0 = this.ay(k.sy);
+      const g = this.ug, Px = GP.Pixel, k = this.kick, X0 = this.ax(k.sx), Y0 = this.oy(k.sy);
       if (k.cpu) return;                                  // their punt: nothing of yours to aim
       if (k.stage === 'flight' || k.stage === 'bounce' || k.stage === 'return') return;   // the ball's away: just watch
       const title = k.type === 'punt' ? `PUNT · RANGE ${k.range}` : k.type === 'ko' ? `KICKOFF · RANGE ${k.range}` : `${k.type === 'pat' ? 'EXTRA POINT' : k.dist + '-YARD FIELD GOAL'} · RANGE ${this.kickRange}`;
@@ -2689,7 +2697,7 @@
       // the hold spot and the uprights
       g.fillStyle = '#ffd84a'; g.fillRect(X0 - 1, Y0 - 1, 3, 3);
       const aimLine = (t, col) => {
-        const X1 = this.ax(t.x), Y1 = this.ay(t.y), n = Math.max(5, Math.floor(hyp(X1 - X0, Y1 - Y0) / 5)), peak = hyp(t.x - k.sx, t.y - k.sy) * YA * 0.14;
+        const X1 = this.ax(t.x), Y1 = this.oy(t.y), n = Math.max(5, Math.floor(hyp(X1 - X0, Y1 - Y0) / 5)), peak = hyp(t.x - k.sx, t.y - k.sy) * YA * 0.14;
         g.fillStyle = col;
         for (let i = 1; i < n; i++) { const u = i / n; g.fillRect(Math.round(X0 + (X1 - X0) * u), Math.round(Y0 + (Y1 - Y0) * u - 4 * peak * u * (1 - u)), 2, 2); }
         Px.ring(g, X1, Y1, 6, 6, '#ffd84a'); Px.ring(g, X1, Y1, 5, 5, '#ffd84a');

@@ -156,6 +156,11 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
   0.15s at 60 coverage, 0.31s at 90). On time and close enough: he goes for the pick (an interception or a
   breakup). Too early (any time before that window): pass interference, a spot foul and an automatic first
   down. Too late, up to a second after the catch: he whiffs on the tackle. One try per pass.
+- **Sidelines.** Between each sideline and the stands: each team's area between the 25-yard lines (your team on
+  the top sideline, theirs on the bottom) with benches, a cooler, a loose crowd of players in the game's
+  uniform and coaches in team polos with headsets; TV camera operators on tripods further down; photographers
+  kneeling at each end zone. With zoom on, the camera drifts out over a sideline when the play nears it (as in
+  Retro Bowl); with zoom off the view is unchanged and the sidelines only peek in at the edges.
 - **Camera zoom** (on by default; turn it off in the pause menu, remembered on the device). As in Retro Bowl, the
   line of scrimmage sits in the middle of the screen before the snap and the ball stays near the middle during
   the play (near an end zone the camera stops at the end of the field). Its behavior is modeled on measurements of recorded
