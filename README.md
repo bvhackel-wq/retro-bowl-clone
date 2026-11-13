@@ -153,10 +153,12 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
   sweet spot (sacks on ~14% of plays against ~2% without), and by 2.2s the ball's usually gone.
 - **Go for the interception.** On defense, swipe up (or press up/space) as their pass arrives. The
   defender nearest where it will come down plays the ball, and his coverage sets the timing window (about
-  0.17s at 60 coverage, 0.34s at 90). On time and close enough: he goes for the pick (an interception or a
-  breakup). Too early: pass interference, a spot foul and an automatic first down. Too late, just after the
-  catch: he whiffs on the tackle. One try per pass.
-- **Camera zoom** (pause menu, remembered on the device). Its behavior is modeled on measurements of recorded
+  0.15s at 60 coverage, 0.31s at 90). On time and close enough: he goes for the pick (an interception or a
+  breakup). Too early (any time before that window): pass interference, a spot foul and an automatic first
+  down. Too late, up to a second after the catch: he whiffs on the tackle. One try per pass.
+- **Camera zoom** (on by default; turn it off in the pause menu, remembered on the device). As in Retro Bowl, the
+  line of scrimmage sits in the middle of the screen before the snap and the ball stays near the middle during
+  the play (near an end zone the camera stops at the end of the field). Its behavior is modeled on measurements of recorded
   Retro Bowl gameplay (the spacing of the 5-yard lines in every frame): three zoom levels, and every change an
   exponential ease with a time constant of about 0.75 seconds (it closes about 42% of the remaining gap every
   0.4s), slow enough that you don't see it happen. Here: the whole field between plays and for kicks; cropped

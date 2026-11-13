@@ -1530,21 +1530,21 @@
 
     // ---------- going for the interception (defense) ----------
     // Swipe up as their pass arrives. The defender nearest where it will come down plays the ball; his
-    // ball skills set the timing window (about 0.17s at 60, 0.34s at 90). On time: he goes for the
+    // ball skills set the timing window (about 0.15s at 60, 0.31s at 90). On time: he goes for the
     // pick (an interception or a breakup, better the closer he is and the better he covers). Too early:
-    // pass interference, a spot foul and a first down. Too late (just after the catch): he whiffs on the
+    // pass interference, a spot foul and a first down. Too late (up to a second after the catch): he whiffs on the
     // tackle. One try per pass.
     intSwipe() {
       if (this.intTry || this.phase !== 'live') return;
       const b = this.ball;
       if (b.state === 'air') {
         const d = this.def.reduce((a, p) => (!a || hyp(p.x - b.tx, p.y - b.ty) < hyp(a.x - b.tx, a.y - b.ty) ? p : a), null);
-        const left = (1 - b.u) * b.dur, win = clamp(0.18 + ((d.info ? (d.info.ball != null ? d.info.ball : d.info.cov) : 70) - 60) * 0.006, 0.15, 0.4) * 0.95;
+        const left = (1 - b.u) * b.dur, win = clamp(0.18 + ((d.info ? (d.info.ball != null ? d.info.ball : d.info.cov) : 70) - 60) * 0.006, 0.15, 0.4) * 0.85;
         this.intTry = { kind: left <= win ? 'good' : 'early', d };
         if (this.intTry.kind === 'good') this.pop(`#${d.info.num} goes for it!`, '#5df2ff');
         return;
       }
-      if (this.caught && this.carrier && this.t - (this.catchT || 0) < 0.8) {
+      if (this.caught && this.carrier && this.t - (this.catchT || 0) < 1.0) {
         const c = this.carrier, d = this.def.filter((p) => !(p.stun > 0)).reduce((a, p) => (!a || hyp(p.x - c.x, p.y - c.y) < hyp(a.x - c.x, a.y - c.y) ? p : a), null);
         this.intTry = { kind: 'late', d };
         if (d && hyp(d.x - c.x, d.y - c.y) < 4) { d.stun = 1.0; this.stats.broken++; this.pop(`Too late! #${d.info.num} missed the tackle`, '#ff8a5c'); }
@@ -2341,7 +2341,8 @@
         else if (this.carrier) fx = this.carrier.x;
       }
       // zoomed: hold the line near the back until the ball is well downfield
-      let target = clamp(GP.prefs().zoom ? Math.max(this.los - VIEW * 0.18, fx - VIEW * 0.6) : fx - VIEW * 0.36, -3, 123 - VIEW);
+      // zoomed, as in Retro Bowl: the line of scrimmage in the middle before the snap, then the ball in the middle
+      let target = clamp(GP.prefs().zoom ? fx - VIEW * 0.5 : fx - VIEW * 0.36, -3, 123 - VIEW);
       if (this.phase === 'kick' && this.kick) {
         const k = this.kick;
         if (k.type !== 'punt' && k.type !== 'ko') target = 123 - VIEW;   // keep the uprights in view for a kick
@@ -2565,7 +2566,7 @@
       else f = { x: this.los, y: MID };
       this.zFocus = f;
       const sw = AW / this.zf, sh = AH / this.zf, wy = sw / YA;          // the view's width in yards
-      const left = f.x - wy * 0.45;
+      const left = f.x - wy * 0.5;                                       // centered, as in Retro Bowl
       // a new play: cut to it (the zoom keeps easing); otherwise glide
       const fresh = (ph === 'choose' || ph === 'presnap') && this.zPh !== 'choose' && this.zPh !== 'presnap';
       this.zPh = ph;
