@@ -156,12 +156,17 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
   0.17s at 60 coverage, 0.34s at 90). On time and close enough: he goes for the pick (an interception or a
   breakup). Too early: pass interference, a spot foul and an automatic first down. Too late, just after the
   catch: he whiffs on the tackle. One try per pass.
-- **Camera zoom** (pause menu, remembered on the device): framed from behind the offense, with the line of
-  scrimmage near the back (left) of the screen and the field ahead. Before the snap and while the
-  quarterback has the ball it only crops the stands, so every receiver stays on screen; once someone's
-  running with the ball it closes in to about 1.6x, and moves up with him once he's about three-quarters of
-  the way across. It eases back out for kicks; the scoreboard, hints and the stands strips above and below the field stay
-  their normal size at any zoom.
+- **Camera zoom** (pause menu, remembered on the device). Its behavior is modeled on measurements of recorded
+  Retro Bowl gameplay (the spacing of the 5-yard lines in every frame): three zoom levels, and every change an
+  exponential ease with a time constant of about 0.75 seconds (it closes about 42% of the remaining gap every
+  0.4s), slow enough that you don't see it happen. Here: the whole field between plays and for kicks; cropped
+  to the field for the play call and while the quarterback holds the ball, so every receiver stays on screen
+  (Retro Bowl goes 1.27x closer there; its formations are narrower); and 1.33x closer, the same step Retro
+  Bowl takes, the moment the ball is thrown or someone runs with it. The view follows the ball in the air
+  and then the ball carrier (a little ahead of him), drifts slightly into the stands to follow a runner down a
+  sideline, holds still after the whistle, and cuts to the new line of scrimmage for the next play while the
+  zoom eases back out. Kick and punt returns zoom in on the returner the same way. The scoreboard and hints
+  stay their normal size at any zoom.
 - **Play defense (Phase 1: you call it).** When the opponent has the ball you play their drive: the field
   flips so they attack your end zone, their offense calls a play (hidden from you), and your defensive
   coordinator recommends a coverage. The call list opens before every snap with four groups: Man (Cover 1,

@@ -2537,25 +2537,46 @@
     // scrimmage sits near the back (left) of the screen with the field ahead of it; when the ball or a runner
     // gets far downfield the view moves up to keep him about three-quarters of the way across. Vertically it
     // follows the ball. Returns the part of the field picture to show.
+    // The camera's zoom, modeled on measurements of Retro Bowl footage (the 5-yard-line spacing in every frame of
+    // a recorded game): three levels - wide between plays, about 1.27x closer for the play call and while the
+    // quarterback holds the ball, about 1.33x closer again once the ball is thrown or someone runs with it -
+    // and every change is an exponential ease with a time constant of about 0.75s, slow enough that you don't
+    // see it happen. The view follows the ball (in the air too), holds still after the whistle, and cuts to the
+    // next line of scrimmage for the new play while the zoom eases back out. Here the wide level is the whole
+    // field (formations are wider than Retro Bowl's, so the play-call level has to show every receiver).
     zoomView() {
-      const on = GP.prefs().zoom && (this.phase === 'presnap' || this.phase === 'live' || this.phase === 'tackling' || this.phase === 'dead') && !this.kick;
-      const b = this.ball, c = this.carrier;
-      // before the snap and while the quarterback reads the field, only close enough to crop the stands, so
-      // every receiver stays on screen; once someone's running with it, all the way in on him
-      const fit = AH / (FW * YA + 18), close = this.phase === 'tackling' || (this.phase === 'live' && this.running(c)) || (this.phase === 'dead' && (this.zf || 1) > fit + 0.05);
+      const now = performance.now(), dt = this.zt ? clamp((now - this.zt) / 1000, 0, 0.05) : 1 / 60; this.zt = now;
+      const b = this.ball, c = this.carrier, k = this.kick, ph = this.phase;
+      const returning = k && ph === 'kick' && k.stage === 'return';
+      const inPlay = (ph === 'choose' || ph === 'presnap' || ph === 'live' || ph === 'tackling' || ph === 'dead') && !k;
+      const on = GP.prefs().zoom && (inPlay || returning);
+      const fit = AH / (FW * YA + 18), tight = fit * 1.33;
+      const close = ph === 'tackling' || returning || (ph === 'live' && (b.state === 'air' || this.running(c)));
+      // after the whistle the camera stays where the play ended
+      if (ph !== 'dead' || this.zGoal == null) this.zGoal = !on ? 1 : close ? tight : fit;
+      const ease = (tau) => 1 - Math.exp(-dt / tau);
       // a kick is aimed on the unzoomed overlay, so it needs the whole field at once: no easing out
-      this.zf = this.kick && this.phase === 'kick' ? 1 : (this.zf || 1) + ((on ? (close ? 1.6 : fit) : 1) - (this.zf || 1)) * 0.1;
-      const f = b.state === 'air' ? { x: b.sx + (b.tx - b.sx) * Math.min(1, b.u), y: b.sy + (b.ty - b.sy) * Math.min(1, b.u) }
-        : c ? { x: c.x, y: c.y } : this.qb ? { x: this.qb.x, y: this.qb.y } : { x: this.los, y: MID };
+      this.zf = k && ph === 'kick' && !returning ? 1 : (this.zf || 1) + (this.zGoal - (this.zf || 1)) * ease(0.75);
+      // what it looks at: the ball in the air, whoever has it (a little ahead of him), or the line of scrimmage
+      let f;
+      if (b.state === 'air') f = { x: b.sx + (b.tx - b.sx) * Math.min(1, b.u), y: b.sy + (b.ty - b.sy) * Math.min(1, b.u) };
+      else if (c && (returning || this.running(c))) f = { x: c.x + c.vx * 0.35, y: c.y + c.vy * 0.25 };
+      else if (ph === 'dead' && this.zFocus) f = this.zFocus;
+      else f = { x: this.los, y: MID };
+      this.zFocus = f;
       const sw = AW / this.zf, sh = AH / this.zf, wy = sw / YA;          // the view's width in yards
-      let left = Math.max(this.los - wy * 0.2, f.x - wy * 0.75);         // line near the back, unless the ball is deep
-      left = Math.min(left, f.x - wy * 0.1);                             // never lose the ball off the back
-      this.zl = this.zl == null ? left : this.zl + (left - this.zl) * 0.15;
-      this.zy = this.zy == null ? f.y : this.zy + (f.y - this.zy) * 0.15;
+      const left = f.x - wy * 0.45;
+      // a new play: cut to it (the zoom keeps easing); otherwise glide
+      const fresh = (ph === 'choose' || ph === 'presnap') && this.zPh !== 'choose' && this.zPh !== 'presnap';
+      this.zPh = ph;
+      if (fresh || this.zl == null) { this.zl = left; this.zy = f.y; }
+      else { const e = ease(0.3); this.zl += (left - this.zl) * e; this.zy += (f.y - this.zy) * e; }
       // keep the stands strips (the top one under the scoreboard, the bottom one under the hints) the same
       // height on screen at any zoom: the view never reaches further into the stands than the unzoomed one
       const FH = FW * YA, top = TOPA - TOPA / this.zf, bot = TOPA + FH - (AH - TOPA) / this.zf;
-      return { sx: clamp(this.ax(this.zl), 0, AW - sw), sy: clamp(this.ay(this.zy) - sh / 2, top, Math.max(top, bot)), sw, sh };
+      // ...except a little, to follow a runner down a sideline (so the scoreboard and hints don't cover him)
+      const slack = this.zf > 1.01 ? 7 : 0, lo = Math.max(0, top - slack), hi = Math.min(AH - sh, Math.max(top, bot) + slack);
+      return { sx: clamp(this.ax(this.zl), 0, AW - sw), sy: clamp(this.ay(this.zy) - sh / 2, lo, Math.max(lo, hi)), sw, sh };
     }
     // the bottom hint; with a button label, a tappable button just right of it (its box is kept for the tap)
     hint(t, button) {
