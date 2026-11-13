@@ -170,7 +170,7 @@
       // the catch run high against this defense. Measured over hundreds of drives: an even matchup ends in a
       // touchdown about 30% of the time (no handicap: about 35%), ~57% completions, ~8.5 yards a throw,
       // ~4.8 a carry, ~2% interceptions, a sack every few drives.
-      this.cpuK = { read: 0.8, open: 1.4, scatter: 2.4, juke: 0.03, hold: 0.9, holdT: 7, force: 0.03, cut: 0.1, lead: 1, deep: 0.1,
+      this.cpuK = { read: 0.8, open: 1.4, scatter: 2.75, juke: 0.03, hold: 0.9, holdT: 7, force: 0.03, cut: 0.1, lead: 1, deep: 0.1,
                     run: 1.5, spd: 0.96, behind: 0.45, tunnel: 0.35, lockT: 1.8, look: 0.35 };
       this.defending = false; this.otherTend = { run: 0, short: 0, deep: 0, n: 0 }; this.covTend = {};
       this.keys = {}; this.gesture = null; this.lastTap = -1e9; this.popup = null; this.aim = null; this.banner = null; this.kick = null;
@@ -670,9 +670,18 @@
       const lead = behind ? rnd(0.2, 0.55) : this.cpuK.lead;
       const qb = this.qb; let lx = p.x, ly = p.y;
       for (let i = 0; i < 3; i++) { const T = (0.3 + hyp(lx - qb.x, ly - qb.y) / this.ballSpeed) * lead; lx = p.x + p.vx * T; ly = p.y + p.vy * T; }
+      // he leads his man, but never past the sideline or the back of the end zone: a receiver on a curl or a
+      // comeback stops at the sideline, he doesn't keep running (leading him straight out was most of their
+      // incompletions out of bounds); a little inside it, so his scatter doesn't carry it out
+      lx = Math.min(lx, 117); ly = clamp(ly, 3, FW - 3);
       const d = hyp(lx - qb.x, ly - qb.y), max = this.maxRange;
       if (d > max) { lx = qb.x + (lx - qb.x) * max / d; ly = qb.y + (ly - qb.y) * max / d; }
       this.throwBall(lx, ly);
+      // near the sideline a quarterback misses toward the field more often than out of it: most scattered
+      // throws that would sail out land the same distance off target on the inside instead
+      const b = this.ball;
+      if ((b.ty < 0 || b.ty > FW) && Math.random() < 0.6) b.ty = clamp(2 * ly - b.ty, 0.5, FW - 0.5);
+      if (b.tx > 120 && Math.random() < 0.6) b.tx = Math.max(2 * lx - b.tx, b.sx + 1);
     }
     // Their ball carrier: slides away from a defender closing in front of him, jukes one about to hit him
     // (more often the more agile he is), and lunges for the marker when he's just short.
