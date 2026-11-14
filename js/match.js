@@ -2086,6 +2086,12 @@
     // or it dies, rolls into the end zone (touchback) or out of bounds.
     puntBounce(dt) {
       const k = this.kick, b = this.ball;
+      this.ballHop(dt);
+      this.puntBounceChase(dt);
+    }
+    // a loose ball's hops and roll, with the odd bad hop
+    ballHop(dt) {
+      const b = this.ball;
       b.t += dt; b.spin += dt * (6 + hyp(b.vx, b.vy) * 2);
       b.x += b.vx * dt; b.y += b.vy * dt;
       if (b.vz || b.z > 0) {
@@ -2099,6 +2105,9 @@
           }
         }
       } else { const f = Math.exp(-2.4 * dt); b.vx *= f; b.vy *= f; }
+    }
+    puntBounceChase(dt) {
+      const k = this.kick, b = this.ball;
       for (const c of [...k.cover, this.kicker]) {
         if (c.hold > 0) { c.hold -= dt; continue; }
         go(c, b.x, b.y, c.spd, dt, 8);
@@ -2148,20 +2157,53 @@
       return this.endPlay(`${msg} at ${this.spot(x)}`, () => this.checkClock(() => this.startDrive(x)), 2);
     }
     // A huge hit right as the ball arrives: very rarely (10%, and only with a cover man on him at the catch)
-    // he muffs it. Usually (80%) he falls on it himself, ball dead where he is (a touchback in his own end zone);
-    // otherwise the man who hit him recovers it for the kicking team.
+    // he muffs it. The ball pops loose and it's a scramble (see looseBall).
     muffCheck(R, x, y) {
       const k = this.kick;
       const hitter = [...k.cover, this.kicker].find((c) => !(c.hold > 0) && !(c.stun > 0) && hyp(c.x - x, c.y - y) < 1.0);
       if (!hitter || Math.random() >= 0.1) return false;
-      R.x = x; R.y = y; R.pose = null; this.downed = R;
-      if (Math.random() < 0.8) {
-        const spot = x >= 110 ? (k.res.ko ? 85 : 100) : x;
-        this.puntOver(spot, x >= 110 ? 'MUFFED! He falls on it in the end zone — touchback' : `MUFFED! He falls on it at ${this.spotK(spot)}`);
-        return true;
-      }
-      this.kickRecovered(hitter, x, true);
+      R.x = x; R.y = y; R.pose = null; R.stun = 0.6;            // knocked off his feet
+      hitter.stun = 0.6;                                        // and the hitter goes down with him
+      const a = rnd(0, Math.PI * 2), sp = rnd(3, 6);           // it caroms a few yards away
+      this.ball = { state: 'bounce', x, y, z: 0.5, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, vz: rnd(2, 3), spin: 0, t: 0 };
+      this.carrier = null; k.stage = 'loose'; k.looseT = 0;
+      this.pop('MUFFED!', '#ff6b6b');
       return true;
+    }
+    // A muffed kick on the ground. Everyone near it goes for it. The return team is expecting the ball, so a man
+    // of theirs who gets to it comes up with it 85% of the time; a cover man 30%. A miss knocks it on and he
+    // stumbles past. The return team falls on it where it is (no return); the kicking team can't advance it either.
+    looseBall(dt) {
+      const k = this.kick, b = this.ball;
+      k.looseT += dt;
+      this.ballHop(dt);
+      const kickers = [...k.cover, this.kicker], recv = this.def;
+      for (const p of [...kickers, ...recv]) {
+        if (p.hold > 0) p.hold = 0;                              // blocks are off: it's a loose ball
+        if (p.stun > 0) { p.stun -= dt; continue; }
+        if (hyp(p.x - b.x, p.y - b.y) < 22) go(p, b.x + b.vx * 0.2, b.y + b.vy * 0.2, p.spd || 6, dt, 10);
+      }
+      // the return team keeps it: down where he fell on it, or a touchback in his own end zone
+      const theirs = (x, msg) => this.puntOver(x >= 110 ? (k.res.ko ? 85 : 100) : clamp(x, 11, 109), msg);
+      if (b.x >= 120 || (b.x >= 110 && (b.y < 0 || b.y > FW))) return theirs(120, 'MUFFED! It squirts out of the end zone — touchback');
+      if (b.y < 0 || b.y > FW) { const x = clamp(b.x, 11, 109); return theirs(x, `MUFFED! It rolls out of bounds at ${this.spotK(x)}`); }
+      if (b.z < 0.7) {
+        let best = null, bd = 0.9;
+        for (const p of [...kickers, ...recv]) { if (p.stun > 0) continue; const d = hyp(p.x - b.x, p.y - b.y); if (d < bd) { bd = d; best = p; } }
+        if (best) {
+          const mine = recv.includes(best);
+          if (Math.random() < (mine ? 0.85 : 0.3)) {
+            this.downed = best;
+            if (!mine) return this.kickRecovered(best, b.x, true);
+            const who = k.cpu ? 'You fall on it' : 'They fall on it';
+            return theirs(b.x, b.x >= 110 ? `MUFFED! ${who} in the end zone — touchback` : `MUFFED! ${who} at ${this.spotK(clamp(b.x, 11, 109))}`);
+          }
+          best.stun = 0.5; const a = rnd(0, Math.PI * 2), sp = rnd(1.5, 3.5);
+          b.vx = Math.cos(a) * sp; b.vy = Math.sin(a) * sp; b.vz = rnd(1.2, 2); b.z = 0.01;
+          this.pop('Still loose!', '#ffb43a');
+        }
+      }
+      if (k.looseT > 6) { this.downed = k.ret; return theirs(b.x, `MUFFED! ${k.cpu ? 'You' : 'They'} finally fall on it at ${this.spotK(clamp(b.x, 11, 109))}`); }   // a pile-up: the return team ends up with it
     }
     // The return: the returner heads upfield (toward your end zone) and slides away from the nearest
     // cover man, his blockers take on the coverage, and the coverage tries to bring him down.
@@ -2396,6 +2438,7 @@
           if (this.ball.u >= 1) this.kickResult();
         } else if (k.stage === 'bounce') this.puntBounce(dt);
         else if (k.stage === 'return') this.puntReturn(dt);
+        else if (k.stage === 'loose') this.looseBall(dt);
       }
       // camera
       let fx = this.los;
@@ -2410,7 +2453,7 @@
       if (this.phase === 'kick' && this.kick) {
         const k = this.kick;
         if (k.type !== 'punt' && k.type !== 'ko') target = 123 - VIEW;   // keep the uprights in view for a kick
-        else if (k.stage === 'bounce') target = clamp(this.ball.x - VIEW * 0.5, -3, 123 - VIEW);
+        else if (k.stage === 'bounce' || k.stage === 'loose') target = clamp(this.ball.x - VIEW * 0.5, -3, 123 - VIEW);
         else if (k.stage === 'return' && this.carrier) target = clamp(this.carrier.x - VIEW * 0.55, -3, 123 - VIEW);
         else if (k.stage === 'flight' || k.stage === 'blocked') target = clamp(this.ball.sx + (this.ball.tx - this.ball.sx) * Math.min(1, this.ball.u) - VIEW * 0.5, -3, 123 - VIEW);
         else target = clamp(k.sx - 8, -3, 123 - VIEW);
@@ -2619,7 +2662,7 @@
     zoomStep() {
       const now = performance.now(), dt = this.zt ? clamp((now - this.zt) / 1000, 0, 0.05) : 1 / 60; this.zt = now;
       const b = this.ball, c = this.carrier, k = this.kick, ph = this.phase;
-      const returning = k && ph === 'kick' && k.stage === 'return';
+      const returning = k && ph === 'kick' && (k.stage === 'return' || k.stage === 'loose');
       const inPlay = (ph === 'choose' || ph === 'presnap' || ph === 'live' || ph === 'tackling' || ph === 'dead') && !k;
       const on = GP.prefs().zoom && (inPlay || returning);
       const fit = AH / (FW * YA + 18), tight = fit * 1.33;
@@ -2632,6 +2675,7 @@
       // what it looks at: the ball in the air, whoever has it (a little ahead of him), or the line of scrimmage
       let f;
       if (b.state === 'air') f = { x: b.sx + (b.tx - b.sx) * Math.min(1, b.u), y: b.sy + (b.ty - b.sy) * Math.min(1, b.u) };
+      else if (b.state === 'bounce' && returning) f = { x: b.x, y: b.y };
       else if (c && (returning || this.running(c))) {
         // a little ahead of him, eased, so a cut or juke (which flips his velocity at once) doesn't yank the view
         const e = ease(0.25), L = this.zLead || (this.zLead = { x: 0, y: 0 });
@@ -2755,7 +2799,7 @@
     drawKick() {
       const g = this.ug, Px = GP.Pixel, k = this.kick, X0 = this.ax(k.sx), Y0 = this.oy(k.sy);
       if (k.cpu) return;                                  // their punt: nothing of yours to aim
-      if (k.stage === 'flight' || k.stage === 'bounce' || k.stage === 'return') return;   // the ball's away: just watch
+      if (k.stage === 'flight' || k.stage === 'bounce' || k.stage === 'return' || k.stage === 'loose') return;   // the ball's away: just watch
       const title = k.type === 'punt' ? `PUNT · RANGE ${k.range}` : k.type === 'ko' ? `KICKOFF · RANGE ${k.range}` : `${k.type === 'pat' ? 'EXTRA POINT' : k.dist + '-YARD FIELD GOAL'} · RANGE ${this.kickRange}`;
       const stretch = (k.stage === 'aim' && this.kaim && k.over > 0) || (k.stage === 'meter' && k.over > 0), full = stretch ? title + ' · STRETCH' : title;
       Px.box(g, Math.round(AW / 2 - Px.width(full) / 2) - 6, 18, Px.width(full) + 12, 12, 'rgba(16,24,42,.85)');
