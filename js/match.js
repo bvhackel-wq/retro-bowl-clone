@@ -2106,7 +2106,19 @@
         if (b.x >= 120) return this.puntOver(85, 'Kickoff rolls through the end zone — touchback');
         if (b.y < 0 || b.y > FW) return this.puntOver(70, 'Kickoff rolls out of bounds — ball at the 40');
         go(k.ret, b.x, b.y, k.ret.spd, dt, 9);
-        if (hyp(k.ret.x - b.x, k.ret.y - b.y) < 0.9 && b.z < 0.8) {
+        // ...and so can the kicking team, once it's gone the 10 yards a free kick must travel. A cover man who
+        // gets there first scoops it 65% of the time; otherwise it squirts away and he stumbles past it.
+        const retThere = hyp(k.ret.x - b.x, k.ret.y - b.y) < 0.9 && b.z < 0.8;
+        if (b.z < 0.8 && b.x - k.sx >= 10 && !(retThere && Math.random() < 0.5)) {
+          for (const c of [...k.cover, this.kicker]) {
+            if (c.hold > 0 || c.stun > 0 || hyp(c.x - b.x, c.y - b.y) >= 0.9) continue;
+            if (Math.random() < 0.65) return this.koRecovered(c, b);
+            c.stun = 0.5; b.vx = rnd(-3, 3); b.vy = rnd(-3, 3); b.vz = rnd(1.5, 2.5); b.z = 0.01;
+            this.pop('Loose ball!', '#ffb43a');
+            return;
+          }
+        }
+        if (retThere) {
           if (b.x >= 110 && (k.cpu ? k.fairCall : true)) return this.puntOver(85, 'Kickoff downed in the end zone — touchback');
           return this.startReturn(b.x, clamp(b.y, 0.5, FW - 0.5));
         }
@@ -2118,6 +2130,19 @@
       const x = clamp(b.x, 11, 109);
       if (b.z < 0.5 && b.t > 0.3 && [...k.cover, this.kicker].some((c) => hyp(c.x - b.x, c.y - b.y) < 0.9)) return this.puntOver(x, `Punt downed at ${this.spotK(x)}`);
       if (b.z === 0 && hyp(b.vx, b.vy) < 0.25) return this.puntOver(x, `Punt rolls dead at ${this.spotK(x)}`);
+    }
+    // The kicking team falls on its own kickoff. NFL rules: it's their ball where he recovered it (they can't
+    // advance a free kick), or a touchdown if he's in the receiving team's end zone.
+    koRecovered(c, b) {
+      const k = this.kick, x = b.x, td = x >= 110, msg = (k.res.clean ? '' : 'Shanked kickoff! ') + (k.cpu ? 'They recover their own kickoff' : 'You recover your own kickoff');
+      this.carrier = null; this.ball = { state: 'held' }; this.kick = null;
+      this.downed = c;
+      if (k.cpu) {                                                       // they kicked to you, and got it back
+        if (td) { this.score.opp += 7; return this.endPlay(`${msg} in the end zone — TOUCHDOWN ${this.cfg.opp.name}`, () => this.checkClock(() => this.receiveKick()), 3); }
+        return this.endPlay(`${msg} at ${this.spot(120 - x)}`, () => this.checkClock(() => this.oppDrive(110 - x, 'They keep the ball after the recovery.')), 2);
+      }
+      if (td) { this.score.me += 6; return this.endPlay(`${msg} in the end zone — TOUCHDOWN!`, () => (this.q === 5 ? this.final() : this.afterTD()), 3); }
+      return this.endPlay(`${msg} at ${this.spot(x)}`, () => this.checkClock(() => this.startDrive(x)), 2);
     }
     // The return: the returner heads upfield (toward your end zone) and slides away from the nearest
     // cover man, his blockers take on the coverage, and the coverage tries to bring him down.
