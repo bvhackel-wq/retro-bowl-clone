@@ -2044,6 +2044,7 @@
       if (hyp(R.x - r.ex, R.y - r.ey) < 1.8 && r.ex < 100) {
         const near = Math.min(...k.cover.map((c) => hyp(c.x - R.x, c.y - R.y)));
         if (k.cpu ? k.fairCall : near < k.fairAt) { R.pose = null; return this.puntOver(r.ex, `Punt — fair catch at ${this.spotK(r.ex)}`); }
+        if (this.muffCheck(R, r.ex, r.ey)) return;
         this.carrier = R; R.x = r.ex; R.y = r.ey; k.stage = 'return'; k.rt0 = 0;
         // he picks a lane: toward the side of the field with fewer cover men, a few yards over
         const side = k.cover.reduce((a, c) => a + Math.sign(c.y - R.y), 0) > 0 ? -1 : 1;
@@ -2066,6 +2067,7 @@
       if (r.ex >= 120) return this.puntOver(85, 'Kickoff through the end zone — touchback');
       if (hyp(R.x - r.ex, R.y - r.ey) < 1.8) {
         if (k.cpu ? k.fairCall : r.ex >= 113) return this.puntOver(catchSpot(r.ex), r.ex >= 110 ? 'Kickoff — touchback' : `Kickoff — fair catch, ball at ${this.spotK(catchSpot(r.ex))}`);
+        if (this.muffCheck(R, r.ex, r.ey)) return;
         return this.startReturn(r.ex, r.ey);
       }
       const dx = r.ex - k.sx, dy = r.ey - k.sy, len = hyp(dx, dy) || 1, sp = rnd(2, 5);
@@ -2107,12 +2109,12 @@
         if (b.y < 0 || b.y > FW) return this.puntOver(70, 'Kickoff rolls out of bounds — ball at the 40');
         go(k.ret, b.x, b.y, k.ret.spd, dt, 9);
         // ...and so can the kicking team, once it's gone the 10 yards a free kick must travel. A cover man who
-        // gets there first scoops it 65% of the time; otherwise it squirts away and he stumbles past it.
+        // gets there first scoops it 35% of the time (so a shank isn't a free onside kick); otherwise it squirts away and he stumbles past it.
         const retThere = hyp(k.ret.x - b.x, k.ret.y - b.y) < 0.9 && b.z < 0.8;
         if (b.z < 0.8 && b.x - k.sx >= 10 && !(retThere && Math.random() < 0.5)) {
           for (const c of [...k.cover, this.kicker]) {
             if (c.hold > 0 || c.stun > 0 || hyp(c.x - b.x, c.y - b.y) >= 0.9) continue;
-            if (Math.random() < 0.65) return this.koRecovered(c, b);
+            if (Math.random() < 0.35) return this.kickRecovered(c, b.x);
             c.stun = 0.5; b.vx = rnd(-3, 3); b.vy = rnd(-3, 3); b.vz = rnd(1.5, 2.5); b.z = 0.01;
             this.pop('Loose ball!', '#ffb43a');
             return;
@@ -2131,10 +2133,11 @@
       if (b.z < 0.5 && b.t > 0.3 && [...k.cover, this.kicker].some((c) => hyp(c.x - b.x, c.y - b.y) < 0.9)) return this.puntOver(x, `Punt downed at ${this.spotK(x)}`);
       if (b.z === 0 && hyp(b.vx, b.vy) < 0.25) return this.puntOver(x, `Punt rolls dead at ${this.spotK(x)}`);
     }
-    // The kicking team falls on its own kickoff. NFL rules: it's their ball where he recovered it (they can't
-    // advance a free kick), or a touchdown if he's in the receiving team's end zone.
-    koRecovered(c, b) {
-      const k = this.kick, x = b.x, td = x >= 110, msg = (k.res.clean ? '' : 'Shanked kickoff! ') + (k.cpu ? 'They recover their own kickoff' : 'You recover your own kickoff');
+    // The kicking team falls on its own kickoff, or on a muffed kick. NFL rules: it's their ball (a new set of
+    // downs) where he recovered it (they can't advance it), or a touchdown in the receiving team's end zone.
+    kickRecovered(c, x, muff) {
+      const k = this.kick, td = x >= 110, what = k.res.ko ? 'kickoff' : 'punt';
+      const msg = (muff ? 'MUFFED! ' : k.res.clean ? '' : 'Shanked kickoff! ') + (k.cpu ? `They recover the ${what}` : `You recover the ${what}`);
       this.carrier = null; this.ball = { state: 'held' }; this.kick = null;
       this.downed = c;
       if (k.cpu) {                                                       // they kicked to you, and got it back
@@ -2143,6 +2146,22 @@
       }
       if (td) { this.score.me += 6; return this.endPlay(`${msg} in the end zone — TOUCHDOWN!`, () => (this.q === 5 ? this.final() : this.afterTD()), 3); }
       return this.endPlay(`${msg} at ${this.spot(x)}`, () => this.checkClock(() => this.startDrive(x)), 2);
+    }
+    // A huge hit right as the ball arrives: very rarely (10%, and only with a cover man on him at the catch)
+    // he muffs it. Usually (80%) he falls on it himself, ball dead where he is (a touchback in his own end zone);
+    // otherwise the man who hit him recovers it for the kicking team.
+    muffCheck(R, x, y) {
+      const k = this.kick;
+      const hitter = [...k.cover, this.kicker].find((c) => !(c.hold > 0) && !(c.stun > 0) && hyp(c.x - x, c.y - y) < 1.0);
+      if (!hitter || Math.random() >= 0.1) return false;
+      R.x = x; R.y = y; R.pose = null; this.downed = R;
+      if (Math.random() < 0.8) {
+        const spot = x >= 110 ? (k.res.ko ? 85 : 100) : x;
+        this.puntOver(spot, x >= 110 ? 'MUFFED! He falls on it in the end zone — touchback' : `MUFFED! He falls on it at ${this.spotK(spot)}`);
+        return true;
+      }
+      this.kickRecovered(hitter, x, true);
+      return true;
     }
     // The return: the returner heads upfield (toward your end zone) and slides away from the nearest
     // cover man, his blockers take on the coverage, and the coverage tries to bring him down.
