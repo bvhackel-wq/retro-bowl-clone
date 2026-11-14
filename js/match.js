@@ -11,6 +11,7 @@
   const MID = FW / 2;
   const QLEN = 120;                // seconds per quarter
   const RUNOFF = 8;                // extra clock burned after an in-bounds play
+  const CAM_RATE = 2;              // camera follow responsiveness (higher = snappier); was a hardcoded 5
 
   // Route points are [yards downfield, yards toward the middle of the field] from the receiver's start.
   const PLAYS = [
@@ -575,7 +576,7 @@
         else if (this.carrier) fx = this.carrier.x;
       }
       const target = clamp(fx - VIEW * 0.36, -3, 123 - VIEW);
-      this.camX += (target - this.camX) * Math.min(1, dt * 5);
+      this.camX += (target - this.camX) * Math.min(1, dt * CAM_RATE);
       this.hud();
     }
     hud() {
