@@ -19,6 +19,8 @@
   const setArtWidth = (aw) => { AW = aw; W = aw * 2; VIEW = W / PPY; };
   const QLEN = 120;                // seconds per quarter
   const RUNOFF = 8;                // extra clock burned after an in-bounds play
+  const CAM_RATE = 2;              // camera follow responsiveness (higher = snappier)
+  const PI_RADIUS = 2.5;           // yards: an early swipe only draws a flag on a defender this close to the receiver
   const CUT_TIME = 0.5;            // seconds a swipe angles the runner toward a sideline
   const TAP_WINDOW = 450;          // ms between a tap and a swipe for it to count as a juke
   const JUKE_WINDOW = 0.3;         // seconds a juke is live at 65 agility (longer for agile runners)
@@ -1544,7 +1546,8 @@
     // Swipe up as their pass arrives. The defender nearest where it will come down plays the ball; his
     // ball skills set the timing window (about 0.15s at 60, 0.31s at 90). On time: he goes for the
     // pick (an interception or a breakup, better the closer he is and the better he covers). Too early:
-    // pass interference, a spot foul and a first down. Too late (up to a second after the catch): he whiffs on the
+    // if he's on the receiver (within PI_RADIUS when the ball arrives) it's pass interference, a spot foul
+    // and a first down; if he's just playing the ball in the air, he mistimes the jump and the pass plays on. Too late (up to a second after the catch): he whiffs on the
     // tackle. One try per pass.
     intSwipe() {
       if (this.intTry || this.phase !== 'live') return;
@@ -1565,7 +1568,11 @@
     // the ball arrives on an interception try
     intResolve(b) {
       const t = this.intTry, d = t.d;
-      if (t.kind === 'early') {                              // flagged: spot foul, first down where the ball came down
+      if (t.kind === 'early') {
+        // contact only happens if he's covering the man the ball is going to; otherwise he just leaves his feet too soon
+        const r = this.off.filter((p) => p.role !== 'OL' && p.role !== 'QB').reduce((a, p) => (!a || hyp(p.x - b.tx, p.y - b.ty) < hyp(a.x - b.tx, a.y - b.ty) ? p : a), null);
+        if (!r || hyp(d.x - r.x, d.y - r.y) > PI_RADIUS) { this.pop(`#${d.info.num} jumped too early`, '#ffb43a'); return false; }
+        // flagged: spot foul, first down where the ball came down
         this.los = b.tx >= 110 ? 109 : clamp(b.tx, this.los + 1, 109); this.down = 1; this.fdx = Math.min(this.los + 10, 110);
         return this.endPlay(`PASS INTERFERENCE on #${d.info.num} — first down`, () => this.checkClock(() => this.nextDown()), 2);
       }
@@ -2363,7 +2370,7 @@
         else if (k.stage === 'flight' || k.stage === 'blocked') target = clamp(this.ball.sx + (this.ball.tx - this.ball.sx) * Math.min(1, this.ball.u) - VIEW * 0.5, -3, 123 - VIEW);
         else target = clamp(k.sx - 8, -3, 123 - VIEW);
       }
-      this.camX += (target - this.camX) * Math.min(1, dt * 5);
+      this.camX += (target - this.camX) * Math.min(1, dt * CAM_RATE);
       this.hud(); this.chip(); this.placePause();
     }
     // keep the (invisible) pause button over the icon drawn in the scoreboard strip
