@@ -1571,7 +1571,8 @@
       if (t.kind === 'early') {
         // contact only happens if he's covering the man the ball is going to; otherwise he just leaves his feet too soon
         const r = this.off.filter((p) => p.role !== 'OL' && p.role !== 'QB').reduce((a, p) => (!a || hyp(p.x - b.tx, p.y - b.ty) < hyp(a.x - b.tx, a.y - b.ty) ? p : a), null);
-        if (!r || hyp(d.x - r.x, d.y - r.y) > PI_RADIUS) { this.pop(`#${d.info.num} jumped too early`, '#ffb43a'); return false; }
+        // ...and comes down off balance, a beat slow to the ball carrier
+        if (!r || hyp(d.x - r.x, d.y - r.y) > PI_RADIUS) { d.stun = 1.0; this.pop(`#${d.info.num} jumped too early`, '#ffb43a'); return false; }
         // flagged: spot foul, first down where the ball came down
         this.los = b.tx >= 110 ? 109 : clamp(b.tx, this.los + 1, 109); this.down = 1; this.fdx = Math.min(this.los + 10, 110);
         return this.endPlay(`PASS INTERFERENCE on #${d.info.num} — first down`, () => this.checkClock(() => this.nextDown()), 2);
