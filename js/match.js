@@ -2475,6 +2475,10 @@
     draw() {
       if (!this.art) this.initArt();
       const g = this.ag, Px = GP.Pixel, FH = Math.round(FW * YA);
+      // zoomed in, the art is drawn centered on the zoom window, so the crop never runs into the edge of the
+      // art (which, following its own slower camera, would make the view stall and lurch)
+      this.zoomStep();
+      if (this.zf > 1.001) this.camX = clamp(this.zl + AW / this.zf / YA / 2 - VIEW / 2, -3, 123 - VIEW);
       this.camPx = Math.round(this.camX * YA);
       g.drawImage(this.defending ? this.fieldImgDef : this.fieldImg, -(this.camPx + Math.round(PAD * YA)), 0);
 
@@ -2549,7 +2553,7 @@
         }
       }
 
-      const m = this.g, z = this.zoomView(); this.lastZ = z;
+      const m = this.g, z = this.zoomCrop(); this.lastZ = z;
       m.setTransform(1, 0, 0, 1, 0, 0); m.imageSmoothingEnabled = false;
       m.drawImage(this.art, z.sx, z.sy, z.sw, z.sh, 0, 0, this.cv.width, this.cv.height);
       m.drawImage(this.ui, 0, 0, this.cv.width, this.cv.height);
@@ -2568,7 +2572,7 @@
     // see it happen. The view follows the ball (in the air too), holds still after the whistle, and cuts to the
     // next line of scrimmage for the new play while the zoom eases back out. Here the wide level is the whole
     // field (formations are wider than Retro Bowl's, so the play-call level has to show every receiver).
-    zoomView() {
+    zoomStep() {
       const now = performance.now(), dt = this.zt ? clamp((now - this.zt) / 1000, 0, 0.05) : 1 / 60; this.zt = now;
       const b = this.ball, c = this.carrier, k = this.kick, ph = this.phase;
       const returning = k && ph === 'kick' && k.stage === 'return';
@@ -2584,7 +2588,12 @@
       // what it looks at: the ball in the air, whoever has it (a little ahead of him), or the line of scrimmage
       let f;
       if (b.state === 'air') f = { x: b.sx + (b.tx - b.sx) * Math.min(1, b.u), y: b.sy + (b.ty - b.sy) * Math.min(1, b.u) };
-      else if (c && (returning || this.running(c))) f = { x: c.x + c.vx * 0.35, y: c.y + c.vy * 0.25 };
+      else if (c && (returning || this.running(c))) {
+        // a little ahead of him, eased, so a cut or juke (which flips his velocity at once) doesn't yank the view
+        const e = ease(0.25), L = this.zLead || (this.zLead = { x: 0, y: 0 });
+        L.x += (c.vx * 0.35 - L.x) * e; L.y += (c.vy * 0.25 - L.y) * e;
+        f = { x: c.x + L.x, y: c.y + L.y };
+      }
       else if (ph === 'dead' && this.zFocus) f = this.zFocus;
       else f = { x: this.los, y: MID };
       this.zFocus = f;
@@ -2593,8 +2602,13 @@
       // a new play: cut to it (the zoom keeps easing); otherwise glide
       const fresh = (ph === 'choose' || ph === 'presnap') && this.zPh !== 'choose' && this.zPh !== 'presnap';
       this.zPh = ph;
-      if (fresh || this.zl == null) { this.zl = left; this.zy = f.y; }
+      if (fresh || this.zl == null) { this.zl = left; this.zy = f.y; this.zLead = null; }
       else { const e = ease(0.3); this.zl += (left - this.zl) * e; this.zy += (f.y - this.zy) * e; }
+    }
+    // the part of the art to show; not rounded to whole art pixels (each is several screen pixels zoomed in),
+    // so the view glides instead of stepping
+    zoomCrop() {
+      const sw = AW / this.zf, sh = AH / this.zf;
       // keep the stands strips (the top one under the scoreboard, the bottom one under the hints) the same
       // height on screen at any zoom: the view never reaches further into the stands than the unzoomed one
       const FH = FW * YA, top = SIDE + TOPA - TOPA / this.zf, bot = SIDE + TOPA + FH - (AH - TOPA) / this.zf;
@@ -2602,7 +2616,7 @@
       // (the closer it is zoomed in, the further it may go)
       // (at the top, a little further: the scoreboard covers the top of the screen)
       const zin = clamp((this.zf - 1) / 0.35, 0, 1), lo = Math.max(0, top - (SIDE + 10) * zin), hi = Math.min(ARTH - sh, Math.max(top, bot) + SIDE * zin);
-      return { sx: clamp(this.ax(this.zl), 0, AW - sw), sy: clamp(this.ay(this.zy) - sh / 2, lo, Math.max(lo, hi)), sw, sh };
+      return { sx: clamp(this.zl * YA - this.camPx, 0, AW - sw), sy: clamp(FT + this.zy * YA - sh / 2, lo, Math.max(lo, hi)), sw, sh };
     }
     // the bottom hint; with a button label, a tappable button just right of it (its box is kept for the tap)
     hint(t, button) {
