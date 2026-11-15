@@ -69,7 +69,8 @@
     document.body.append(ov);
     return close;
   }
-  const DIFF_DESC = { easy: 'Throws are led for you, a slower pass rush, fewer interceptions', normal: 'Light lead help, scaled by your quarterback’s accuracy', hard: 'No passing help, more interceptions' };
+  const DIFF_DESC = { easy: 'Throws are led for you, a slower pass rush, fewer interceptions', normal: 'Light lead help, scaled by your quarterback’s accuracy', hard: 'No passing help, more interceptions',
+    extreme: 'No help, wilder throws, a faster rush, tight catch windows, more picks, and their quarterback is sharp' };
   // Starting a career in an empty slot: pick a team and a difficulty.
   function newCareerDialog(slot) {
     let team = null, diff = 'normal', close = null;
@@ -165,10 +166,10 @@
   // the roster in screen order: starters by slot (a reserve in any empty spot), the bench, then the defense unit
   function rosterOrder() {
     const lineup = GP.lineup(S), ids = new Set(), out = [];
-    for (const [slot, pos] of GP.SLOTS) { const r = lineup[slot]; if (!r.filler) ids.add(r.id); out.push({ r, pos, slot, starter: true, side: 'O' }); }
+    for (const [slot, pos] of GP.SLOTS) { const r = lineup[slot]; if (!r.filler) ids.add(r.id); out.push({ r, pos, slot, starter: true, side: pos === 'K' ? 'S' : 'O' }); }
     for (const [slot, pos] of GP.DEF_SLOTS) { const r = lineup[slot]; if (!r.filler) ids.add(r.id); out.push({ r, pos, slot, starter: true, side: 'D' }); }
     S.players.filter((p) => !ids.has(p.id)).sort((a, b) => a.pos.localeCompare(b.pos) || b.ovr - a.ovr)
-      .forEach((r) => out.push({ r, pos: r.pos, slot: null, starter: false }));
+      .forEach((r) => out.push({ r, pos: r.pos, slot: null, starter: false, side: r.pos === 'K' ? 'S' : null }));
     for (const [key, label] of GP.UNITS) out.push({ r: S.units[key], pos: key, unit: key, label });
     return out;
   }
@@ -187,6 +188,7 @@
     return h('button', { class: 'pcard' + (e.starter === false ? ' bench' : ''), onclick: () => renderPlayer(i) },
       h('div', { class: 'top' + (GP.isDef(r.pos) ? ' def' : ''), style: `background-color:${e.unit ? me.c2 : me.c1};color:${e.unit ? me.c1 : me.c2}` },
         h('span', { class: 'pos' }, e.unit ? 'DEF' : e.pos), r.num ? h('span', { class: 'num' }, '#' + r.num) : null,
+        r.inj ? h('span', { class: 'injb' }, `INJ ${r.inj}W`) : null,
         e.unit ? h('span', { class: 'unitmark' }, 'UNIT') : portrait(r)),
       h('div', { class: 'nm' }, e.unit ? e.label : lastName(r.name)), stars(r.stars),
       h('div', { class: 'ovrline' }, h('span', { class: 'ovr' }, String(r.ovr)), h('span', { class: 'dim' }, ` / ${pot}`)),
@@ -203,7 +205,8 @@
     const avg = (side) => { const st = order.filter((e) => e.side === side); return Math.round(st.reduce((a, e) => a + e.r.ovr, 0) / st.length); };
     hub.append(h('h2', null, `Offense · ${avg('O')} avg`), grid(idx.filter(([e]) => e.starter && e.side === 'O')));
     hub.append(h('h2', null, `Defense · ${avg('D')} avg`), grid(idx.filter(([e]) => e.starter && e.side === 'D')));
-    const bench = idx.filter(([e]) => e.starter === false);
+    hub.append(h('h2', null, 'Special teams'), grid(idx.filter(([e]) => e.side === 'S')));
+    const bench = idx.filter(([e]) => e.starter === false && e.side !== 'S');
     hub.append(h('h2', null, 'Bench'), bench.length ? grid(bench) : h('div', { class: 'card dim' }, 'Nobody on the bench yet.'));
     if (idx.some(([e]) => e.unit)) hub.append(h('h2', null, 'Units'), grid(idx.filter(([e]) => e.unit)));
     show('hub');
@@ -226,7 +229,9 @@
         e.unit ? null : h('div', null, h('span', { class: 'dim' }, 'Age'), h('b', null, String(r.age))),
         h('div', null, h('span', { class: 'dim' }, 'Overall'), h('b', null, String(r.ovr))),
         h('div', null, h('span', { class: 'dim' }, 'Potential'), h('b', null, String(pot))),
-        h('div', null, h('span', { class: 'dim' }, 'Stars'), stars(r.stars))),
+        h('div', null, h('span', { class: 'dim' }, 'Stars'), stars(r.stars)),
+        e.unit ? null : h('div', null, h('span', { class: 'dim' }, 'Status'), h('b', { style: r.inj ? 'color:var(--bad)' : '' }, r.inj ? `Injured · ${r.inj} wk` : 'Healthy')),
+        e.unit ? null : h('div', { class: 'xprow' }, h('span', { class: 'dim' }, 'Experience'), h('div', { class: 'bar xp' }, h('i', { style: `width:${Math.min(100, r.xp || 0)}%` })), h('small', { class: 'dim' }, `${Math.floor(r.xp || 0)}/100 to his next +1`))),
       h('div', { class: 'dim note' }, e.unit ? (GP.UNITS.find((u) => u[0] === e.unit) || [])[2] : GP.derived(key) ? 'His overall comes from his attributes. Stars are fixed for life and set his ceilings.' + (GP.isDef(r.pos) ? ' On the field your coordinator\'s stars add to every defender.' : '') : ''),
       e.unit ? null : h('button', { class: 'btn ghost small', onclick: () => {
         if (confirm(`Release ${r.name}? He leaves the team for good.`)) { GP.release(S, r.id); renderRoster(); }
@@ -333,9 +338,9 @@
       tile('Coaching staff', `OC ${starText(S.staff.OC.stars)} · DC ${starText(S.staff.DC.stars)}`, renderStaff),
       tile('Trades', ts.note, () => renderTrade(), { off: !ts.open }),
       S.phase === 'offseason' ? tile('Draft', S.draft && !S.draft.done ? 'On the clock soon' : 'Review the picks', renderDraft) : null,
-      tile('Difficulty', GP.DIFFICULTY[S.difficulty || 'normal'] + ' · tap to change', () => {
-        const ord = ['easy', 'normal', 'hard']; S.difficulty = ord[(ord.indexOf(S.difficulty || 'normal') + 1) % 3]; GP.save(S); renderHub();
-      })));
+      tile('Free agents', `${GP.freeAgents(S).length} available · new ones every 4 weeks`, renderFA),
+      tile('Facilities', `Medical staff level ${S.medical || 1} of ${GP.MED_MAX}`, renderFacilities),
+      tile('Settings', `${GP.DIFFICULTY[S.difficulty || 'normal']} · ${S.qlen || 2}-minute quarters`, renderSettings)));
     show('hub');
   }
 
@@ -356,10 +361,6 @@
     const hub = $('#hub'); hub.innerHTML = '';
     const pool = GP.staffPool(S), me = GP.team(S.teamId);
     hub.append(backBar('Coaching staff', renderHub));
-    const what = {
-      OC: 'Marks his play call before every snap; more stars, the better he reads the defense and the situation.',
-      DC: 'Marks his coverage call on defense and runs it when you simulate; more stars, more stops and turnovers.',
-    };
     const card = (c, mine, foot) => h('div', { class: 'pcard ccard' + (mine ? '' : ' hire') },
       h('div', { class: 'top', style: mine ? `background-color:${me.c1};color:${me.c2}` : 'background-color:#3a455c;color:#cbd5e0' },
         h('span', { class: 'pos' }, c.role), h('span', { class: 'num' }, `age ${c.age}`),
@@ -368,7 +369,8 @@
       h('div', { class: 'cskills' }, ...c.skills.map((k) => h('div', { class: 'skill' }, h('b', null, GP.SKILLS[c.role][k][0]), h('span', { class: 'dim' }, ' — ' + GP.SKILLS[c.role][k][1])))),
       foot);
     hub.append(h('h2', null, 'Your staff'), h('div', { class: 'ccards' },
-      ...['OC', 'DC'].map((role) => card(S.staff[role], true, h('div', { class: 'dim cwhat' }, `${GP.ROLES[role]}. ${what[role]}`)))));
+      ...['OC', 'DC'].map((role) => card(S.staff[role], true, null))));
+    hub.append(trainingCard());
     hub.append(h('h2', null, 'Available for hire this season'));
     for (const role of ['OC', 'DC']) {
       hub.append(h('h3', { class: 'rhead' }, GP.ROLES[role] + 's'));
@@ -380,6 +382,66 @@
         } }, cost ? `Hire · ${cost} pt${cost === 1 ? '' : 's'}` : 'Hire · free'));
       })));
     }
+    show('hub');
+  }
+
+  // The training schedule: harder practices build experience faster and get more players hurt.
+  function trainingCard() {
+    const lv = S.training || 3, T = GP.TRAINING[lv - 1], base = GP.TRAINING[2];
+    const out = h('div', { class: 'card training' },
+      h('div', { class: 'tr-head' }, h('b', null, 'Training schedule'), h('span', { class: 'px tr-lv' }, T.name)),
+      h('input', { type: 'range', min: 1, max: 5, step: 1, value: lv, 'aria-label': 'Training intensity',
+        oninput: (e) => { S.training = +e.target.value; GP.save(S); out.replaceWith(trainingCard()); } }),
+      h('div', { class: 'tr-scale dim' }, ...GP.TRAINING.map((t) => h('span', null, t.name))),
+      h('div', { class: 'dim' }, `Each healthy player earns ${T.xp} experience a week from practice (Normal: ${base.xp}); injuries happen ${T.inj === 1 ? 'at the normal rate' : `${T.inj > 1 ? '' : 'only '}${Math.round(T.inj * 100)}% as often`}.`
+        + ' Every 100 experience is +1 to a stat; games played count too.'));
+    return out;
+  }
+  // ---------- settings: difficulty and quarter length ----------
+  function renderSettings() {
+    const hub = $('#hub'); hub.innerHTML = '';
+    hub.append(backBar('Settings', renderHub));
+    const seg = (opts, cur, set) => h('div', { class: 'tabs' }, ...opts.map(([v, label]) =>
+      h('button', { class: 'btn small' + (v === cur ? '' : ' ghost'), onclick: () => { set(v); GP.save(S); renderSettings(); } }, label)));
+    const diff = S.difficulty || 'normal', q = S.qlen || 2;
+    hub.append(h('div', { class: 'card setting' }, h('b', null, 'Difficulty'),
+      seg(Object.entries(GP.DIFFICULTY), diff, (v) => { S.difficulty = v; }), h('div', { class: 'dim' }, DIFF_DESC[diff])));
+    hub.append(h('div', { class: 'card setting' }, h('b', null, 'Quarter length'),
+      seg(GP.QUARTERS.map((m) => [m, `${m} min`]), q, (v) => { S.qlen = v; }),
+      h('div', { class: 'dim' }, q > 4 ? `${q}-minute quarters, with a two-minute warning in each half. Longer quarters run more clock between plays, so a game has more snaps but isn't ${q / 2} times as long.`
+        : `${q}-minute quarters: quick games.` + (q === 4 ? ' (A two-minute warning comes with 5-minute quarters and up.)' : ''))));
+    show('hub');
+  }
+  // ---------- facilities: the medical staff ----------
+  function renderFacilities() {
+    const hub = $('#hub'); hub.innerHTML = '';
+    hub.append(backBar('Facilities', renderHub));
+    const lv = S.medical || 1, max = lv >= GP.MED_MAX, cost = GP.MED_COST[lv];
+    const hurt = S.players.filter((p) => p.inj);
+    hub.append(h('div', { class: 'card facility' },
+      h('div', { class: 'tr-head' }, h('b', null, 'Medical staff'), h('span', { class: 'stars' }, '■'.repeat(lv), h('span', { class: 'off' }, '■'.repeat(GP.MED_MAX - lv)))),
+      h('div', { class: 'dim' }, `Level ${lv} of ${GP.MED_MAX}. Injuries are ${Math.round(7 * (lv - 1))}% shorter, and each week an injured player has a ${lv * 12}% chance of healing a week early.`),
+      h('div', { class: 'dim' }, hurt.length ? `On the injury report: ${hurt.map((p) => `${p.name} (${p.pos}, ${p.inj} wk)`).join(', ')}.` : 'Nobody is injured.'),
+      h('button', { class: 'btn', disabled: max || S.credits < cost, onclick: () => { if (GP.upgradeMedical(S)) renderFacilities(); } },
+        max ? 'Fully upgraded' : `Upgrade to level ${lv + 1} · ${cost} pts`)));
+    show('hub');
+  }
+  // ---------- free agents ----------
+  function renderFA() {
+    const hub = $('#hub'); hub.innerHTML = '';
+    hub.append(backBar(`Free agents · roster ${S.players.length}/${GP.ROSTER_MAX}`, renderHub));
+    const pool = GP.freeAgents(S), full = S.players.length >= GP.ROSTER_MAX;
+    hub.append(h('div', { class: 'dim film-sub' }, `Unsigned players looking for a team. The pool turns over every 4 weeks and each season.`
+      + (GP.hasSkill(S.staff, 'DC', 'recruiter') ? ' Your Recruiter gets them for half price.' : '') + (full ? ' Your roster is full: release someone first.' : '')));
+    if (!pool.length) hub.append(h('div', { class: 'card dim' }, 'Nobody left this time. More in a few weeks.'));
+    hub.append(h('div', { class: 'pcards' }, ...pool.map((r) => {
+      const c = GP.faCost(S, r);
+      return h('div', { class: 'pcard fa' },
+        h('div', { class: 'top' + (GP.isDef(r.pos) ? ' def' : ''), style: 'background-color:#3a455c;color:#cbd5e0' }, h('span', { class: 'pos' }, r.pos), r.num ? h('span', { class: 'num' }, '#' + r.num) : null, portrait(r)),
+        h('div', { class: 'nm' }, lastName(r.name)), h('div', { class: 'dim sub' }, `${r.name} · age ${r.age}`), stars(r.stars),
+        h('div', { class: 'ovrline' }, h('span', { class: 'ovr' }, String(r.ovr)), h('span', { class: 'dim' }, ` / ${potential(r)}`)),
+        h('button', { class: 'btn small', disabled: full || S.credits < c, onclick: () => { if (GP.signFA(S, r.id)) renderFA(); } }, `Sign · ${c} pt${c === 1 ? '' : 's'}`));
+    })));
     show('hub');
   }
 
@@ -463,8 +525,8 @@
           h('div', { class: 'dim', style: 'font-size:13px' }, stats)),
         h('span', { class: 'ovr', title: p.scouted ? 'Overall' : 'Estimated overall range' }, p.scouted ? String(p.ovr) : `${p.est.ovr[0]}–${p.est.ovr[1]}`),
         h('div', { class: 'stack' },
-          p.scouted ? null : h('button', { class: 'btn small ghost', disabled: S.credits < GP.SCOUT_COST || d.done,
-            onclick: () => { if (GP.scout(S, p.id)) renderDraft(); } }, `Scout (${GP.SCOUT_COST})`),
+          p.scouted ? null : h('button', { class: 'btn small ghost', disabled: S.credits < GP.scoutCost(S, p) || d.done,
+            onclick: () => { if (GP.scout(S, p.id)) renderDraft(); } }, GP.scoutCost(S, p) ? `Scout (${GP.scoutCost(S, p)})` : 'Scout (free)'),
           h('button', { class: 'btn small', disabled: !mine || full, onclick: () => { if (GP.draftPick(S, p.id)) renderDraft(); } }, 'Draft'))));
     }
     const log = h('div', { class: 'card' }, ...d.log.slice(-12).reverse().map((e) => h('div', { class: 'draftlog' + (e.owner === S.teamId ? ' me' : '') },
@@ -483,7 +545,7 @@
     hub.append(backBar(`Film · ${o.name}`, renderHub));
     const total = f.off.length + f.def.length;
     const col = (role, tips, title) => {
-      const c = S.staff[role], rv = GP.filmReveal(S, c.stars), shown = tips.slice(0, rv.n), locked = tips.length - shown.length;
+      const c = S.staff[role], rv = GP.filmReveal(S, c.stars, role), shown = tips.slice(0, rv.n), locked = tips.length - shown.length;
       const nextWk = rv.week + (3 - ((rv.week - 1) % 3));
       return h('div', { class: 'filmcol' },
         h('div', { class: 'filmcoach' },
@@ -495,7 +557,7 @@
         locked ? h('div', { class: 'card filmtip locked dim' }, `${locked} more on tape. ` + (rv.week < 14 ? `More by week ${Math.min(nextWk, 14)}` : 'A better coordinator would see more') + (c.stars < 5 ? `; a better ${role} sees more.` : '.')) : null,
         !rv.detail ? h('div', { class: 'dim ft-note' }, 'From week 6 (or with a 4-star coordinator) each tip comes with how to beat it.') : null);
     };
-    const seen = GP.filmReveal(S, S.staff.OC.stars).n + GP.filmReveal(S, S.staff.DC.stars).n;
+    const seen = GP.filmReveal(S, S.staff.OC.stars, 'OC').n + GP.filmReveal(S, S.staff.DC.stars, 'DC').n;
     hub.append(h('div', { class: 'dim film-sub' }, `${game.label} · ${game.home === false ? 'at' : 'vs'} ${full(o)} · ${Math.min(seen, total)} of ${total} tendencies on tape · your coordinators call plays with what they've seen`));
     hub.append(h('div', { class: 'filmcols' }, col('DC', f.off, 'their offense'), col('OC', f.def, 'their defense')));
     hub.append(h('div', { class: 'film-go' }, h('button', { class: 'btn play', onclick: () => pregame(game) }, 'Play game')));
@@ -526,7 +588,7 @@
     show('match');
     GP.match = new GP.Match($('#field'), {
       me: GP.team(S.teamId), opp: GP.team(game.oppId), roster: GP.lineup(S), staff: S.staff, difficulty: S.difficulty || 'normal',
-      oppOff: or.off, oppDef: or.def, oppDC: GP.oppDC(S, game.oppId), film: GP.filmKnown(S, game.oppId),
+      oppOff: or.off, oppDef: or.def, oppDC: GP.oppDC(S, game.oppId), qlen: (S.qlen || 2) * 60, film: GP.filmKnown(S, game.oppId),
       playoff: S.phase === 'playoffs', oppSeed: `${game.oppId}|${S.season}`, oppScheme: GP.teamScheme(game.oppId, S.season), home: game.home !== false, uniform: S.uniform || 'auto', playDefense: S.playDefense !== false, label: game.label,
       onEnd: (my, opp, st, info) => {
         GP.match = null; GP.advance(S, my, opp);

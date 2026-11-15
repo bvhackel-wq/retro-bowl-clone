@@ -185,8 +185,9 @@
   GP.DEF_POS = ['DL', 'LB', 'CB', 'S'];
   GP.isDef = (pos) => GP.DEF_POS.includes(pos);
 
-  // The roster: up to 22 players, 18 of them starting (9 on offense with the kicker, 9 on defense).
-  GP.ROSTER_MAX = 22;
+  // The roster: up to 32 players, 18 of them starting (8 on offense, 9 on defense, and the kicker); the rest
+  // are backups (the best healthy player at each spot starts).
+  GP.ROSTER_MAX = 32;
   GP.PLAYER_POS = { QB: 'Quarterback', RB: 'Running Back', WR: 'Wide Receiver', TE: 'Tight End', OL: 'Offensive Lineman', K: 'Kicker',
                     DL: 'Defensive Lineman', LB: 'Linebacker', CB: 'Cornerback', S: 'Safety' };
   GP.SLOTS = [['QB', 'QB'], ['RB', 'RB'], ['WR1', 'WR'], ['WR2', 'WR'], ['TE', 'TE'], ['OL1', 'OL'], ['OL2', 'OL'], ['OL3', 'OL'], ['K', 'K']];   // a game's starters
@@ -251,7 +252,7 @@
     r.name = 'Reserve ' + GP.PLAYER_POS[pos].toLowerCase(); r.filler = true; r.pos = pos;
     return GP.refresh(r, pos);
   }
-  GP.depth = (s, pos) => s.players.filter((p) => p.pos === pos).sort((a, b) => b.ovr - a.ovr);
+  GP.depth = (s, pos) => s.players.filter((p) => p.pos === pos && !p.inj).sort((a, b) => b.ovr - a.ovr);   // the injured sit
   // The starters for a game: the best players at each position, a reserve wherever there is none.
   GP.lineup = function (s) {
     const L = {}, used = new Set();
@@ -303,7 +304,8 @@
     return changed;
   }
 
-  GP.DIFFICULTY = { easy: 'Easy', normal: 'Normal', hard: 'Hard' };
+  GP.DIFFICULTY = { easy: 'Easy', normal: 'Normal', hard: 'Hard', extreme: 'Extreme' };
+  GP.QUARTERS = [2, 4, 5, 10, 15];                 // quarter lengths you can play, in minutes (a setting)
   GP.newCareer = function (teamId, difficulty) {
     const s = {
       v: 3, teamId, season: 1, week: 0, credits: 4, phase: 'regular', playoff: null, champion: null, history: [],
@@ -420,12 +422,13 @@
   // What each of your coordinators has on tape this week (the same tendencies the film screen shows you):
   // the keys of the first n tips, n from filmReveal. They call plays with it during the game.
   GP.filmKnown = function (s, oppId) {
-    const f = GP.film(s, oppId), n = (role) => GP.filmReveal(s, s.staff[role].stars).n;
+    const f = GP.film(s, oppId), n = (role) => GP.filmReveal(s, s.staff[role].stars, role).n;
     return { dc: f.off.slice(0, n('DC')).map((t) => t.key), oc: f.def.slice(0, n('OC')).map((t) => t.key) };
   };
-  GP.filmReveal = (s, stars) => {
-    const wk = s.phase === 'regular' ? s.week + 1 : (s.schedule ? s.schedule.length : 14) + 1;
-    return { n: 1 + Math.floor((wk - 1) / 3) + (stars >= 3 ? 1 : 0) + (stars >= 5 ? 1 : 0), detail: wk >= 6 || stars >= 4, week: wk };
+  // A coordinator with the Film Room skill finds two more, and how to beat each one, from week 1.
+  GP.filmReveal = (s, stars, role) => {
+    const wk = s.phase === 'regular' ? s.week + 1 : (s.schedule ? s.schedule.length : 14) + 1, room = role && GP.hasSkill(s.staff, role, 'filmroom');
+    return { n: 1 + Math.floor((wk - 1) / 3) + (stars >= 3 ? 1 : 0) + (stars >= 5 ? 1 : 0) + (room ? 2 : 0), detail: wk >= 6 || stars >= 4 || room, week: wk };
   };
 
   GP.oppDC = function (s, id) {
@@ -552,18 +555,32 @@
   // ---------- coaching staff ----------
   // An offensive and a defensive coordinator, each with 0-5 stars and special skills (one, or two at 4+
   // stars) drawn from a small set. Add new skills here and give them an effect in match.js.
+  // Their skills are about building the team, not tilting the dice: how fast players develop, what the film
+  // shows, scouting, conditioning, recruiting. (One skill, or two at 4+ stars.)
   GP.SKILLS = {
     OC: {
-      airraid: ['Air Raid', 'Throws land 15% closer to where you aim'],
-      ground: ['Ground Game', 'Run blocks hold 20% longer'],
+      mentor: ['Player Developer', 'Offensive players earn 50% more experience'],
+      qbcoach: ['QB Whisperer', 'Quarterbacks earn double experience'],
+      filmroom: ['Film Room', 'Finds two more tendencies of each defense on film, with how to beat them, from week 1'],
+      scout: ['Talent Evaluator', 'Scouting offensive draft prospects is free'],
       twomin: ['Two-Minute Drill', 'Half the clock runs off between plays in the last minute of each half'],
     },
     DC: {
-      ballhawk: ['Ball Hawk', 'Opponent drives end in a turnover more often'],
-      bend: ["Bend Don't Break", 'Fewer touchdowns allowed; more drives end in field goals'],
-      flip: ['Field Flipper', 'After a stop, your drive starts 8 yards further up the field'],
+      mentor: ['Player Developer', 'Defensive players earn 50% more experience'],
+      filmroom: ['Film Room', 'Finds two more tendencies of each offense on film, with how to beat them, from week 1'],
+      scout: ['Talent Evaluator', 'Scouting defensive draft prospects is free'],
+      conditioning: ['Conditioning Guru', '40% fewer injuries, whatever the training schedule'],
+      recruiter: ['Recruiter', 'Free agents sign for half the coaching points'],
     },
   };
+  // skills from before the rework, mapped onto the new ones (a saved coordinator keeps one of the same flavor)
+  const OLD_SKILL = { OC: { airraid: 'filmroom', ground: 'mentor' }, DC: { ballhawk: 'filmroom', bend: 'conditioning', flip: 'recruiter' } };
+  function migrateCoach(c) {
+    if (!c || !c.skills) return false;
+    let changed = false;
+    c.skills = [...new Set(c.skills.map((k) => { const n = OLD_SKILL[c.role] && OLD_SKILL[c.role][k]; if (n) changed = true; return n || k; }))];
+    return changed;
+  }
   GP.ROLES = { OC: 'Offensive Coordinator', DC: 'Defensive Coordinator' };
   GP.STAFF_COST = [0, 2, 4, 7, 10, 14];     // coaching points to hire, by stars
   function genCoach(role, stars) {
@@ -739,10 +756,12 @@
     d.at++; if (d.at >= d.picks.length) d.done = true;
     GP.draftAdvance(s);
   };
+  // free with a Talent Evaluator on that side of the ball
+  GP.scoutCost = (s, p) => (GP.hasSkill(s.staff, GP.isDef(p.pos) ? 'DC' : 'OC', 'scout') ? 0 : GP.SCOUT_COST);
   GP.scout = function (s, id) {
     const p = s.draft && s.draft.pool.find((x) => x.id === id);
-    if (!p || p.scouted || s.credits < GP.SCOUT_COST) return false;
-    s.credits -= GP.SCOUT_COST; p.scouted = true; GP.save(s);
+    if (!p || p.scouted || s.credits < GP.scoutCost(s, p)) return false;
+    s.credits -= GP.scoutCost(s, p); p.scouted = true; GP.save(s);
     return true;
   };
 
@@ -758,8 +777,11 @@
       }
       earned = !played ? 0 : won ? 2 : tied ? 1.5 : 1;   // (points are whole numbers: a tie rounds up below; nothing on a bye)
       s.week++;
+      if (s.week % 4 === 0) s.fa = null;                   // the free agent pool turns over every four weeks
       if (s.week >= s.schedule.length) {
-        const seeds = [GP.seeds(s, 0), GP.seeds(s, 1)];
+        const seeds = [GP.seeds(s, 0), GP.seeds(s, 1)], rec = GP.rec(s, me);
+        if (rec.w > rec.l) bonus(s, 10, 'a winning season');
+        if (seeds.flat().includes(me)) bonus(s, 10, 'making the playoffs');
         s.playoff = { round: 0, seeds, alive: seeds.map((l) => l.slice()), games: [] };
         buildRound(s.playoff);
         s.phase = 'playoffs';
@@ -769,12 +791,97 @@
       const label = GP.ROUNDS[s.playoff.round];
       if (played) earned = won ? 4 : 2;
       champ = playRound(s, played ? won : null);
-      if (champ === me) { earned += 5; endSeason(s, me, 'CHAMPIONS'); }
+      if (!champ && s.playoff.round === 3 && s.playoff.alive.flat().includes(me)) bonus(s, 25, 'reaching the Championship Game');
+      if (champ === me) { bonus(s, 50, 'winning the championship'); endSeason(s, me, 'CHAMPIONS'); }
       else if (champ || !s.playoff.alive.flat().includes(me)) { simOut(); endSeason(s, champ, 'Lost in the ' + label); }
     }
     s.credits += Math.ceil(earned);
+    weekly(s, played);
     GP.save(s);
     return earned;
+  };
+  // season bonuses in coaching points, announced on the team page
+  function bonus(s, n, why) { s.credits += n; s.news = (s.news || []).concat(`+${n} coaching points for ${why}!`); }
+
+  // ---------- training, experience, injuries and the medical staff ----------
+  // The training schedule (a slider on the coaching staff page): harder training builds experience faster but gets
+  // more players hurt. inj multiplies every injury chance; xp is what each healthy player earns in a week of it.
+  GP.TRAINING = [{ name: 'Light', inj: 0.5, xp: 4 }, { name: 'Easy', inj: 0.75, xp: 7 }, { name: 'Normal', inj: 1, xp: 10 },
+                 { name: 'Hard', inj: 1.45, xp: 14 }, { name: 'Brutal', inj: 2, xp: 19 }];
+  // The medical staff (Facilities): levels 1-5. Each level shortens injuries by 7% and gives a 12% chance a
+  // week of an extra week's recovery. Cost to reach the next level, in coaching points:
+  GP.MED_COST = [0, 4, 7, 11, 16];
+  GP.MED_MAX = 5;
+  GP.upgradeMedical = function (s) {
+    const lv = s.medical || 1, c = GP.MED_COST[lv];
+    if (lv >= GP.MED_MAX || s.credits < c) return false;
+    s.credits -= c; s.medical = lv + 1; GP.save(s);
+    return true;
+  };
+  // A week passes (a game, a bye or a playoff week). Injured players heal; everyone else can get hurt (starters who
+  // played most, about 2.5% a game at Normal training, plus a little from practice) and earns experience: the
+  // week's training, plus 18 for starting a game (6 off the bench). Young players learn faster, veterans slower;
+  // a Player Developer (QB Whisperer for quarterbacks) speeds it up. Every 100 is a level: +1 to a stat below its cap.
+  const STAT_SHORT = (k) => ({ arm: 'ARM', acc: 'ACC', spd: 'SPD', agi: 'AGI', sta: 'STA', hands: 'CTH', pow: 'STR', blk: 'BLK', pblk: 'PBK', rblk: 'RBK', leg: 'LEG', rush: 'RSH', run: 'RUN', tkl: 'TKL', cov: 'COV', ball: 'BALL' }[k] || k.toUpperCase());
+  function weekly(s, played) {
+    const L = GP.lineup(s), starters = new Set(Object.values(L).filter((r) => r && r.id != null && !r.filler).map((r) => r.id));
+    const T = GP.TRAINING[(s.training || 3) - 1], med = s.medical || 1;
+    const cond = GP.hasSkill(s.staff, 'DC', 'conditioning') ? 0.6 : 1;
+    const hurt = [], ups = [], healed = [];
+    for (const p of s.players) {
+      if (p.inj) {
+        p.inj -= 1 + (Math.random() < med * 0.12 ? 1 : 0);
+        if (p.inj <= 0) { delete p.inj; healed.push(p.name); }
+        continue;
+      }
+      const starter = starters.has(p.id);
+      if (Math.random() < ((played && starter ? 0.025 : 0) + 0.006) * T.inj * cond) {
+        const w = Math.random() < 0.15 ? GP.rint(5, 9) : GP.rint(1, 3);
+        p.inj = Math.max(1, Math.round(w * (1 - 0.07 * (med - 1))));
+        hurt.push(`${p.name} (${p.pos}) out ${p.inj} week${p.inj > 1 ? 's' : ''}`);
+        continue;
+      }
+      let xp = T.xp + (played ? (starter ? 18 : 6) : 0);
+      if (GP.hasSkill(s.staff, GP.isDef(p.pos) ? 'DC' : 'OC', 'mentor')) xp *= 1.5;
+      if (p.pos === 'QB' && GP.hasSkill(s.staff, 'OC', 'qbcoach')) xp *= 2;
+      xp *= p.age <= 25 ? 1.25 : p.age >= 31 ? 0.6 : 1;
+      p.xp = (p.xp || 0) + xp;
+      while (p.xp >= 100) {
+        const ks = GP.statsFor(p.pos).map(([k]) => k).filter((k) => k !== 'ovr' && p.stats[k] < p.caps[k]);
+        if (!ks.length) { p.xp = 99; break; }                // at all his caps: nothing left to learn
+        p.xp -= 100;
+        const k = GP.pick(ks); p.stats[k]++; GP.refresh(p, p.pos);
+        ups.push(`${p.name.split(' ').slice(-1)[0]} +1 ${STAT_SHORT(k)}`);
+      }
+    }
+    const list = (a) => (a.length > 6 ? a.slice(0, 6).join(', ') + ` and ${a.length - 6} more` : a.join(', '));
+    if (hurt.length) s.news = (s.news || []).concat(`Injury report: ${list(hurt)}.`);
+    if (healed.length) s.news = (s.news || []).concat(`Back from injury: ${list(healed)}.`);
+    if (ups.length) s.news = (s.news || []).concat(`Player development: ${list(ups)}.`);
+    GP.syncUser(s);
+  }
+
+  // ---------- free agents ----------
+  // A pool of ten unsigned players, new every four weeks and each season: mostly modest, now and then a good one.
+  // Signing costs coaching points by stars (half with a Recruiter on the staff) and a roster spot.
+  GP.FA_COST = [1, 2, 3, 5, 8, 12];
+  const FA_POS = ['QB', 'RB', 'WR', 'WR', 'TE', 'OL', 'OL', 'K', 'DL', 'DL', 'LB', 'LB', 'CB', 'CB', 'S'];
+  GP.freeAgents = function (s) {
+    if (!s.fa) {
+      s.fa = [];
+      for (let i = 0; i < 10; i++) s.fa.push(newPlayer(s, GP.pick(FA_POS), GP.pick([0, 1, 1, 1, 2, 2, 2, 3, 3, 4]), GP.rint(23, 33)));
+      GP.save(s);
+    }
+    return s.fa;
+  };
+  GP.faCost = (s, p) => Math.max(1, Math.ceil(GP.FA_COST[p.stars] * (GP.hasSkill(s.staff, 'DC', 'recruiter') ? 0.5 : 1)));
+  GP.signFA = function (s, id) {
+    const pool = GP.freeAgents(s), i = pool.findIndex((p) => p.id === id), p = pool[i];
+    if (!p || s.players.length >= GP.ROSTER_MAX || s.credits < GP.faCost(s, p)) return false;
+    s.credits -= GP.faCost(s, p); pool.splice(i, 1); s.players.push(p);
+    s.news = (s.news || []).concat(`You signed free agent ${p.name} (${p.pos}, ${p.stars}★).`);
+    GP.syncUser(s); GP.save(s);
+    return true;
   };
 
   GP.newSeason = function (s) {
@@ -796,6 +903,8 @@
       GP.refresh(r, r.pos);
       return true;
     });
+    for (const r of s.players) delete r.inj;  // everyone heals over the offseason
+    s.fa = null;                             // a new free agent pool
     s.fillers = {};                          // new reserves each season
     s.blocks = {};                           // and new trade blocks
     s.staffPool = null;                      // and new coaching candidates
@@ -882,6 +991,7 @@
       }
       s.units = s.units || {};
       if (!s.staff) { s.staff = { OC: genCoach('OC', 1), DC: genCoach('DC', 1) }; changed = true; }
+      for (const c of [s.staff.OC, s.staff.DC, ...((s.staffPool && [...s.staffPool.OC, ...s.staffPool.DC]) || [])]) changed = migrateCoach(c) || changed;
       for (const r of s.players) changed = addMissingStats(r, r.pos) || changed;
       // careers from before portraits: everyone gets a face now, saved so it never changes
       for (const r of [...s.players, ...Object.values(s.blocks || {}).flat(), ...((s.draft && s.draft.pool) || [])])

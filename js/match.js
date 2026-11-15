@@ -273,7 +273,6 @@
       this.maxRange = 30 + (this.qbs.arm - 60) * 0.6;                       // arm: how far
       this.ballSpeed = 26 + this.qbs.arm * 0.09;                            // arm: how fast (yards/second)
       this.scatter = Math.max(0.015, 0.085 - (this.qbs.acc - 60) * 0.0015); // accuracy
-      if (mine && GP.hasSkill(this.cfg.staff, 'OC', 'airraid')) this.scatter *= 0.85;   // OC skill: Air Raid
       this.scatter *= this.dif.scatter * (mine ? 1 : this.cpuK.scatter);
     }
     // Which side has the ball. On defense the opponent's offense uses the same engine: their roster, your
@@ -1108,8 +1107,7 @@
         const p = M('D', 'DL', L + 1, MID + o, 5.8 + (di.spd - 60) * 0.02); p.job = 'rush'; p.pow = di.pow;
         // how long the lineman across from him holds him. Passes: his pass-block stat. Runs are decided in
         // about 1.5s, so there run block (with a quarter strength) sets a hold of ~1-3s that varies block to block.
-        if (isRun) p.shed = clamp(2.2 + ((ol[i].blk * 0.75 + ol[i].pow * 0.25) - di.run) * 0.06, 0.4, 4) * rnd(0.5, 1.5)
-          * (!this.defending && GP.hasSkill(this.cfg.staff, 'OC', 'ground') ? 1.2 : 1);                              // OC skill: Ground Game
+        if (isRun) p.shed = clamp(2.2 + ((ol[i].blk * 0.75 + ol[i].pow * 0.25) - di.run) * 0.06, 0.4, 4) * rnd(0.5, 1.5);
         else p.shed = clamp(2.6 + rnd(0, 2.4) + (ol[i].blk - di.rush) * 0.05, 1.5, 7) * (this.dif ? this.dif.rush : 1);
         ol[i].mark = p; return p;
       });
@@ -2599,12 +2597,11 @@
       this.setSide(false);
       this.phase = 'opp'; this.kick = null;
       // the defense: its unit rating plus the defensive coordinator's stars and skills
-      const st = this.cfg.staff, dc = (s) => GP.hasSkill(st, 'DC', s);
+      const st = this.cfg.staff;
       const o = this.cfg.opp, myDef = this.cfg.roster.DEF.ovr + (st ? st.DC.stars * 1.5 : 0);
-      let pTD = clamp(0.24 + (this.cfg.oppOff - myDef) * 0.008 + (75 - dist) * 0.004, 0.08, 0.75);
-      let pFG = dist < 45 ? 0.25 : 0.14;
-      if (dc('bend')) { pTD *= 0.75; pFG += 0.12; }
-      const pTO = dc('ballhawk') ? 0.2 : 0.13;
+      const pTD = clamp(0.24 + (this.cfg.oppOff - myDef) * 0.008 + (75 - dist) * 0.004, 0.08, 0.75);
+      const pFG = dist < 45 ? 0.25 : 0.14;
+      const pTO = 0.13;
       let need = (25 + rnd(0, 30)) * clamp(dist / 75, 0.35, 1.1) * this.simScale;
       let text, nextX;
       const r = Math.random();
@@ -2612,7 +2609,7 @@
       else if (r < pTD) { this.score.opp += 7; text = `TOUCHDOWN ${o.name}. They march ${Math.round(dist)} yards and kick the extra point.`; nextX = 'ko'; }
       else if (r < pTD + pFG) { this.score.opp += 3; text = `${o.name} settle for a field goal.`; nextX = 'ko'; }
       else if (r < pTD + pFG + pTO) { text = Math.random() < 0.5 ? 'Your defense forces a fumble!' : 'Your defense picks it off!'; nextX = rnd(45, 65); }
-      else { text = 'Your defense holds. They punt it away.'; nextX = rnd(28, 40) + (dc('flip') ? 8 : 0); }
+      else { text = 'Your defense holds. They punt it away.'; nextX = rnd(28, 40); }
       if (this.clock !== Infinity) this.clock = Math.max(0, this.clock - need);
       this.showPanel(`${o.name} possession`, `${lead}\n${text}\n\n${this.cfg.me.abbr} ${this.score.me} — ${this.score.opp} ${o.abbr}`,
         [{ label: 'Continue', fn: () => this.checkClock(() => (nextX === 'ko' ? this.receiveKick() : this.startDrive(nextX))) }], true);
