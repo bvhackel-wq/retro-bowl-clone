@@ -3137,36 +3137,24 @@
         return;
       }
       if (b.state === 'bounce') {                                 // a punt hopping and rolling on the turf
-        const X = this.ax(b.x), Y = this.ay(b.y), lift = Math.round(b.z * YA * 0.5), tumble = Math.floor(b.spin) % 2;
-        g.fillStyle = 'rgba(0,0,0,.3)'; g.fillRect(X - 1, Y + 1, 3, 1);
-        g.fillStyle = '#8a4b22';
-        if (tumble) { g.fillRect(X - 1, Y - lift - 3, 2, 4); g.fillRect(X - 2, Y - lift - 2, 4, 2); }
-        else { g.fillRect(X - 1, Y - lift - 2, 3, 2); g.fillRect(X - 2, Y - lift - 1, 5, 1); }
-        g.fillStyle = '#ffffff'; g.fillRect(X, Y - lift - 2, 1, 1);
+        const X = this.ax(b.x), Y = this.ay(b.y), lift = Math.round(b.z * YA * 0.5);
+        g.fillStyle = 'rgba(0,0,0,.3)'; g.fillRect(X - 2, Y + 1, 5, 1);
+        this.drawFootball(g, X, Y - lift, Math.floor(b.spin) % 2);
         return;
       }
       if (b.state !== 'air' && b.state !== 'dead') return;      // a held ball is drawn with its carrier
       const u = Math.min(1, b.u), x = b.sx + (b.tx - b.sx) * u, y = b.sy + (b.ty - b.sy) * u;
       const z = b.state === 'air' ? Math.sin(Math.PI * u) * b.dist * 0.22 : 0;
       const X = this.ax(x), Y = this.ay(y), lift = Math.round(z * YA * 0.5);
-      if (this.phase === 'kick' && b.state === 'air') {
-        // a kicked ball: bigger, tumbling end over end, with its shadow on the grass and a short trail
-        g.fillStyle = 'rgba(0,0,0,.3)'; g.fillRect(X - 2, Y + 1, 5, 1);
-        for (let i = 1; i <= 3; i++) {
-          const v = Math.max(0, u - i * 0.035), tx = this.ax(b.sx + (b.tx - b.sx) * v), ty = this.ay(b.sy + (b.ty - b.sy) * v) - Math.round(Math.sin(Math.PI * v) * b.dist * 0.22 * YA * 0.5);
-          g.fillStyle = `rgba(255,255,255,${0.35 - i * 0.09})`; g.fillRect(tx - 1, ty - 2, 2, 2);
-        }
-        const tumble = Math.floor(u * 14) % 2, top = Y - lift;
-        g.fillStyle = '#10182a';
-        if (tumble) g.fillRect(X - 2, top - 5, 5, 7); else g.fillRect(X - 4, top - 3, 8, 5);
-        g.fillStyle = '#8a4b22';
-        if (tumble) { g.fillRect(X - 1, top - 4, 3, 5); } else { g.fillRect(X - 3, top - 2, 6, 3); }
-        g.fillStyle = '#ffffff'; if (tumble) g.fillRect(X, top - 3, 1, 2); else g.fillRect(X - 1, top - 1, 2, 1);
-        return;
-      }
-      g.fillStyle = 'rgba(0,0,0,.3)'; g.fillRect(X - 1, Y + 1, 3, 1);
-      g.fillStyle = '#8a4b22'; g.fillRect(X - 1, Y - lift - 2, 3, 2); g.fillRect(X - 2, Y - lift - 1, 5, 1);
-      g.fillStyle = '#ffffff'; g.fillRect(X, Y - lift - 2, 1, 1);
+      g.fillStyle = 'rgba(0,0,0,.3)'; g.fillRect(X - 2, Y + 1, 5, 1);
+      this.drawFootball(g, X, Y - lift, 0);
+    }
+    // The ball (passes, kicks and loose balls alike): a small football, its bottom at y. Tumbling, it's on end.
+    drawFootball(g, X, y, tumble) {
+      g.fillStyle = '#8a4b22';
+      if (tumble) { g.fillRect(X - 1, y - 5, 3, 5); g.fillRect(X - 2, y - 4, 5, 3); }
+      else { g.fillRect(X - 1, y - 4, 3, 4); g.fillRect(X - 2, y - 3, 5, 2); }
+      g.fillStyle = '#ffffff'; if (tumble) g.fillRect(X, y - 4, 1, 2); else g.fillRect(X - 1, y - 3, 2, 1);   // the laces
     }
     drawAim() {
       const g = this.ag, Px = GP.Pixel, t = this.aimTarget(), qb = this.qb;

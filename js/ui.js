@@ -192,6 +192,7 @@
         e.unit ? h('span', { class: 'unitmark' }, 'UNIT') : portrait(r)),
       h('div', { class: 'nm' }, e.unit ? e.label : lastName(r.name)), stars(r.stars),
       h('div', { class: 'ovrline' }, h('span', { class: 'ovr' }, String(r.ovr)), h('span', { class: 'dim' }, ` / ${pot}`)),
+      r.contract ? h('div', { class: 'dim pay' + (GP.expiring(S, r) ? ' exp' : '') }, `${GP.money(r.contract.sal)} · ${GP.expiring(S, r) ? 'expiring' : r.contract.years + ' yrs'}`) : null,
       h('div', { class: 'bar grow' }, h('i', { style: `width:${clamp01(r.ovr / Math.max(1, pot)) * 100}%` })));
   }
   const clamp01 = (x) => Math.max(0, Math.min(1, x));
@@ -233,8 +234,10 @@
         e.unit ? null : h('div', null, h('span', { class: 'dim' }, 'Status'), h('b', { style: r.inj ? 'color:var(--bad)' : '' }, r.inj ? `Injured · ${r.inj} wk` : 'Healthy')),
         e.unit ? null : h('div', { class: 'xprow' }, h('span', { class: 'dim' }, 'Experience'), h('div', { class: 'bar xp' }, h('i', { style: `width:${Math.min(100, r.xp || 0)}%` })), h('small', { class: 'dim' }, `${Math.floor(r.xp || 0)}/100 to his next +1`))),
       h('div', { class: 'dim note' }, e.unit ? (GP.UNITS.find((u) => u[0] === e.unit) || [])[2] : GP.derived(key) ? 'His overall comes from his attributes. Stars are fixed for life and set his ceilings.' + (GP.isDef(r.pos) ? ' On the field your coordinator\'s stars add to every defender.' : '') : ''),
+      e.unit || !r.contract ? null : contractBox(r, () => renderPlayer(i)),
       e.unit ? null : h('button', { class: 'btn ghost small', onclick: () => {
-        if (confirm(`Release ${r.name}? He leaves the team for good.`)) { GP.release(S, r.id); renderRoster(); }
+        const dead = r.contract && GP.onBooks(S, r) ? ` Half his salary (${GP.money(r.contract.sal * 0.5)}) stays on this season's cap.` : '';
+        if (confirm(`Release ${r.name}? He leaves the team for good.${dead}`)) { GP.release(S, r.id); renderRoster(); }
       } }, 'Release'));
     const attrs = h('div', { class: 'card attrs' }, h('h3', { class: 'px' }, 'Attributes'),
       ...GP.statsFor(key).filter(([k]) => !GP.derived(key) || k !== 'ovr').map(([k, label, hint]) => {
@@ -338,6 +341,7 @@
       tile('Coaching staff', `OC ${starText(S.staff.OC.stars)} · DC ${starText(S.staff.DC.stars)}`, renderStaff),
       tile('Trades', ts.note, () => renderTrade(), { off: !ts.open }),
       S.phase === 'offseason' ? tile('Draft', S.draft && !S.draft.done ? 'On the clock soon' : 'Review the picks', renderDraft) : null,
+      tile('Salary cap', `${GP.money(GP.payroll(S))} of ${GP.money(GP.cap(S))}` + (S.players.some((p) => GP.expiring(S, p)) ? ` · ${S.players.filter((p) => GP.expiring(S, p)).length} expiring` : ''), renderCap),
       tile('Free agents', `${GP.freeAgents(S).length} available · new ones every 4 weeks`, renderFA),
       tile('Facilities', `${GP.FACILITIES.length} facilities · levels ${GP.FACILITIES.map(([k]) => GP.facLevel(S, k)).join('/')}`, renderFacilities),
       tile('Settings', `${GP.DIFFICULTY[S.difficulty || 'normal']} · ${S.qlen || 2}-minute quarters`, renderSettings)));
@@ -434,7 +438,7 @@
     const hub = $('#hub'); hub.innerHTML = '';
     hub.append(backBar(`Free agents · roster ${S.players.length}/${GP.ROSTER_MAX}`, renderHub));
     const pool = GP.freeAgents(S), full = S.players.length >= GP.ROSTER_MAX;
-    hub.append(h('div', { class: 'dim film-sub' }, `Unsigned players looking for a team. The pool turns over every 4 weeks and each season.`
+    hub.append(h('div', { class: 'dim film-sub' }, `Cap room ${GP.money(GP.capRoom(S))}. Unsigned players looking for a team; the pool turns over every 4 weeks and each season.`
       + (GP.hasSkill(S.staff, 'DC', 'recruiter') ? ' Your Recruiter gets them for half price.' : '') + (full ? ' Your roster is full: release someone first.' : '')));
     if (!pool.length) hub.append(h('div', { class: 'card dim' }, 'Nobody left this time. More in a few weeks.'));
     hub.append(h('div', { class: 'pcards' }, ...pool.map((r) => {
@@ -443,8 +447,49 @@
         h('div', { class: 'top' + (GP.isDef(r.pos) ? ' def' : ''), style: 'background-color:#3a455c;color:#cbd5e0' }, h('span', { class: 'pos' }, r.pos), r.num ? h('span', { class: 'num' }, '#' + r.num) : null, portrait(r)),
         h('div', { class: 'nm' }, lastName(r.name)), h('div', { class: 'dim sub' }, `${r.name} · age ${r.age}`), stars(r.stars),
         h('div', { class: 'ovrline' }, h('span', { class: 'ovr' }, String(r.ovr)), h('span', { class: 'dim' }, ` / ${potential(r)}`)),
-        h('button', { class: 'btn small', disabled: full || S.credits < c, onclick: () => { if (GP.signFA(S, r.id)) renderFA(); } }, `Sign · ${c} pt${c === 1 ? '' : 's'}`));
+        h('div', { class: 'dim pay' }, `Asks ${GP.money(r.contract.sal)} · ${r.contract.years - (S.phase === 'offseason' ? 1 : 0)} yr${r.contract.years - (S.phase === 'offseason' ? 1 : 0) > 1 ? 's' : ''}`),
+        h('button', { class: 'btn small', disabled: full || S.credits < c || r.contract.sal > GP.capRoom(S), onclick: () => { if (GP.signFA(S, r.id)) renderFA(); } },
+          r.contract.sal > GP.capRoom(S) ? 'No cap room' : `Sign · ${c} pt${c === 1 ? '' : 's'}`));
     })));
+    show('hub');
+  }
+
+  // A player's contract, and re-sign buttons (1-4 seasons at his ask) when it's in its last season.
+  function contractBox(r, redo) {
+    const c = r.contract, exp = GP.expiring(S, r);
+    const box = h('div', { class: 'contract' }, h('div', null, h('span', { class: 'dim' }, 'Contract '),
+      h('b', null, `${GP.money(c.sal)} a season · ${exp ? 'expiring' : c.years + ' seasons left'}`)));
+    if (exp) {
+      const ask = GP.askFor(S, r), room = GP.capRoom(S) + (GP.onBooks(S, r) ? c.sal : 0);
+      box.append(h('div', { class: 'dim' }, `He asks ${GP.money(ask)} a season.` + (ask > room ? ` You only have ${GP.money(Math.max(0, room))} of cap room for him.` : ' Unsigned, he leaves when the new season starts.')),
+        h('div', { class: 'tabs' }, ...[1, 2, 3, 4].map((n) => h('button', { class: 'btn small', disabled: ask > room,
+          onclick: () => { if (GP.resign(S, r.id, n)) redo(); } }, `${n} yr${n > 1 ? 's' : ''}`))));
+    }
+    return box;
+  }
+  // ---------- the salary cap ----------
+  function renderCap() {
+    const hub = $('#hub'); hub.innerHTML = '';
+    hub.append(backBar('Salary cap', renderHub));
+    const cap = GP.cap(S), pay = GP.payroll(S), dead = (S.dead || {})[GP.capYear(S)] || 0, over = pay > cap;
+    hub.append(h('div', { class: 'card capbox' },
+      h('div', { class: 'tr-head' }, h('b', null, `${S.phase === 'offseason' ? 'Next season' : 'This season'}: ${GP.money(pay)} of ${GP.money(cap)}`),
+        h('span', { class: 'px', style: `color:${over ? 'var(--bad)' : 'var(--good)'}` }, over ? `${GP.money(pay - cap)} OVER` : `${GP.money(cap - pay)} ROOM`)),
+      h('div', { class: 'bar capbar' }, h('i', { style: `width:${Math.min(100, (pay / cap) * 100)}%;background:${over ? 'var(--bad)' : 'var(--accent)'}` })),
+      h('div', { class: 'dim' }, (dead ? `Includes ${GP.money(dead)} of dead money from released players. ` : '')
+        + 'The cap grows $6M a season. Signing, trading, drafting and re-signing must fit under it.'
+        + (S.phase === 'offseason' ? ' Expiring deals are off the books until you re-sign them.' : '')
+        + (over ? ' You are over the cap: release or trade someone before you can add anyone.' : ''))));
+    const list = S.players.filter((p) => p.contract).sort((a, b) => b.contract.sal - a.contract.sal);
+    const exp = list.filter((p) => GP.expiring(S, p));
+    const row = (p) => h('div', { class: 'caprow' + (GP.expiring(S, p) ? ' exp' : '') },
+      h('span', { class: 'px cappos' }, p.pos), h('span', { class: 'capnm' }, p.name, h('small', { class: 'dim' }, ` · ${p.ovr} ovr · age ${p.age}`)),
+      h('b', null, GP.money(p.contract.sal)), h('span', { class: 'dim capyr' }, GP.expiring(S, p) ? 'expiring' : `${p.contract.years} yrs`));
+    if (exp.length) {
+      hub.append(h('h2', null, `Expiring · ${exp.length}`));
+      hub.append(h('div', { class: 'capexp' }, ...exp.map((p) => h('div', { class: 'card' }, row(p), contractBox(p, renderCap)))));
+    }
+    hub.append(h('h2', null, 'Contracts'), h('div', { class: 'card' }, ...list.map(row)));
     show('hub');
   }
 
@@ -530,7 +575,8 @@
         h('div', { class: 'stack' },
           p.scouted ? null : h('button', { class: 'btn small ghost', disabled: S.credits < GP.scoutCost(S, p) || d.done,
             onclick: () => { if (GP.scout(S, p.id)) renderDraft(); } }, GP.scoutCost(S, p) ? `Scout (${GP.scoutCost(S, p)})` : 'Scout (free)'),
-          h('button', { class: 'btn small', disabled: !mine || full, onclick: () => { if (GP.draftPick(S, p.id)) renderDraft(); } }, 'Draft'))));
+          h('button', { class: 'btn small', disabled: !mine || full || GP.rookieSal(S) > GP.capRoom(S), title: mine ? `Rookie deal: ${GP.money(GP.rookieSal(S))} a season for 4 seasons` : '',
+            onclick: () => { if (GP.draftPick(S, p.id)) renderDraft(); } }, mine && GP.rookieSal(S) > GP.capRoom(S) ? 'No cap room' : 'Draft'))));
     }
     const log = h('div', { class: 'card' }, ...d.log.slice(-12).reverse().map((e) => h('div', { class: 'draftlog' + (e.owner === S.teamId ? ' me' : '') },
       `#${e.no} ${GP.team(e.owner).abbr}: ` + (e.pass ? 'passed' : `${e.name}, ${e.pos} ${starText(e.stars)}`))));

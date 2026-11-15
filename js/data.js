@@ -269,10 +269,52 @@
     return L;
   };
   GP.findPlayer = (s, id) => (s.units || {})[id] || s.players.find((p) => p.id === id);
+  // Releasing a player: half of his salary this season stays on the cap as dead money.
   GP.release = function (s, id) {
-    s.players = s.players.filter((p) => p.id !== id);
+    const p = s.players.find((x) => x.id === id);
+    if (p && p.contract && GP.onBooks(s, p)) { const y = GP.capYear(s); s.dead = s.dead || {}; s.dead[y] = (s.dead[y] || 0) + p.contract.sal * 0.5; }
+    s.players = s.players.filter((x) => x.id !== id);
     GP.syncUser(s); GP.save(s);
   };
+
+  // ---------- the salary cap (your team) ----------
+  // Every player has a contract: a salary (in millions) and the seasons left, counting the current one. The cap is
+  // $150M in season 1 and grows $6M a season. In the offseason the books are next season's: deals in their last
+  // year drop off unless re-signed. Signing, trading, drafting and re-signing must fit under it.
+  GP.capYear = (s) => (s.phase === 'offseason' ? s.season + 1 : s.season);
+  GP.cap = (s) => 150 + (GP.capYear(s) - 1) * 6;
+  GP.money = (m) => `$${(Math.round(m * 10) / 10).toFixed(1)}M`;
+  GP.onBooks = (s, p) => !(s.phase === 'offseason' && p.contract && p.contract.years <= 1);   // still under contract for the cap year
+  GP.payroll = (s) => s.players.reduce((a, p) => a + (p.contract && GP.onBooks(s, p) ? p.contract.sal : 0), 0) + ((s.dead || {})[GP.capYear(s)] || 0);
+  GP.capRoom = (s) => GP.cap(s) - GP.payroll(s);
+  // what a player is worth on the market: his overall (steeply), his position, his stars and his age
+  const POS_PAY = { QB: 1.7, WR: 1.05, OL: 0.8, DL: 0.95, CB: 0.9, LB: 0.75, S: 0.75, RB: 0.6, TE: 0.7, K: 0.25 };
+  GP.salaryFor = function (p) {
+    const x = GP.clamp((p.ovr - 50) / 45, 0, 1.2);
+    let sal = 0.75 + x ** 2.2 * 28 * (POS_PAY[p.pos] || 0.8) + (p.stars || 0) * 0.4;
+    if (p.age >= 31) sal *= 0.85; else if (p.age <= 24) sal *= 0.95;
+    return Math.round(sal * 20) / 20;
+  };
+  // what he asks for on a new deal this season: his market value, give or take a little (the same all season)
+  GP.askFor = (s, p) => Math.round(GP.salaryFor(p) * (1 + ((GP.hash(p.name + '|' + s.season) % 18) - 5) / 100) * 20) / 20;
+  // a deal for n seasons; signed in the offseason it starts next season
+  GP.contract = (s, sal, n) => ({ sal, years: n + (s.phase === 'offseason' ? 1 : 0) });
+  GP.expiring = (s, p) => !!p.contract && p.contract.years <= 1;
+  // re-sign (or extend) him at his ask for n seasons
+  GP.resign = function (s, id, n) {
+    const p = s.players.find((x) => x.id === id);
+    if (!p || !GP.expiring(s, p)) return false;
+    const ask = GP.askFor(s, p), room = GP.capRoom(s) + (GP.onBooks(s, p) ? p.contract.sal : 0);
+    if (ask > room) return false;
+    p.contract = GP.contract(s, ask, n);
+    s.news = (s.news || []).concat(`You re-signed ${p.name} (${p.pos}): ${GP.money(ask)} a season for ${n} season${n > 1 ? 's' : ''}.`);
+    GP.save(s);
+    return true;
+  };
+  // rookie deals: four seasons, scaled by where he was picked
+  const rookieSal = (no) => Math.round(Math.max(0.75, 6.5 - no * 0.06) * 20) / 20;
+  // give anyone without a contract one (new careers, older saves, trade blocks): 1-4 seasons at his value
+  GP.ensureContract = function (s, p) { if (!p.contract) p.contract = { sal: GP.salaryFor(p), years: GP.rint(1, 4) }; return p.contract; };
 
   // Older saves: give each player stars and caps that fit his current ratings, never lowering them.
   function migratePlayer(r, key) {
@@ -323,6 +365,7 @@
     const defense = GP.DEF_SLOTS.map(([, pos]) => pos);
     defense.splice(GP.rint(0, defense.length - 1), 1);
     for (const pos of defense) s.players.push(newPlayer(s, pos, GP.pick([2, 2, 3, 3, 3]), GP.rint(22, 29)));
+    for (const p of s.players) GP.ensureContract(s, p);
     GP.syncUser(s);
     return s;
   };
@@ -628,6 +671,7 @@
       const t = GP.rec(s, teamId), level = GP.clamp(Math.round(((t.off + t.def) / 2 - 58) / 6), 0, 5);
       s.blocks[teamId] = [0, 1, 2].map(() => newPlayer(s, GP.pick(['QB', 'RB', 'WR', 'WR', 'TE', 'OL', 'OL', 'K', 'DL', 'DL', 'LB', 'CB', 'CB', 'S']),
         GP.clamp(level + GP.rint(-1, 1), 0, 5), GP.rint(23, 31)));
+      for (const p of s.blocks[teamId]) GP.ensureContract(s, p);
       GP.save(s);
     }
     return s.blocks[teamId];
@@ -657,6 +701,9 @@
     const get = o.get.players.map((id) => GP.playerValue(block.find((p) => p.id === id))).reduce((a, b) => a + b, 0)
       + o.get.picks.reduce((a, k) => a + GP.pickValue(s, k), 0);
     const rosterAfter = s.players.length - o.give.players.length + o.get.players.length;
+    const salOf = (p) => (p && GP.onBooks(s, p) ? GP.ensureContract(s, p).sal : 0);
+    const capAfter = GP.payroll(s) - o.give.players.reduce((a, id) => a + salOf(s.players.find((p) => p.id === id)), 0)
+      + o.get.players.reduce((a, id) => a + salOf(block.find((p) => p.id === id)), 0);
     // they only deal if they come out ahead: a little against the other conference, more against a team they
     // could meet in the playoffs, and most against a division rival they play twice a year
     const me = GP.team(s.teamId), them = GP.team(o.partner);
@@ -667,6 +714,7 @@
     else if (!o.give.players.length && !o.give.picks.length) reason = 'Offer something';
     else if (!o.get.players.length && !o.get.picks.length) reason = 'Ask for something';
     else if (rosterAfter > GP.ROSTER_MAX) reason = `That would put you at ${rosterAfter} players (max ${GP.ROSTER_MAX})`;
+    else if (capAfter > GP.cap(s) && capAfter > GP.payroll(s)) reason = `That would put you ${GP.money(capAfter - GP.cap(s))} over the cap`;
     else if (give < get * premium) reason = rival ? `They want more from a ${rival} rival` : 'They want more in return';
     return { give, get, ok: !reason, reason, need: get * premium, rival };
   };
@@ -728,6 +776,7 @@
     d.log.push({ no: pick.no, round: pick.round, owner: pick.owner, name: prospect.name, pos: prospect.pos, stars: prospect.stars });
     if (pick.owner === s.teamId) {
       delete prospect.est; prospect.scouted = true; prospect.rookie = true;
+      prospect.contract = GP.contract(s, rookieSal(pick.no), 4);
       s.players.push(prospect);
       s.news = (s.news || []).concat(`You drafted ${prospect.name} (${prospect.pos}, ${prospect.stars}★) with pick #${pick.no}.`);
     }
@@ -746,10 +795,11 @@
   };
   GP.draftPick = function (s, id) {
     const cur = GP.draftCurrent(s), p = s.draft && s.draft.pool.find((x) => x.id === id);
-    if (!cur || cur.owner !== s.teamId || !p || s.players.length >= GP.ROSTER_MAX) return false;
+    if (!cur || cur.owner !== s.teamId || !p || s.players.length >= GP.ROSTER_MAX || rookieSal(cur.no) > GP.capRoom(s)) return false;
     draftTake(s, p); GP.syncUser(s); GP.draftAdvance(s);
     return true;
   };
+  GP.rookieSal = (s) => { const cur = GP.draftCurrent(s); return cur ? rookieSal(cur.no) : 0; };
   GP.draftPass = function (s) {
     const d = s.draft, cur = GP.draftCurrent(s);
     if (!cur || cur.owner !== s.teamId) return;
@@ -888,7 +938,10 @@
   GP.freeAgents = function (s) {
     if (!s.fa) {
       s.fa = [];
-      for (let i = 0; i < 10; i++) s.fa.push(newPlayer(s, GP.pick(FA_POS), GP.pick([0, 1, 1, 1, 2, 2, 2, 3, 3, 4]), GP.rint(23, 33)));
+      for (let i = 0; i < 10; i++) {
+        const p = newPlayer(s, GP.pick(FA_POS), GP.pick([0, 1, 1, 1, 2, 2, 2, 3, 3, 4]), GP.rint(23, 33));
+        p.contract = GP.contract(s, GP.askFor(s, p), GP.rint(1, 3)); s.fa.push(p);
+      }
       GP.save(s);
     }
     return s.fa;
@@ -896,7 +949,7 @@
   GP.faCost = (s, p) => Math.max(1, Math.ceil(GP.FA_COST[p.stars] * (GP.hasSkill(s.staff, 'DC', 'recruiter') ? 0.5 : 1)));
   GP.signFA = function (s, id) {
     const pool = GP.freeAgents(s), i = pool.findIndex((p) => p.id === id), p = pool[i];
-    if (!p || s.players.length >= GP.ROSTER_MAX || s.credits < GP.faCost(s, p)) return false;
+    if (!p || s.players.length >= GP.ROSTER_MAX || s.credits < GP.faCost(s, p) || p.contract.sal > GP.capRoom(s)) return false;
     s.credits -= GP.faCost(s, p); pool.splice(i, 1); s.players.push(p);
     s.news = (s.news || []).concat(`You signed free agent ${p.name} (${p.pos}, ${p.stars}★).`);
     GP.syncUser(s); GP.save(s);
@@ -911,6 +964,7 @@
     s.season++; s.week = 0; s.phase = 'regular'; s.playoff = null; s.champion = null; s.results = [];
     s.news = drafted;
     s.players = s.players.filter((r) => {
+      if (r.contract) { r.contract.years -= 1; if (r.contract.years <= 0) { s.news.push(`${r.name} (${r.pos}) left in free agency: his contract ran out.`); return false; } }
       r.age++;
       if (r.age >= 36) { s.news.push(`${r.name} (${r.pos}) retired.`); return false; }   // his spot opens up
       for (const [k] of GP.statsFor(r.pos)) {
@@ -927,6 +981,7 @@
       return true;
     });
     for (const r of s.players) delete r.inj;  // everyone heals over the offseason
+    if (s.dead) for (const y in s.dead) if (+y < s.season) delete s.dead[y];
     s.fa = null;                             // a new free agent pool
     s.fillers = {};                          // new reserves each season
     s.blocks = {};                           // and new trade blocks
@@ -940,7 +995,8 @@
   };
 
   // Cost of +1 to a stat; Infinity once it reaches the player's cap for that stat.
-  GP.upgradeCost = (val, cap) => (val >= (cap == null ? 99 : cap) ? Infinity : val >= 85 ? 2 : 1);
+  // each point costs more the better he already is: 1 below 65, then 2, 3, 4, and 5 from 90 up
+  GP.upgradeCost = (val, cap) => (val >= (cap == null ? 99 : cap) ? Infinity : val < 65 ? 1 : val < 75 ? 2 : val < 85 ? 3 : val < 90 ? 4 : 5);
   GP.upgrade = function (s, id, stat) {
     const r = GP.findPlayer(s, id);
     if (!r || r.filler) return false;
@@ -1015,6 +1071,7 @@
       s.units = s.units || {};
       if (!s.staff) { s.staff = { OC: genCoach('OC', 1), DC: genCoach('DC', 1) }; changed = true; }
       for (const c of [s.staff.OC, s.staff.DC, ...((s.staffPool && [...s.staffPool.OC, ...s.staffPool.DC]) || [])]) changed = migrateCoach(c) || changed;
+      for (const p of [...s.players, ...(s.fa || []), ...Object.values(s.blocks || {}).flat()]) if (!p.contract) { GP.ensureContract(s, p); changed = true; }
       for (const r of s.players) changed = addMissingStats(r, r.pos) || changed;
       // careers from before portraits: everyone gets a face now, saved so it never changes
       for (const r of [...s.players, ...Object.values(s.blocks || {}).flat(), ...((s.draft && s.draft.pool) || [])])
