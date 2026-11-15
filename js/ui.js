@@ -339,7 +339,7 @@
       tile('Trades', ts.note, () => renderTrade(), { off: !ts.open }),
       S.phase === 'offseason' ? tile('Draft', S.draft && !S.draft.done ? 'On the clock soon' : 'Review the picks', renderDraft) : null,
       tile('Free agents', `${GP.freeAgents(S).length} available · new ones every 4 weeks`, renderFA),
-      tile('Facilities', `Medical staff level ${S.medical || 1} of ${GP.MED_MAX}`, renderFacilities),
+      tile('Facilities', `${GP.FACILITIES.length} facilities · levels ${GP.FACILITIES.map(([k]) => GP.facLevel(S, k)).join('/')}`, renderFacilities),
       tile('Settings', `${GP.DIFFICULTY[S.difficulty || 'normal']} · ${S.qlen || 2}-minute quarters`, renderSettings)));
     show('hub');
   }
@@ -412,18 +412,21 @@
         : `${q}-minute quarters: quick games.` + (q === 4 ? ' (A two-minute warning comes with 5-minute quarters and up.)' : ''))));
     show('hub');
   }
-  // ---------- facilities: the medical staff ----------
+  // ---------- facilities ----------
   function renderFacilities() {
     const hub = $('#hub'); hub.innerHTML = '';
     hub.append(backBar('Facilities', renderHub));
-    const lv = S.medical || 1, max = lv >= GP.MED_MAX, cost = GP.MED_COST[lv];
     const hurt = S.players.filter((p) => p.inj);
-    hub.append(h('div', { class: 'card facility' },
-      h('div', { class: 'tr-head' }, h('b', null, 'Medical staff'), h('span', { class: 'stars' }, '■'.repeat(lv), h('span', { class: 'off' }, '■'.repeat(GP.MED_MAX - lv)))),
-      h('div', { class: 'dim' }, `Level ${lv} of ${GP.MED_MAX}. Injuries are ${Math.round(7 * (lv - 1))}% shorter, and each week an injured player has a ${lv * 12}% chance of healing a week early.`),
-      h('div', { class: 'dim' }, hurt.length ? `On the injury report: ${hurt.map((p) => `${p.name} (${p.pos}, ${p.inj} wk)`).join(', ')}.` : 'Nobody is injured.'),
-      h('button', { class: 'btn', disabled: max || S.credits < cost, onclick: () => { if (GP.upgradeMedical(S)) renderFacilities(); } },
-        max ? 'Fully upgraded' : `Upgrade to level ${lv + 1} · ${cost} pts`)));
+    hub.append(h('div', { class: 'facs' }, ...GP.FACILITIES.map(([key, name, what]) => {
+      const lv = GP.facLevel(S, key), max = lv >= GP.MED_MAX, cost = GP.MED_COST[lv];
+      return h('div', { class: 'card facility' },
+        h('div', { class: 'tr-head' }, h('b', null, name), h('span', { class: 'stars' }, '■'.repeat(lv), h('span', { class: 'off' }, '■'.repeat(GP.MED_MAX - lv)))),
+        h('div', { class: 'dim' }, `Level ${lv} of ${GP.MED_MAX}. ${what(lv)}`),
+        max ? null : h('div', { class: 'dim fac-next' }, `Level ${lv + 1}: ${what(lv + 1)}`),
+        key === 'medical' ? h('div', { class: 'dim' }, hurt.length ? `On the injury report: ${hurt.map((p) => `${p.name} (${p.pos}, ${p.inj} wk)`).join(', ')}.` : 'Nobody is injured.') : null,
+        h('button', { class: 'btn', disabled: max || S.credits < cost, onclick: () => { if (GP.upgradeFacility(S, key)) renderFacilities(); } },
+          max ? 'Fully upgraded' : `Upgrade · ${cost} pts`));
+    })));
     show('hub');
   }
   // ---------- free agents ----------

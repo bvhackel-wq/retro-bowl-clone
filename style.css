@@ -407,3 +407,6 @@ button.pcard:hover{box-shadow:inset 0 0 0 2px var(--accent),0 3px 0 rgba(0,0,0,.
 .pcard .top{position:relative}
 .xprow{grid-column:1/-1;display:flex;flex-direction:column;gap:3px}
 .bar.xp{height:6px}
+.facs{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px}
+.facs .facility{margin:0}
+.fac-next{font-size:13px;opacity:.85}

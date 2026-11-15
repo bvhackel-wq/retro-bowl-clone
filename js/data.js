@@ -428,7 +428,8 @@
   // A coordinator with the Film Room skill finds two more, and how to beat each one, from week 1.
   GP.filmReveal = (s, stars, role) => {
     const wk = s.phase === 'regular' ? s.week + 1 : (s.schedule ? s.schedule.length : 14) + 1, room = role && GP.hasSkill(s.staff, role, 'filmroom');
-    return { n: 1 + Math.floor((wk - 1) / 3) + (stars >= 3 ? 1 : 0) + (stars >= 5 ? 1 : 0) + (room ? 2 : 0), detail: wk >= 6 || stars >= 4 || room, week: wk };
+    const fr = GP.facLevel(s, 'film') - 1;                 // the film room facility
+    return { n: 1 + Math.floor((wk - 1) / 3) + (stars >= 3 ? 1 : 0) + (stars >= 5 ? 1 : 0) + (room ? 2 : 0) + Math.floor(fr / 2), detail: wk >= 6 - fr || stars >= 4 || room, week: wk };
   };
 
   GP.oppDC = function (s, id) {
@@ -701,8 +702,8 @@
     // what your scouts can tell without a closer look
     let lo = GP.clamp(stars - GP.rint(0, 1), 0, 5), hi = GP.clamp(stars + GP.rint(0, 1), 0, 5);
     if (lo === hi) { if (Math.random() < 0.5 && lo > 0) lo--; else if (hi < 5) hi++; else lo--; }
-    const c = r.ovr + GP.rint(-4, 4);
-    r.est = { stars: [lo, hi], ovr: [c - 5, c + 5] };
+    const w = 6 - GP.facLevel(s, 'scouting'), c = r.ovr + GP.rint(-(w - 1), w - 1);    // a better scouting department narrows it
+    r.est = { stars: [lo, hi], ovr: [c - w, c + w] };
     r.scouted = false;
     return r;
   }
@@ -716,7 +717,7 @@
       for (const team of order) picks.push({ no: picks.length + 1, round, team, owner: GP.pickOwner(s, s.season, round, team) });
     const pool = [];
     for (let i = 0; i < picks.length + 14; i++) pool.push(genProspect(s));
-    s.draft = { season: s.season, picks, at: 0, pool, log: [], done: false };
+    s.draft = { season: s.season, picks, at: 0, pool, log: [], done: false, free: GP.facLevel(s, 'scouting') - 1 };
     GP.save(s);
   };
   GP.draftCurrent = (s) => (s.draft && !s.draft.done ? s.draft.picks[s.draft.at] : null);
@@ -757,11 +758,13 @@
     GP.draftAdvance(s);
   };
   // free with a Talent Evaluator on that side of the ball
-  GP.scoutCost = (s, p) => (GP.hasSkill(s.staff, GP.isDef(p.pos) ? 'DC' : 'OC', 'scout') ? 0 : GP.SCOUT_COST);
+  GP.scoutCost = (s, p) => (GP.hasSkill(s.staff, GP.isDef(p.pos) ? 'DC' : 'OC', 'scout') || (s.draft && s.draft.free > 0) ? 0 : GP.SCOUT_COST);
   GP.scout = function (s, id) {
     const p = s.draft && s.draft.pool.find((x) => x.id === id);
     if (!p || p.scouted || s.credits < GP.scoutCost(s, p)) return false;
-    s.credits -= GP.scoutCost(s, p); p.scouted = true; GP.save(s);
+    const c = GP.scoutCost(s, p);
+    if (!c && s.draft.free > 0 && !GP.hasSkill(s.staff, GP.isDef(p.pos) ? 'DC' : 'OC', 'scout')) s.draft.free--;   // a free report from the scouting department
+    s.credits -= c; p.scouted = true; GP.save(s);
     return true;
   };
 
@@ -812,12 +815,28 @@
   // week of an extra week's recovery. Cost to reach the next level, in coaching points:
   GP.MED_COST = [0, 4, 7, 11, 16];
   GP.MED_MAX = 5;
-  GP.upgradeMedical = function (s) {
-    const lv = s.medical || 1, c = GP.MED_COST[lv];
+  // Facilities, each levels 1-5 at the same costs. Each one's line says what its level does right now.
+  GP.FACILITIES = [
+    ['medical', 'Medical staff', (lv) => `Injuries are ${7 * (lv - 1)}% shorter, and each week an injured player has a ${lv * 12}% chance of healing a week early.`],
+    ['training', 'Training facility', (lv) => (lv > 1 ? `Players earn ${10 * (lv - 1)}% more experience from games and practice.` : 'Basic: no bonus yet. Each level adds 10% experience.')],
+    ['weight', 'Weight room', (lv) => (lv > 1 ? `Veterans keep their edge: each point a 29+ player would lose to age has a ${12 * (lv - 1)}% chance to hold.` : 'Basic: no bonus yet. Each level slows how fast veterans decline.')],
+    ['scouting', 'Scouting department', (lv) => `Unscouted prospects' overall estimates are within ±${6 - lv}` + (lv > 1 ? `, and you get ${lv - 1} free scouting report${lv === 2 ? '' : 's'} each draft.` : '. Each level narrows that and adds a free scouting report each draft.')],
+    ['film', 'Film room', (lv) => {
+      const more = Math.floor((lv - 1) / 2), parts = [];
+      if (more) parts.push(`find ${more} more tendenc${more === 1 ? 'y' : 'ies'} of each opponent on film`);
+      if (lv > 1) parts.push(`learn how to beat them ${lv - 1} week${lv === 2 ? '' : 's'} sooner`);
+      return parts.length ? `Your coordinators ${parts.join(' and ')}.` : 'Basic: no bonus yet. Levels show how to beat each tendency sooner, and every two levels add one.';
+    }],
+  ];
+  GP.facLevel = (s, key) => (s.fac && s.fac[key]) || (key === 'medical' ? s.medical || 1 : 1);
+  GP.upgradeFacility = function (s, key) {
+    const lv = GP.facLevel(s, key), c = GP.MED_COST[lv];
     if (lv >= GP.MED_MAX || s.credits < c) return false;
-    s.credits -= c; s.medical = lv + 1; GP.save(s);
+    s.fac = s.fac || {}; s.credits -= c; s.fac[key] = lv + 1; if (key === 'medical') s.medical = lv + 1;
+    GP.save(s);
     return true;
   };
+  GP.upgradeMedical = (s) => GP.upgradeFacility(s, 'medical');
   // A week passes (a game, a bye or a playoff week). Injured players heal; everyone else can get hurt (starters who
   // played most, about 2.5% a game at Normal training, plus a little from practice) and earns experience: the
   // week's training, plus 18 for starting a game (6 off the bench). Young players learn faster, veterans slower;
@@ -825,7 +844,7 @@
   const STAT_SHORT = (k) => ({ arm: 'ARM', acc: 'ACC', spd: 'SPD', agi: 'AGI', sta: 'STA', hands: 'CTH', pow: 'STR', blk: 'BLK', pblk: 'PBK', rblk: 'RBK', leg: 'LEG', rush: 'RSH', run: 'RUN', tkl: 'TKL', cov: 'COV', ball: 'BALL' }[k] || k.toUpperCase());
   function weekly(s, played) {
     const L = GP.lineup(s), starters = new Set(Object.values(L).filter((r) => r && r.id != null && !r.filler).map((r) => r.id));
-    const T = GP.TRAINING[(s.training || 3) - 1], med = s.medical || 1;
+    const T = GP.TRAINING[(s.training || 3) - 1], med = GP.facLevel(s, 'medical'), tf = 1 + 0.1 * (GP.facLevel(s, 'training') - 1);
     const cond = GP.hasSkill(s.staff, 'DC', 'conditioning') ? 0.6 : 1;
     const hurt = [], ups = [], healed = [];
     for (const p of s.players) {
@@ -841,7 +860,7 @@
         hurt.push(`${p.name} (${p.pos}) out ${p.inj} week${p.inj > 1 ? 's' : ''}`);
         continue;
       }
-      let xp = T.xp + (played ? (starter ? 18 : 6) : 0);
+      let xp = (T.xp + (played ? (starter ? 18 : 6) : 0)) * tf;      // the training facility
       if (GP.hasSkill(s.staff, GP.isDef(p.pos) ? 'DC' : 'OC', 'mentor')) xp *= 1.5;
       if (p.pos === 'QB' && GP.hasSkill(s.staff, 'OC', 'qbcoach')) xp *= 2;
       xp *= p.age <= 25 ? 1.25 : p.age >= 31 ? 0.6 : 1;
@@ -897,7 +916,11 @@
       for (const [k] of GP.statsFor(r.pos)) {
         let v = r.stats[k];
         if (r.age <= 26) v += GP.rint(0, 2);
-        else if (r.age >= (PHYSICAL[k] ? 29 : 31)) v -= GP.rint(1, PHYSICAL[k] ? 3 : 4);
+        else if (r.age >= (PHYSICAL[k] ? 29 : 31)) {
+          let loss = GP.rint(1, PHYSICAL[k] ? 3 : 4);
+          for (let i = loss; i > 0; i--) if (Math.random() < 0.12 * (GP.facLevel(s, 'weight') - 1)) loss--;   // the weight room
+          v -= loss;
+        }
         r.stats[k] = GP.clamp(v, 35, r.caps[k]);
       }
       GP.refresh(r, r.pos);
