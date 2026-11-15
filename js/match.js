@@ -555,7 +555,7 @@
       const rec = defGroup(this.dcRec);
       const opts = DEF_TYPES.map(([key, label, desc]) => ({ label, sub: desc,
         rec: rec[0] === key, recName: callName(this.dcRec), fn: () => this.pickDefType(key) }));
-      opts.push({ label: 'Simulate drive', sub: 'Let your coordinator run it', kick: true,
+      if (!this.conv) opts.push({ label: 'Simulate drive', sub: 'Let your coordinator run it', kick: true,
         fn: () => this.oppDriveSim(110 - this.los, 'Your coordinator runs the defense.') });
       this.showPanel(title, '', opts);
     }
@@ -666,7 +666,12 @@
           if (most && open(most) > 1.5 + this.cpuK.open * 0.5) return this.cpuThrow(most);
           if (!this.cpuDecided) { this.cpuDecided = true; this.cpuHold = Math.random() < this.cpuK.hold; }
           if (this.qbs.spd >= 70 && Math.random() < 0.02) return this.tuck();
-          if (t > (this.cpuHold ? this.cpuK.holdT : 3.6)) this.throwBall(L + rnd(2, 8), qb.y < MID ? -3 : FW + 3);      // throws it away
+          if (t > (this.cpuHold ? this.cpuK.holdT : 3.6)) {
+            // throws it away, legally: out of bounds near a receiver by the sideline, or over a receiver's head
+            const side = rs.filter((p) => p.y < 3.5 || p.y > FW - 3.5).sort((a, b) => Math.min(a.y, FW - a.y) - Math.min(b.y, FW - b.y))[0];
+            if (side) this.throwBall(Math.max(side.x, L + 1), side.y < MID ? -1 : FW + 1);
+            else { const p = rs[0]; if (p) this.throwBall(p.x + 3, p.y); else this.throwBall(L + rnd(2, 8), qb.y < MID ? -3 : FW + 3); }
+          }
         }
         return;
       }
@@ -1173,6 +1178,9 @@
       this.ball = bullet ? { state: 'air', sx: qb.x, sy: qb.y, tx, ty, u: 0, dur: 0.15 + d / (this.ballSpeed * 1.6), t0: this.t, dist: d * 0.25, bullet: true, past: new Set() }
         : { state: 'air', sx: qb.x, sy: qb.y, tx, ty, u: 0, dur: 0.3 + d / this.ballSpeed, t0: this.t, dist: d };
       this.carrier = null; if (!this.conv) this.stats.att++;
+      // what intentional grounding is judged on: pressure on him, and whether he's still in the pocket (between the tackles)
+      this.ball.press = this.def.some((d) => !d.held && !(d.stun > 0) && hyp(d.x - qb.x, d.y - qb.y) < 3);
+      this.ball.inBox = Math.abs(qb.y - MID) < 4.5;
       let best = null, bd = 12;
       for (const p of this.off) {
         if (p.role === 'OL' || p.role === 'QB') continue;
@@ -1547,6 +1555,16 @@
         const x = hyp(p.x - b.tx, p.y - b.ty); if (x < od) { od = x; o = p; }
       }
       for (const p of this.def) { const x = hyp(p.x - b.tx, p.y - b.ty); if (x < dd) { dd = x; d = p; } }
+      // Intentional grounding (NFL): under pressure he throws it where no eligible receiver is anywhere near (5 yards),
+      // unless he's out of the pocket and the ball reaches the line of scrimmage. Loss of down, and the ball goes
+      // back 10 yards or to where he threw it, whichever is further (a safety in his own end zone).
+      if (b.press && !b.bullet) {
+        const near = this.off.some((p) => p.role !== 'OL' && p.role !== 'QB' && hyp(p.x - b.tx, p.y - b.ty) < 5);
+        if (!near && !(!b.inBox && b.tx >= this.los)) {
+          if (this.conv) return this.convOver(false);
+          return this.gainResult(Math.min(this.los - 10, b.sx), 'INTENTIONAL GROUNDING — loss of down', false, true);
+        }
+      }
       if (oob) return this.incomplete('Out of bounds — incomplete');
       if (this.defending && this.intTry && this.intTry.kind !== 'late') { const r = this.intResolve(b); if (r !== false) return r; }
       // how much a nearby defender disrupts the catch depends on his coverage
@@ -1687,9 +1705,9 @@
       this.credit(110);
       if (this.caught) this.stats.ptd++; else this.stats.rtd++;
       this.celebrateTD(this.carrier, 1);
-      if (this.defending) {                             // they score; the extra point is automatic, then they kick off
-        this.score.opp += 7;
-        return this.endPlay(`TOUCHDOWN ${this.cfg.opp.name}`, () => this.checkClock(() => this.receiveKick()), 3);
+      if (this.defending) {                             // they score, then try the extra point (or go for two)
+        this.score.opp += 6;
+        return this.endPlay(`TOUCHDOWN ${this.cfg.opp.name}`, () => this.cpuTry(), 3);
       }
       this.score.me += 6;
       this.endPlay('TOUCHDOWN!', () => (this.q === 5 ? this.final() : this.afterTD()), 3);
@@ -1759,9 +1777,39 @@
       this.conv = true; this.los = 108; this.down = 1; this.fdx = 110;
       this.toChoose();
     }
-    // the try is over: 2 points if it got in, then you kick off either way
+    // Their try after a touchdown. They go for two by the usual chart (in the second half, when it changes what
+    // the score means: down 10, 5 or 2, or up 1, 4 or 5), most of the time; otherwise they kick it, played out.
+    cpuTry() {
+      const m = this.score.opp - this.score.me, o = this.cfg.opp;
+      if (this.q >= 3 && [-10, -5, -2, 1, 4, 5].includes(m) && Math.random() < 0.85) {
+        this.setSide(true); this.kick = null; this.carrier = null;
+        this.conv = true; this.los = 108; this.down = 1; this.fdx = 110;
+        this.banner = { text: `${o.name.toUpperCase()} GO FOR TWO`, t: 1.6 };
+        return this.defChoose();
+      }
+      this.cpuPAT();
+    }
+    // Their extra point: their kicker (his accuracy: about 94% at 70), and your rushers can still block it.
+    cpuPAT() {
+      this.setSide(true); this.carrier = null;
+      const ks = this.ks, kr = this.oppRoster.K.stats || {};
+      this.ks = { leg: kr.leg || 70, acc: kr.acc || 70 };
+      this.startKick('pat');
+      this.ks = ks;
+      const k = this.kick; k.cpu = true; k.started = true; k.target = { x: 120, y: MID };
+      const good = Math.random() < clamp(0.94 + ((kr.acc || 70) - 70) * 0.003, 0.85, 0.99);
+      const ey = good ? MID + rnd(-2.2, 2.2) : MID + (Math.random() < 0.5 ? -1 : 1) * rnd(3.4, 5);
+      k.res = { good, why: ey < MID ? 'wide left' : 'wide right', ex: 121.5, ey };
+      k.stage = 'approach'; k.ap = 0.9;                       // the snap, the hold, the kicker's steps
+      this.banner = { text: `${this.cfg.opp.name.toUpperCase()} EXTRA POINT`, t: 1.2 };
+    }
+    // the try is over: 2 points if it got in, then the kickoff (theirs after their try)
     convOver(good) {
       this.conv = false;
+      if (this.defending) {
+        if (good) this.score.opp += 2;
+        return this.endPlay(good ? `${this.cfg.opp.name}: TWO-POINT CONVERSION IS GOOD` : 'Their two-point try fails', () => this.checkClock(() => this.receiveKick()), 2);
+      }
       if (good) this.score.me += 2;
       this.endPlay(good ? 'TWO-POINT CONVERSION IS GOOD' : 'Two-point try fails',
         () => this.checkClock(() => this.kickoff()), 2);
@@ -1772,7 +1820,7 @@
       this.credit(x);
       this.gainResult(x, null, oob);
     }
-    gainResult(x, label, oob) {
+    gainResult(x, label, oob, noRunoff) {
       if (this.conv) return this.convOver(false);
       const gain = Math.round(x - this.los);
       if (x <= 10) {
@@ -1783,7 +1831,7 @@
       this.los = Math.min(x, 109.5);
       let msg = label || (gain > 0 ? `Gain of ${gain}` : gain < 0 ? `Loss of ${-gain}` : 'No gain');
       if (oob) msg += ' (out of bounds)';
-      else if (this.clock !== Infinity) {
+      else if (this.clock !== Infinity && !noRunoff) {
         const hurry = !this.defending && GP.hasSkill(this.cfg.staff, 'OC', 'twomin') && (this.q === 2 || this.q === 4) && this.clock < 60;   // OC skill
         const before = this.clock;
         this.clock = Math.max(0, this.clock - RUNOFF * (hurry ? 0.5 : 1));
@@ -2327,7 +2375,7 @@
     }
     kickResult() {
       const k = this.kick, r = k.res; this.ball = { state: 'held' };
-      const after = () => this.checkClock(() => this.kickoff());
+      const after = () => this.checkClock(() => (k.cpu ? this.receiveKick() : this.kickoff()));   // whoever scored kicks off
       if (r.punt && !r.blocked) return this.puntLand();
       if (r.blocked) {
         this.kick = null;
@@ -2338,8 +2386,9 @@
         return this.endPlay('Field goal BLOCKED', () => this.checkClock(() => this.oppDrive(dist, 'They recovered the blocked kick.')));
       }
       if (k.type === 'pat') {
-        if (r.good) this.score.me += 1;
-        this.endPlay(r.good ? 'Extra point is GOOD' : `Extra point NO GOOD (${r.why})`, after);
+        if (r.good) { if (k.cpu) this.score.opp += 1; else this.score.me += 1; }
+        const who = k.cpu ? `${this.cfg.opp.name}: ` : '';
+        this.endPlay(r.good ? `${who}Extra point is GOOD` : `${who}Extra point NO GOOD (${r.why})`, after);
       } else if (r.good) {
         this.score.me += 3;
         this.endPlay(`${k.dist}-yard field goal is GOOD`, after);
@@ -2367,7 +2416,8 @@
       this.ks = ks;
       const k = this.kick; k.cpu = true; k.started = true;
       k.target = { x: Math.min(k.sx + k.range * rnd(0.88, 1.08), 119.5), y: clamp(MID + rnd(-7, 7), 4, FW - 4) };
-      this.puntResult(Math.random() < clamp(0.93 + ((kr.acc || 70) - 70) * 0.004, 0.85, 0.98), Math.random() < 0.5 ? -1 : 1);
+      // a mishit kickoff is very rare: about 1.5% at 70 accuracy (0.5-2.5% across kickers)
+      this.puntResult(Math.random() < clamp(0.985 + ((kr.acc || 70) - 70) * 0.0005, 0.975, 0.995), Math.random() < 0.5 ? -1 : 1);
       this.banner = { text: `${this.cfg.opp.name.toUpperCase()} KICKOFF`, t: 1.4 };
     }
 
@@ -2560,9 +2610,9 @@
       const left = Math.round((this.pauseX - 4) * k) + 'px';
       if (b.style.left !== left) { b.style.left = left; b.style.width = Math.round(20 * k) + 'px'; }
       // the timeout button, over the TO drawn in the strip: on offense and defense, only while the clock is
-      // running down to the next snap (a timeout would stop it); hidden while it's stopped or the ball is live
+      // running down to the next snap (a timeout would stop it); hidden while it's stopped, the ball is live, or you have none left
       const t = this.toBtn; if (!t || this.toX == null) return;
-      const on = !this.paused && !this.dead && this.timeoutOpen() && this.lastRunoff > 0;
+      const on = !this.paused && !this.dead && this.timeoutOpen() && this.lastRunoff > 0 && this.tos.me > 0;
       if (t.hidden === on) t.hidden = !on;
       const tl = Math.round((this.toX - 2) * k) + 'px';
       if (t.style.left !== tl) { t.style.left = tl; t.style.width = Math.round(22 * k) + 'px'; }
