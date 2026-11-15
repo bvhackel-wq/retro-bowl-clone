@@ -174,10 +174,10 @@ button.link:hover{color:var(--bad)}
 
 /* pause button (under the scoreboard, top right) and pause menu */
 /* the pause icon is drawn in the scoreboard strip; this transparent button covers it (and a little more, for thumbs) */
-#pause-btn{position:absolute;top:0;height:calc(100% * 16 / 270);min-height:26px;z-index:3;padding:0;background:transparent;border:0}
+#pause-btn{position:absolute;top:0;height:calc(100% * 22 / 270);min-height:40px;z-index:3;padding:0;background:transparent;border:0}
 #pause-btn i{display:none}
 #pause-btn[hidden]{display:none}
-#to-btn{position:absolute;top:0;height:calc(100% * 16 / 270);min-height:26px;z-index:3;padding:0;background:transparent;border:0}
+#to-btn{position:absolute;top:0;height:calc(100% * 22 / 270);min-height:40px;z-index:3;padding:0;background:transparent;border:0}
 #to-btn[hidden]{display:none}
 #pause{position:absolute;inset:0;z-index:4;background:rgba(10,14,24,.82);display:flex;align-items:center;justify-content:center;text-align:center}
 #pause[hidden]{display:none}

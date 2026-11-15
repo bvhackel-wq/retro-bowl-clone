@@ -16,9 +16,10 @@
   // the sidelines: art rows between each sideline and the stands (benches, players, coaches, camera crews). The
   // unzoomed view doesn't show them (it sees TOPA rows outside the field, as before); a zoomed camera drifts into them.
   const SIDE = 26, FT = TOPA + SIDE, ARTH = AH + 2 * SIDE;
+  const SB = 18;                   // the scoreboard strip's height (art pixels); overlay text below it starts lower
   const setArtWidth = (aw) => { AW = aw; W = aw * 2; VIEW = W / PPY; };
-  const QLEN = 120;                // seconds per quarter
-  const RUNOFF = 8;                // extra clock burned after an in-bounds play
+  const QLEN = 120;                // seconds per quarter by default (a setting: 2, 4, 5, 10 or 15 minutes)
+  const RUNOFF = 8;                // extra clock burned after an in-bounds play in 2-minute quarters (more in longer ones)
   const STAMINA = 1.2;             // everyone's stamina in games: 20% more (tiring drains and run fades are divided by it)
   const CAM_RATE = 2;              // camera follow responsiveness (higher = snappier)
   const PI_RADIUS = 2.5;           // yards: an early swipe only draws a flag on a defender this close to the receiver
@@ -66,11 +67,22 @@
       routes: { WR1: { pts: [[10, 0], [13, 22]] }, WR2: { pts: [[6, 0], [8, 20]] }, TE: { pts: [[14, 0]], stop: true }, RB: { block: true } } },
     { id: 'pa_shot', name: 'PA Deep Shot', type: 'pass', cat: 'pa', pa: true, desc: 'Fake the run, take the top off',
       routes: { WR1: { pts: [[40, 2]] }, WR2: { pts: [[40, 2]] }, TE: { pts: [[3, 0], [4, 8]], stop: true }, RB: { block: true } } },
+    // RPOs: the back runs through the mesh; tap him to hand off, or drag back to throw (a quick route on the outside)
+    { id: 'rpo_slant', name: 'RPO Slant', type: 'pass', cat: 'rpo', rpo: true, desc: 'Hand off, or throw the slant behind the linebacker',
+      routes: { WR1: { pts: [[3, 0], [10, 6]] }, WR2: { pts: [[5, 0], [5, -4]], stop: true }, TE: { block: true }, RB: { pts: [[5, -1.5]], mesh: true } } },
+    { id: 'rpo_bubble', name: 'RPO Bubble', type: 'pass', cat: 'rpo', rpo: true, desc: 'Hand off, or throw the bubble screen outside',
+      routes: { WR1: { pts: [[-1, -2], [0, -5]], stop: true }, WR2: { pts: [[12, 0]] }, TE: { block: true }, RB: { pts: [[5, -1.5]], mesh: true } } },
   ];
+  const RPO_WINDOW = 0.85;         // seconds after the snap the back is in the mesh: the handoff has to come before then
+  // what the coordinator expects of an RPO against each coverage: half the run, half the throw it pairs with
+  function addRpoFit() {
+    for (const c in OC_FIT) { const f = OC_FIT[c]; f.rpo_slant = Math.round(((f.dive || 0) + (f.slants || 0)) / 2); f.rpo_bubble = Math.round(((f.dive || 0) + (f.wr_screen || 0)) / 2); }
+  }
   // play types shown when you change the call; the coordinator picks the play within a type
   const PLAY_TYPES = [['quick', 'Quick pass', 'Short, fast throws'], ['deep', 'Deep pass', 'Push the ball downfield'],
                       ['inside', 'Inside run', 'Between the tackles'], ['outside', 'Outside run', 'Get to the edge'],
-                      ['screen', 'Screen', 'Let the rush come, throw behind blockers'], ['pa', 'Play action', 'Fake the run, throw deep']];
+                      ['screen', 'Screen', 'Let the rush come, throw behind blockers'], ['pa', 'Play action', 'Fake the run, throw deep'],
+                      ['rpo', 'RPO', 'Run or pass, your choice after the snap']];
 
   // Defensive calls and how often they come (percent).
   // The defensive playbook. Two-high calls (Cover 4, 2-Man, Prevent) take a lineman off the field for a
@@ -100,6 +112,7 @@
     firezone: { slants: -1, verts: 2, post: 2, curls: 1, run: -1, outs: -3, stick: 1, dagger: 2, comeback: 2, dive: -2, power: -1, toss_r: -1, toss_l: -1, rb_screen: -1, wr_screen: -1, pa_post: 2, pa_cross: 0, pa_shot: 2 },
     prevent: { slants: 0, verts: 1, post: 1, curls: 1, run: -1, outs: -2, stick: 1, dagger: 1, comeback: 1, dive: -1, power: -1, toss_r: -1, toss_l: -1, rb_screen: -1, wr_screen: 0, pa_post: 1, pa_cross: 0, pa_shot: 1 },
   };
+  addRpoFit();
   const COVER_ALIAS = { man: 'cover1', press: 'cover1p', blitz: 'cover0' };   // older names
   const coverKey = (t) => COVER_ALIAS[t] || t;
 
@@ -131,8 +144,10 @@
       // difficulty: Easy throws straighter, tires less, gets more time and a bigger catch window; Hard the reverse.
       // On defense it works the other way: the opponent's quarterback is less accurate on Easy, sharper on Hard.
       this.difMine = { easy: { scatter: 0.7, tire: 0.5, rush: 1.3, window: 0.4, pick: 0.6 }, normal: { scatter: 1, tire: 1, rush: 1, window: 0, pick: 1 },
-                       hard: { scatter: 1.15, tire: 1, rush: 1, window: 0, pick: 1.2 } }[cfg.difficulty || 'normal'];
-      this.difCpu = { scatter: { easy: 1.3, normal: 1, hard: 0.85 }[cfg.difficulty || 'normal'], tire: 1, rush: 1, window: 0, pick: 1 };
+                       hard: { scatter: 1.15, tire: 1, rush: 1, window: 0, pick: 1.2 },
+                       // Extreme: wilder throws, a faster rush, a tighter catch window, more picks, tiring sooner
+                       extreme: { scatter: 1.3, tire: 1.25, rush: 0.85, window: -0.25, pick: 1.45 } }[cfg.difficulty || 'normal'];
+      this.difCpu = { scatter: { easy: 1.3, normal: 1, hard: 0.85, extreme: 0.72 }[cfg.difficulty || 'normal'], tire: 1, rush: 1, window: 0, pick: 1 };
       this.dif = this.difMine;
       this.applyQB(r, true);
       this.energy = 100; this.olEnergy = [100, 100, 100];
@@ -153,7 +168,14 @@
       this.ks = { leg: kv('leg'), acc: kv('acc') };
       this.kickRange = Math.round(clamp(30 + (this.ks.leg - 40) * (30 / 59), 25, 60));
 
-      this.q = 1; this.clock = QLEN;
+      // quarter length (a setting) and what goes with it: the clock between plays runs longer in longer quarters
+      // (up to a real 38-second huddle), simulated drives take longer, and from 5-minute quarters up there's a
+      // two-minute warning in each half
+      this.qlen = cfg.qlen || QLEN;
+      this.runoff = Math.min(38, RUNOFF * this.qlen / QLEN);
+      this.simScale = this.qlen > QLEN ? (this.qlen / QLEN) * 0.75 : 1;
+      this.twoMinOn = this.qlen > 240; this.warned = {};
+      this.q = 1; this.clock = this.qlen;
       this.score = { me: 0, opp: 0 };
       const fk = cfg.film || {}; this.filmDC = new Set(fk.dc || []); this.filmOC = new Set(fk.oc || []);   // what your coordinators saw on film
       this.tos = { me: 3, opp: 3 }; this.lastRunoff = 0;   // timeouts left this half; the clock the last play ran off after it ended
@@ -402,8 +424,18 @@
       if (this.aim && this.phase === 'live' && this.passing()) {
         const a = this.aim, dx = a.cx - a.sx, dy = a.cy - a.sy;
         if (dx > 30 && dx > Math.abs(dy)) this.tuck();          // swiped toward the end zone: run it
-        else if (hyp(dx, dy) > 14) { const t = this.leadAssist(this.aimTarget()); this.throwBall(t.x, t.y); }
-        else this.bullet({ x: a.sx, y: a.sy });                  // a tap: a bullet to the receiver (or spot) tapped
+        else if (hyp(dx, dy) > 14) {
+          const t = this.leadAssist(this.aimTarget());
+          if (this.bulletMode) this.bulletAt(t); else this.throwBall(t.x, t.y);
+        } else {
+          // a tap: hand off on an RPO if it's on the back in the mesh; otherwise switch the throw between a lob and a
+          // bullet (the aiming arc shows which) without throwing anything
+          const f = this.fieldAt({ x: a.sx, y: a.sy });
+          if (!(this.play.rpo && hyp(f.x - this.rb.x, f.y - this.rb.y) < 3.5 && this.rpoHandoff())) {
+            this.bulletMode = !this.bulletMode;
+            this.pop(this.bulletMode ? 'BULLET: FLAT AND FAST' : 'LOB', '#ffffff');
+          }
+        }
       }
       const g = this.gesture;
       if (g && !g.done && performance.now() - g.t < 300) this.lastTap = performance.now();
@@ -457,6 +489,7 @@
       const k = e.key.toLowerCase();
       if (down && !e.repeat && (k === 'escape' || k === 'p')) { this.paused ? this.resume() : this.pause(); return; }
       if (down && !e.repeat && k === 't' && !this.paused) { this.callTimeout(); return; }
+      if (down && !e.repeat && k === 'h' && !this.paused && !this.defending && this.phase === 'live') { this.rpoHandoff(); return; }
       if (this.paused) return;
       if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' '].includes(k)) e.preventDefault();
       this.keys[k] = down;
@@ -604,6 +637,7 @@
         if (this.down === 3 && togo >= 7) sit[sc.third] += 2.5;
         if (this.los >= 90) sit[sc.red] += sc.red === "pa" ? 4.5 : 2.5;
       }
+      sit.rpo = (sit.quick + sit.inside) / 2 - 0.5;                       // they call an RPO now and then
       const smart = clamp((this.cfg.oppOff - 60) / 30, 0, 1), n = Object.values(this.covTend).reduce((a, b) => a + b, 0);
       let best = null, bs = -1e9;
       for (const p of PLAYS) {
@@ -630,8 +664,21 @@
     // Their quarterback: after his drop he reads his receivers one at a time (deepest first on deep calls,
     // shortest first on quick ones) and throws to the first one open enough for his accuracy; under pressure
     // or late he takes the most open man, scrambles, or throws it away. Screens go on time.
+    // RPO: the handoff, while the back is still in the mesh
+    rpoHandoff() {
+      if (!this.play || !this.play.rpo || this.rpoDone || this.carrier !== this.qb || this.ball.state !== 'held' || this.t > RPO_WINDOW) return false;
+      this.rpoDone = true; this.carrier = this.rb; this.rb.route = null;
+      this.pop('HANDOFF!', '#ffffff');
+      return true;
+    }
     cpuOffense() {
       const pl = this.play, t = this.t, qb = this.qb;
+      // their RPO read: a crowded box (6+ defenders near the line between the hashes) means throw; otherwise hand off
+      if (pl.rpo && !this.rpoDone && t > 0.45 && this.carrier === qb) {
+        const box = this.def.filter((d) => d.x < this.los + 5.5 && Math.abs(d.y - MID) < 8).length;
+        if (box <= 5 && this.rpoHandoff()) return;
+        this.rpoDone = true; if (this.rb.route) this.rb.route.block = true;
+      }
       if (this.passing() && this.ball.state === 'held') {
         if (pl.screen === 'rb') { if (t > 1.0) this.cpuThrow(this.rb); return; }
         if (pl.screen === 'wr') { if (t > 0.4) this.cpuThrow(this.off.find((p) => p.role === 'WR1')); return; }
@@ -743,7 +790,8 @@
       if (late && diff < 0) { sit.inside -= 3; sit.outside -= 2; sit.screen -= 1; sit.deep += 1; sit.quick += 0.5; }   // hurry
       if (this.q >= 4 && diff > 0 && !late) { sit.inside += 3; sit.outside += 2; }                         // protect the lead
       const runShare = this.tend && this.tend.n ? this.tend.run / this.tend.n : 0.35;
-      sit.pa += clamp(runShare - 0.35, -0.3, 0.4) * 4;                                                     // play action works after you've run
+      sit.pa += clamp(runShare - 0.35, -0.3, 0.4) * 4;
+      sit.rpo = (sit.quick + sit.inside) / 2 - 0.3;                                                        // an RPO: half run, half quick throw                                                     // play action works after you've run
       // his read of the coverage the defense shows (a better coordinator reads it more often)
       const reads = Math.random() < 0.1 + stars * 0.18, fit = OC_FIT[coverKey(this.dcall.shown || this.dcall.type)] || {};
       // and what he saw on film of their defense: the coverages they lean on (man or zone, how often they blitz,
@@ -815,6 +863,7 @@
       // every down the play list is open, with the offensive coordinator's call marked; you pick, then snap
       const call = this.ocLast = this.ocCall();
       this.ocPick = call.play;
+      this.play = call.play; this.setupFormation();                  // lined up in his call, its routes drawn, until you pick
       this.playList(this.down === 4 ? '4th down — your call' : 'Call the play — ' + this.downText());
     }
     pickPlay(p) {
@@ -838,7 +887,7 @@
       else this.playList(this.down === 4 ? '4th down — your call' : 'Call the play — ' + this.downText());
     }
     snap() {
-      this.lastRunoff = 0;
+      this.lastRunoff = 0; this.rpoDone = false; this.bulletMode = false;
       // on runs the second level reacts a beat late; linemen's hold times are already set by run blocking
       // deep defenders guard against the pass first, so they read the run late
       // defensive backs in man watch their receiver, not the backfield, so they find the run late too;
@@ -1027,11 +1076,11 @@
       const pl = this.play, runSide = pl && pl.type === 'run' ? pl.side || 1 : 1;
       const rb = M('O', 'RB', L - (pl && pl.rbX || 5), MID + (pl && pl.type === 'run' ? runSide * (pl.rbY || 4.4) : 3), wr(rv('spd')) + 0.1); rb.ovr = r.RB.ovr;
       rb.sweep = pl && pl.sweep ? runSide : 0;          // outside runs head for the sideline first
-      rb.agi = rv('agi'); rb.hands = rv('hands'); rb.pow = rv('pow'); rb.sta = rv('sta'); rb.sStat = rv('spd');
+      rb.agi = rv('agi'); rb.hands = rv('hands'); rb.pow = rv('pow'); rb.sta = rv('sta'); rb.sStat = rv('spd'); rb.name = r.RB.name;
       const recv = (key, y) => {
         const st = r[key].stats || {}, v = (k) => (st[k] != null ? st[k] : r[key].ovr);
         const p = M('O', key, L - 0.6, y, wr(v('spd')));
-        Object.assign(p, { ovr: r[key].ovr, hands: v('hands'), agi: v('agi'), sta: v('sta'), pow: v('pow'), sStat: v('spd') });
+        Object.assign(p, { ovr: r[key].ovr, hands: v('hands'), agi: v('agi'), sta: v('sta'), pow: v('pow'), sStat: v('spd'), name: r[key].name });
         return p;
       };
       const w1 = recv('WR1', 3), w2 = recv('WR2', FW - 3);
@@ -1039,7 +1088,7 @@
       // on runs the tight end lines up on the run side, just outside the hole, and leads the way
       const te = M('O', 'TE', L - 0.6, MID + (this.play && this.play.type === 'run' ? runSide * 6.6 : -7), 6.2 + (tv('spd') - 60) * 0.03);
       Object.assign(te, { ovr: r.TE.ovr, hands: tv('hands') + (ts.hands != null ? 0 : 6), pow: tv('pow') + (ts.pow != null ? 0 : 6),
-                          blk: tv('blk'), sta: tv('sta'), agi: 55, sStat: tv('spd') });
+                          blk: tv('blk'), sta: tv('sta'), agi: 55, sStat: tv('spd'), name: r.TE.name });
       // three linemen, each with his own stats; tired linemen block up to 25% worse
       const isRun = this.play && this.play.type === 'run';
       const ol = [-2.6, 0, 2.6].map((o, i) => {
@@ -1089,7 +1138,7 @@
           if (!rt) continue;
           const inS = p.y < MID ? 1 : -1;
           if (rt.block) { p.route = { block: true, pts: [] }; continue; }      // stays in to block
-          p.route = { stop: rt.stop, pts: rt.pts.map(([dx, dy]) => [Math.min(p.x + dx, 118), clamp(p.y + dy * inS, 1.2, FW - 1.2)]) };
+          p.route = { stop: rt.stop, mesh: rt.mesh, pts: rt.pts.map(([dx, dy]) => [Math.min(p.x + dx, 118), clamp(p.y + dy * inS, 1.2, FW - 1.2)]) };
         }
       }
       this.carrier = this.qb;
@@ -1102,13 +1151,22 @@
     }
 
     // ---------- live play ----------
-    tick(dt) { if (this.clock !== Infinity && !this.conv) this.clock = Math.max(0, this.clock - dt); }   // no clock on a try
+    tick(dt) {
+      if (this.clock === Infinity || this.conv) return;           // no clock on a try
+      const before = this.clock;
+      this.clock = Math.max(0, this.clock - dt);
+      if (this.twoMinDueAt(before)) this.twoMinDue = true;         // the warning comes when this play is over
+    }
+    // the two-minute warning (5-minute quarters and up): the clock passing 2:00 in the 2nd or 4th quarter
+    twoMinDueAt(before) {
+      return this.twoMinOn && (this.q === 2 || this.q === 4) && !this.warned[this.q] && before > 120 && this.clock <= 120;
+    }
 
     // Lead assist: nudge a throw released near a receiver toward the right lead for where he'll be when the
     // ball arrives. Normal: partial, stronger for more accurate quarterbacks. Easy: full. Hard: none.
     leadAssist(t) {
       const diff = this.cfg.difficulty || 'normal';
-      const s = diff === 'hard' ? 0 : diff === 'easy' ? 0.9 : clamp(0.35 + (this.qbs.acc - 60) * 0.012, 0.25, 0.8);
+      const s = diff === 'hard' || diff === 'extreme' ? 0 : diff === 'easy' ? 0.9 : clamp(0.35 + (this.qbs.acc - 60) * 0.012, 0.25, 0.8);
       if (!s) return t;
       const qb = this.qb; let best = null, bd = 5;
       for (const p of this.off) {
@@ -1148,8 +1206,8 @@
     // away (about 0.25s and 8.5 yds at 90 coverage, 0.55s and 7 yds at 60). Easy slows the read; Hard speeds it up.
     ballReact(d, b) {
       const cov = d.info ? d.info.cov : 70, diff = this.cfg.difficulty || 'normal';
-      const react = 0.25 + (90 - cov) * 0.01 + (diff === 'easy' ? 0.25 : diff === 'hard' ? -0.1 : 0);
-      const reach = (4 + cov * 0.05) * (diff === 'easy' ? 0.75 : diff === 'hard' ? 1.15 : 1);
+      const react = 0.25 + (90 - cov) * 0.01 + (diff === 'easy' ? 0.25 : diff === 'hard' ? -0.1 : diff === 'extreme' ? -0.18 : 0);
+      const reach = (4 + cov * 0.05) * (diff === 'easy' ? 0.75 : diff === 'hard' ? 1.15 : diff === 'extreme' ? 1.3 : 1);
       return this.t - b.t0 > react && hyp(d.x - b.tx, d.y - b.ty) < reach;
     }
     // The bullet: tap a receiver (or a spot) and the quarterback fires it flat and fast, about 60% quicker than a
@@ -1169,6 +1227,14 @@
         for (let i = 0; i < 3; i++) { const T = 0.15 + hyp(tx - qb.x, ty - qb.y) / speed; tx = best.x + best.vx * T; ty = best.y + best.vy * T; }
       }
       const d = hyp(tx - qb.x, ty - qb.y), max = this.maxRange * 0.8 * (1 - this.fatigue() * 0.3);
+      if (d > max) { tx = qb.x + (tx - qb.x) * max / d; ty = qb.y + (ty - qb.y) * max / d; }
+      this.throwBall(tx, ty, true);
+      this.pop('BULLET!', '#ffffff');
+    }
+    // a bullet to an aimed spot: a bit shorter range than a lob
+    bulletAt(t) {
+      const qb = this.qb, max = this.maxRange * 0.8 * (1 - this.fatigue() * 0.3);
+      let tx = t.x, ty = t.y; const d = hyp(tx - qb.x, ty - qb.y);
       if (d > max) { tx = qb.x + (tx - qb.x) * max / d; ty = qb.y + (ty - qb.y) * max / d; }
       this.throwBall(tx, ty, true);
       this.pop('BULLET!', '#ffffff');
@@ -1322,12 +1388,13 @@
       const runPhase = this.running(c);
       const ref = c || this.rb;      // who blockers protect / defenders chase
 
+      if (this.play.rpo && !this.rpoDone && this.t > RPO_WINDOW && c === qb) { this.rpoDone = true; if (this.rb.route) this.rb.route.block = true; }
       // offense
       for (const p of this.off) {
         p.blocking = false;
         if (p === c && runPhase) { this.steerRunner(p, dt); continue; }
         if (p.role === 'QB') {
-          if (c === qb && this.t < 0.8) go(p, L - 7.5, MID, 4, dt, 8); else go(p, p.x, p.y, 0, dt, 8);
+          if (c === qb && this.t < 0.8) go(p, this.play.rpo ? L - 5.5 : L - 7.5, MID, 4, dt, 8); else go(p, p.x, p.y, 0, dt, 8);   // an RPO: he stays in the mesh
           continue;
         }
         // RB screen: the line holds briefly, then releases to lead-block in the flat
@@ -1361,6 +1428,13 @@
           const dd = hyp(tr.x - d.x, tr.y - d.y) || 1;
           go(p, d.x + ((tr.x - d.x) / dd) * 0.9, d.y + ((tr.y - d.y) / dd) * 0.9, p.spd * (p.role === 'OL' ? 1 : 0.9), dt, 8);
         } else if (b.state === 'air' && p === b.intended) go(p, b.tx, b.ty, p.spd * this.runFade(p, dt), dt, this.cutAcc(p));
+        else if (b.state === 'air' && b.intended && p.route && hyp(p.x - b.tx, p.y - b.ty) < 10) {
+          // a teammate near where it's coming down: block the defender closest to the catch
+          p.blocking = true;
+          const d = this.def.filter((q) => !(q.stun > 0)).reduce((a, q) => (!a || hyp(q.x - b.tx, q.y - b.ty) < hyp(a.x - b.tx, a.y - b.ty) ? q : a), null);
+          if (d) { const dd = hyp(b.tx - d.x, b.ty - d.y) || 1; go(p, d.x + ((b.tx - d.x) / dd) * 0.9, d.y + ((b.ty - d.y) / dd) * 0.9, p.spd, dt, 9); }
+          else go(p, p.x, p.y, 0, dt, 8);
+        }
         else if (p.route) this.followRoute(p, dt);
       }
 
@@ -1387,6 +1461,9 @@
           if (d.contain && (ref.y - MID) * d.contain > 0 && hyp(ref.x - d.x, ref.y - d.y) > 2.2) ty = d.contain > 0 ? Math.max(ty, ref.y + 1.2) : Math.min(ty, ref.y - 1.2);
         } else if (b.state === 'air' && this.ballReact(d, b)) {
           tx = b.tx; ty = b.ty;
+        } else if (b.state === 'air' && b.intended && this.t - b.t0 > 0.2 && hyp(d.x - b.tx, d.y - b.ty) < 9) {
+          // near where it's coming down: close in to hit him as he catches it (from a step downfield of the catch)
+          tx = b.tx + 2.2; ty = b.ty + (d.y - b.ty) * 0.25;
         } else if (d.job === 'rush') { tx = qb.x; ty = qb.y; if (this.t < (d.delay || 0)) sp = 0; }
         else if (d.job === 'man') {
           const m = d.mark;
@@ -1581,10 +1658,30 @@
       if (oob) return this.incomplete('Out of bounds — incomplete');
       if (this.defending && this.intTry && this.intTry.kind !== 'late') { const r = this.intResolve(b); if (r !== false) return r; }
       // how much a nearby defender disrupts the catch depends on his coverage
-      const dcov = d && d.info ? d.info.cov : 70, dskill = clamp(0.6 + (dcov - 60) * 0.015, 0.4, 1.2) * ((this.cfg.difficulty || 'normal') === 'hard' ? 1.15 : 1);
-      const dball = d && d.info ? (d.info.ball != null ? d.info.ball : dcov) : 70, bskill = clamp(0.6 + (dball - 60) * 0.015, 0.4, 1.2) * ((this.cfg.difficulty || 'normal') === 'hard' ? 1.15 : 1);
+      const dcov = d && d.info ? d.info.cov : 70, dskill = clamp(0.6 + (dcov - 60) * 0.015, 0.4, 1.2) * ({ hard: 1.15, extreme: 1.3 }[this.cfg.difficulty] || 1);
+      const dball = d && d.info ? (d.info.ball != null ? d.info.ball : dcov) : 70, bskill = clamp(0.6 + (dball - 60) * 0.015, 0.4, 1.2) * ({ hard: 1.15, extreme: 1.3 }[this.cfg.difficulty] || 1);
       if (d && (!o || dd < od) && Math.random() < (o ? 0.22 : 0.35) * this.dif.pick * bskill * (b.bullet ? 0.5 : 1)) return this.intercepted(b.tx);
-      if (!o) return this.incomplete(d ? 'Broken up' : 'Incomplete');
+      if (!o) {
+        // just past his reach (up to 1.8 yards more): he dives for it. About 1 in 3 at 65 catching, more with good
+        // hands and agility, less with a defender there; caught or not, he's on the ground where the ball came down.
+        let dv = null, dvd = od + 1.8;
+        for (const p of this.off) { if (p.role === 'OL' || p.role === 'QB') continue; const x = hyp(p.x - b.tx, p.y - b.ty); if (x < dvd) { dvd = x; dv = p; } }
+        if (dv && !b.bullet) {
+          const h = dv.hands != null ? dv.hands : dv.ovr, a = dv.agi != null ? dv.agi : 65;
+          const pc = clamp(0.33 + (h - 65) * 0.01 + (a - 65) * 0.005 - (d ? 0.15 : 0) - this.dif.window * -0.2, 0.1, 0.6);
+          dv.x = b.tx - 0.6; dv.y = clamp(b.ty, 0.4, FW - 0.4); this.downed = dv;
+          if (Math.random() < pc) {
+            if (!this.conv) this.stats.comp++;
+            this.caught = true; this.carrier = dv; b.state = 'held'; this.catchT = this.t;
+            if (b.tx >= 110) return this.touchdown();
+            this.pop('DIVING CATCH!', '#ffd84a');
+            this.credit(b.tx);
+            return this.gainResult(b.tx, `DIVING CATCH — gain of ${Math.round(b.tx - this.los)}`);
+          }
+          return this.incomplete('He dives — just out of reach');
+        }
+        return this.incomplete(d ? 'Broken up' : 'Incomplete');
+      }
       const hands = o.hands != null ? o.hands : o.ovr;   // a back's catching stat
       // Uncontested, a catchable ball is almost always caught: about 2% drops at 70 catching (3-4% at 50,
       // under 1% at 90), a little more on a ball he has to reach for. With a defender on him it's a contested catch
@@ -1857,9 +1954,12 @@
       else if (this.clock !== Infinity && !noRunoff) {
         const hurry = !this.defending && GP.hasSkill(this.cfg.staff, 'OC', 'twomin') && (this.q === 2 || this.q === 4) && this.clock < 60;   // OC skill
         const before = this.clock;
-        this.clock = Math.max(0, this.clock - RUNOFF * (hurry ? 0.5 : 1));
+        if (!this.twoMinDue) {                                   // (the warning stops the clock: no runoff)
+          this.clock = Math.max(0, this.clock - this.runoff * (hurry ? 0.5 : 1));
+          if (this.twoMinDueAt(before)) { this.clock = 120; this.twoMinDue = true; }   // the runoff stops at 2:00
+        }
         this.lastRunoff = before - this.clock;
-        if (this.cpuTimeout()) msg += ` · TIMEOUT ${this.cfg.opp.abbr}`;
+        if (!this.twoMinDue && this.cpuTimeout()) msg += ` · TIMEOUT ${this.cfg.opp.abbr}`;
       }
       if (this.los >= this.fdx) {
         this.down = 1; this.fdx = Math.min(this.los + 10, 110);
@@ -1894,6 +1994,7 @@
       return true;
     }
     endPlay(msg, after, hold) {
+      if (this.twoMinDue) { this.twoMinDue = false; this.warned[this.q] = true; this.lastRunoff = 0; msg += ' · TWO-MINUTE WARNING'; hold = Math.max(hold || 1.5, 2.2); }
       this.defNote = this.defNoteNext || null; this.defNoteNext = null;
       this.phase = 'dead'; this.deadT = hold || 1.5; this.banner = { text: msg, t: this.deadT };
       this.after = after; this.aim = null; this.gesture = null;
@@ -2504,7 +2605,7 @@
       let pFG = dist < 45 ? 0.25 : 0.14;
       if (dc('bend')) { pTD *= 0.75; pFG += 0.12; }
       const pTO = dc('ballhawk') ? 0.2 : 0.13;
-      let need = (25 + rnd(0, 30)) * clamp(dist / 75, 0.35, 1.1);
+      let need = (25 + rnd(0, 30)) * clamp(dist / 75, 0.35, 1.1) * this.simScale;
       let text, nextX;
       const r = Math.random();
       if (this.clock !== Infinity && this.clock < 12) { text = 'The clock runs out on their drive.'; need = this.clock; nextX = 35; }
@@ -2530,7 +2631,7 @@
       const fgAt = rnd(0.3, 0.75), fgSpot = this.los + (dist - 3) * fgAt, fgDist = Math.round(120 - fgSpot) + 7;
       const pFG = fgDist <= this.kickRange ? 0.3 : fgDist <= this.kickRange * 1.15 ? 0.15 : 0.05;
       const pTO = 0.12;
-      let need = (25 + rnd(0, 30)) * clamp(dist / 75, 0.35, 1.1), text, next;
+      let need = (25 + rnd(0, 30)) * clamp(dist / 75, 0.35, 1.1) * this.simScale, text, next;
       const r = Math.random(), fin = this.clock !== Infinity && this.clock < 12;
       if (fin) { text = 'The clock runs out on your drive.'; need = this.clock; next = () => this.oppDrive(rnd(65, 75), 'They take over.'); }
       else if (r < pTD) { this.score.me += 6; text = `TOUCHDOWN! Your offense goes the last ${Math.round(dist)} yards.`; next = () => (this.q === 5 ? this.final() : this.afterTD()); }
@@ -2567,17 +2668,17 @@
         return next();
       }
       if (this.clock > 0) return next();
-      if (this.q === 1 || this.q === 3) { this.q++; this.clock = QLEN; this.banner = { text: `Start of Q${this.q}`, t: 1.5 }; return next(); }
+      if (this.q === 1 || this.q === 3) { this.q++; this.clock = this.qlen; this.banner = { text: `Start of Q${this.q}`, t: 1.5 }; return next(); }
       const line = `${this.cfg.me.abbr} ${s.me} — ${s.opp} ${this.cfg.opp.abbr}`;
       if (this.q === 2) {
-        this.q = 3; this.clock = QLEN; this.phase = 'opp'; this.tos = { me: 3, opp: 3 };
+        this.q = 3; this.clock = this.qlen; this.phase = 'opp'; this.tos = { me: 3, opp: 3 };
         return this.showPanel('Halftime', line, [{ label: 'Start 2nd half', fn: () => this.kickoff() }], true);
       }
       if (s.me === s.opp) {
         this.q = 5; this.clock = Infinity; this.phase = 'opp'; this.tos = { me: 2, opp: 2 };
         // the coin toss; the winner takes the ball
         const youReceive = Math.random() < 0.5, po = !!this.cfg.playoff;
-        this.ot = { drives: [] }; this.clock = po ? Infinity : Math.round(QLEN * 10 / 15);
+        this.ot = { drives: [] }; this.clock = po ? Infinity : Math.round(this.qlen * 10 / 15);
         return this.showPanel('Overtime', `${youReceive ? 'You win the coin toss and receive.' : `${this.cfg.opp.name} win the coin toss and receive.`}\nBoth teams get the ball at least once; if it's still tied after that, the next score wins.${po ? '' : '\nOne 10-minute period: if it ends tied, the game is a tie.'}`,
           [{ label: 'Go', fn: () => (youReceive ? this.receiveKick() : this.kickoff()) }], true);
       }
@@ -2667,15 +2768,15 @@
     placePause() {
       if (!this.pz || this.pauseX == null) return;
       const b = this.pz.btn, k = this.cv.getBoundingClientRect().width / AW;
-      const left = Math.round((this.pauseX - 4) * k) + 'px';
-      if (b.style.left !== left) { b.style.left = left; b.style.width = Math.round(20 * k) + 'px'; }
+      const left = Math.round((this.pauseX - 6) * k) + 'px';
+      if (b.style.left !== left) { b.style.left = left; b.style.width = Math.max(44, Math.round(28 * k)) + 'px'; }   // at least a thumb wide
       // the timeout button, over the TO drawn in the strip: on offense and defense, only while the clock is
       // running down to the next snap (a timeout would stop it); hidden while it's stopped, the ball is live, or you have none left
       const t = this.toBtn; if (!t || this.toX == null) return;
       const on = !this.paused && !this.dead && this.timeoutOpen() && this.lastRunoff > 0 && this.tos.me > 0;
       if (t.hidden === on) t.hidden = !on;
-      const tl = Math.round((this.toX - 2) * k) + 'px';
-      if (t.style.left !== tl) { t.style.left = tl; t.style.width = Math.round(22 * k) + 'px'; }
+      const tl = Math.round((this.toX - 4) * k) + 'px';
+      if (t.style.left !== tl) { t.style.left = tl; t.style.width = Math.round(30 * k) + 'px'; }
     }
     hud() {
       const c = this.clock, set = (id, v) => { if (this.hudCache[id] !== v) { this.hudCache[id] = v; this.el[id].textContent = v; } };
@@ -2735,48 +2836,51 @@
     // Score, quarter, clock and down & distance across the top stands. Drawn on the full-resolution canvas in the
     // menus' pixel font (crisp at any size), with the team boxes kept clear of the notch and rounded corners and
     // the middle centered on the screen.
+    // The strip across the top: scores (with timeouts left), the quarter and clock, down and distance, and the
+    // timeout and pause buttons. SB art pixels tall.
     drawScoreboard(m) {
-      const me = this.cfg.me, opp = this.cfg.opp, c = this.clock, s = this.cv.width / AW;
+      const me = this.cfg.me, opp = this.cfg.opp, c = this.clock, s = this.cv.width / AW, H = SB;
       m.save(); m.setTransform(s, 0, 0, s, 0, 0);
-      m.fillStyle = 'rgba(10,14,24,.96)'; m.fillRect(0, 0, AW, 13);
-      m.fillStyle = '#ffb43a'; m.fillRect(0, 13, AW, 1);
-      m.font = '9px Silkscreen, ui-monospace, monospace'; m.textBaseline = 'middle';
+      m.fillStyle = 'rgba(10,14,24,.96)'; m.fillRect(0, 0, AW, H);
+      m.fillStyle = '#ffb43a'; m.fillRect(0, H, AW, 1);
+      m.font = '12px Silkscreen, ui-monospace, monospace'; m.textBaseline = 'middle';
+      const mid = H / 2 + 0.7;
       const text = (t, x, y, col) => { m.fillStyle = 'rgba(16,24,42,.9)'; m.fillText(t, x + 0.5, y + 0.5); m.fillStyle = col; m.fillText(t, x, y); };
       const box = (t, pts, x, right) => {
-        const label = `${t.abbr} ${pts}`, w = Math.ceil(m.measureText(label).width) + 8, x0 = right ? x - w : x;
-        m.fillStyle = t.c1; m.fillRect(x0, 2, w, 10); m.fillStyle = t.c2; m.fillRect(x0, 11, w, 1);
-        text(label, x0 + 4, 6.7, '#ffffff');
+        const label = `${t.abbr} ${pts}`, w = Math.ceil(m.measureText(label).width) + 10, x0 = right ? x - w : x;
+        m.fillStyle = t.c1; m.fillRect(x0, 2, w, H - 4); m.fillStyle = t.c2; m.fillRect(x0, H - 3, w, 1);
+        text(label, x0 + 5, mid, '#ffffff');
         return w;
       };
       const L = 4 + (this.safeL || 0), Rx = AW - 4 - (this.safeR || 0);
       // three little bars beside each score: the timeouts left this half
-      const bars = (n, x) => { for (let i = 0; i < 3; i++) { m.fillStyle = i < n ? '#ffd84a' : 'rgba(255,255,255,.18)'; m.fillRect(x + i * 3, 4, 2, 6); } };
+      const bars = (n, x) => { for (let i = 0; i < 3; i++) { m.fillStyle = i < n ? '#ffd84a' : 'rgba(255,255,255,.18)'; m.fillRect(x + i * 4, 5, 2, H - 10); } };
       const lw = box(me, this.score.me, L, false);
-      bars(this.tos.me, L + lw + 2);
+      bars(this.tos.me, L + lw + 3);
       const rw = box(opp, this.score.opp, Rx, true);
-      bars(this.tos.opp, Rx - rw - 10);
+      bars(this.tos.opp, Rx - rw - 14);
       // pause icon, just left of the opponent's score and timeouts
-      const px = Rx - rw - 26;
+      const px = Rx - rw - 34;
       // the timeout button, left of the pause icon
-      const tx = px - 22, toOn = this.toBtn && !this.toBtn.hidden;
+      const tx = px - 30, toOn = this.toBtn && !this.toBtn.hidden;
       if (toOn) {
         const ok = this.timeoutOpen() && this.tos.me > 0;
-        m.fillStyle = ok ? 'rgba(255,180,58,.9)' : 'rgba(255,255,255,.14)'; m.fillRect(tx, 2, 18, 10);
-        m.fillStyle = ok ? '#1b1300' : 'rgba(255,255,255,.5)'; m.fillText('TO', tx + 3, 6.7);
+        m.fillStyle = ok ? 'rgba(255,180,58,.9)' : 'rgba(255,255,255,.14)'; m.fillRect(tx, 2, 24, H - 4);
+        m.fillStyle = ok ? '#1b1300' : 'rgba(255,255,255,.5)'; m.fillText('TO', tx + 5, mid);
       }
       this.toX = tx;
       if (this.pz && !this.pz.btn.hidden) {
-        m.fillStyle = 'rgba(255,255,255,.18)'; m.fillRect(px, 2, 12, 10);
-        m.fillStyle = '#ffffff'; m.fillRect(px + 3.5, 4, 2, 6); m.fillRect(px + 6.5, 4, 2, 6);
+        m.fillStyle = 'rgba(255,255,255,.18)'; m.fillRect(px, 2, 16, H - 4);
+        m.fillStyle = '#ffffff'; m.fillRect(px + 4, 5, 3, H - 10); m.fillRect(px + 9, 5, 3, H - 10);
       }
       this.pauseX = px;
       const clock = c === Infinity ? '-:--' : Math.floor(Math.ceil(c) / 60) + ':' + String(Math.ceil(c) % 60).padStart(2, '0');
       const q = this.q === 5 ? 'OT' : 'Q' + this.q;
       const down = this.phase === 'opp' || this.phase === 'final' || this.phase === 'convert' ? '' : this.downText().replace(' · ', '   ').replace(' & ', ' AND ');   // Silkscreen's & reads like a $
-      const left = `${q} ${clock}`, gap = down ? 12 : 0;
+      const left = `${q} ${clock}`, gap = down ? 14 : 0;
       const wl = m.measureText(left).width, wd = down ? m.measureText(down).width : 0, x0 = AW / 2 - (wl + gap + wd) / 2;
-      text(left, x0, 6.7, '#ffffff');
-      if (down) text(down, x0 + wl + gap, 6.7, '#ffd84a');
+      text(left, x0, mid, '#ffffff');
+      if (down) text(down, x0 + wl + gap, mid, '#ffd84a');
       m.restore();
     }
 
@@ -2797,9 +2901,10 @@
       }
 
       // route preview
-      if (this.phase === 'presnap' && this.play.type === 'pass' && !this.defending) {
+      if ((this.phase === 'presnap' || this.phase === 'choose') && this.play && !this.defending) this.drawRunLane(g);
+      if ((this.phase === 'presnap' || this.phase === 'choose') && this.play && this.play.type === 'pass' && !this.defending) {
         for (const p of this.off) {
-          if (!p.route) continue;
+          if (!p.route || p.route.block) continue;
           let lx = this.ax(p.x), ly = this.ay(p.y) - 3;
           for (const [x, y] of p.route.pts) {
             const nx = this.ax(x), ny = this.ay(y) - 3;
@@ -2820,6 +2925,7 @@
       if (show) {
         const all = [...this.def, ...this.off].sort((a, b) => a.y - b.y);
         for (const p of all) this.drawPlayer(p);
+        if ((this.phase === 'choose' || this.phase === 'presnap') && !this.defending && !this.kick) this.drawNames(g);
         // on their field goal or extra point, a bouncing arrow over your leaper (on top of everyone): he's yours to play
         const kk = this.kick;
         if (kk && kk.cpu && kk.leaper && (kk.type === 'fg' || kk.type === 'pat') && kk.stage === 'approach' && !kk.leapt) {
@@ -2848,13 +2954,14 @@
       // with the call list open: the field-tap shortcut
       if (this.phase === 'choose' && this.el.panel && !this.el.panel.hidden && this.el.panel.className !== 'modal' && (this.defending || this.down < 4)) {
         const t = `TAP THE FIELD FOR THE ${this.defending ? "DC'S" : "OC'S"} CALL`, w = Px.width(t) + 10;
-        Px.box(u, Math.round(AW / 2 - w / 2), 17, w, 12, 'rgba(16,24,42,.8)');
-        Px.text(u, t, AW / 2, 20, '#ffd84a', 1, { center: true });
+        Px.box(u, Math.round(AW / 2 - w / 2), SB + 4, w, 12, 'rgba(16,24,42,.8)');
+        Px.text(u, t, AW / 2, SB + 7, '#ffd84a', 1, { center: true });
       }
       if (this.phase === 'presnap') this.hint(this.defending ? `${callName(this.dcall).toUpperCase()} · ` + (this.ringD ? `RINGED #${this.ringD.info.num}: SWIPE LEFT TO DIVE · TAP TO SNAP` : 'TAP THE FIELD WHEN READY')
         : `${this.play ? this.play.name.toUpperCase() + ' · ' : ''}TAP THE FIELD TO SNAP`, 'CHANGE');
       else if (this.phase === 'live' && this.defending) this.hint(this.ringOn() && !this.ringD.dove ? `SWIPE LEFT: #${this.ringD.info.num} DIVES AT THE BALL CARRIER` : 'SWIPE UP AS THE BALL ARRIVES TO GO FOR THE PICK');
-      else if (this.phase === 'live' && this.passing() && !this.aim) this.hint('DRAG BACK TO THROW · TAP A RECEIVER: BULLET · SWIPE AHEAD: RUN');
+      else if (this.phase === 'live' && this.passing() && !this.aim) this.hint(this.play.rpo && !this.rpoDone ? 'TAP THE BACK TO HAND OFF · OR DRAG BACK TO THROW'
+        : `DRAG BACK TO THROW · TAP: ${this.bulletMode ? 'LOB' : 'BULLET'} · SWIPE AHEAD: RUN`);
       else if (this.phase === 'kick' && this.kick && this.kick.cpu && (this.kick.type === 'fg' || this.kick.type === 'pat'))
         this.hint(this.kick.stage === 'approach' && !this.kick.leapt ? 'SWIPE UP JUST AS HE KICKS IT TO BLOCK' : '');
       else if (this.phase === 'kick' && this.kick && this.kick.cpu) this.hint({ flight: this.kick.fairCall ? (this.kick.type === 'ko' ? 'FAIR CATCH / TOUCHBACK CALLED' : 'FAIR CATCH CALLED') : this.kick.type === 'ko' ? 'TAP FOR A FAIR CATCH OR TOUCHBACK' : 'TAP TO CALL A FAIR CATCH',
@@ -2864,12 +2971,12 @@
       else if (this.phase === 'live' && this.running(this.carrier)) this.hint(`UP/DOWN: CUT · TAP+SWIPE: JUKE · FORWARD: ${this.carrier === this.qb ? 'SLIDE' : 'LUNGE'} · BACK: STOP`);
       if (this.banner) {
         const t = this.banner.text, sc = Px.width(t, 2) > AW - 24 ? 1 : 2, w = Px.width(t, sc) + 14, h = 7 * sc + 10;
-        Px.box(u, Math.round(AW / 2 - w / 2), 30, w, h, '#10182a', '#ffb43a');
-        Px.text(u, t, AW / 2, 35, '#ffb43a', sc, { center: true });
+        Px.box(u, Math.round(AW / 2 - w / 2), SB + 17, w, h, '#10182a', '#ffb43a');
+        Px.text(u, t, AW / 2, SB + 22, '#ffb43a', sc, { center: true });
         if (this.defNote) {
           const w2 = Px.width(this.defNote) + 10;
-          Px.box(u, Math.round(AW / 2 - w2 / 2), 30 + h + 2, w2, 12, 'rgba(16,24,42,.85)');
-          Px.text(u, this.defNote, AW / 2, 30 + h + 5, '#9fd3ff', 1, { center: true });
+          Px.box(u, Math.round(AW / 2 - w2 / 2), SB + 17 + h + 2, w2, 12, 'rgba(16,24,42,.85)');
+          Px.text(u, this.defNote, AW / 2, SB + 17 + h + 5, '#9fd3ff', 1, { center: true });
         }
       }
 
@@ -2993,6 +3100,38 @@
       if (p.team === 'O' && p.route && this.phase !== 'dead' && !this.defending)
         Px.text(g, p.role.replace(/\d/, ''), X, Y - 23, '#ffffff', 1, { center: true, shadow: '#10182a' });
     }
+    // A run's path, drawn like a route: from the back to the hole, then upfield (outside runs bend to the edge
+    // first). On an RPO, the back's path through the mesh.
+    drawRunLane(g) {
+      const pl = this.play, rb = this.rb, Px = GP.Pixel;
+      if (!rb || pl.type !== 'run') return;
+      const L = this.los, side = pl.side || 1, edge = MID + side * 12;
+      const pts = pl.sweep ? [[L - 1.5, edge], [L + 8, edge]] : [[L + 0.5, rb.y], [L + 8, rb.y]];
+      let lx = this.ax(rb.x), ly = this.ay(rb.y) - 3;
+      for (const [x, y] of pts) { const nx = this.ax(x), ny = this.ay(y) - 3; Px.dots(g, lx, ly, nx, ny, '#ffd84a', 3); lx = nx; ly = ny; }
+      g.fillStyle = '#ffd84a'; g.fillRect(lx, ly - 2, 3, 1); g.fillRect(lx + 1, ly - 1, 3, 1); g.fillRect(lx + 2, ly, 3, 1); g.fillRect(lx + 1, ly + 1, 3, 1); g.fillRect(lx, ly + 2, 3, 1);   // an arrowhead
+    }
+    // Before the snap: each receiver's, the tight end's and the back's last name under him, and a star by the one to
+    // throw at: the best matchup against the man lined up on him (his speed and hands against that defender's
+    // coverage), when it's clearly the best.
+    drawNames(g) {
+      const Px = GP.Pixel, rec = this.off.filter((p) => ['WR1', 'WR2', 'TE', 'RB'].includes(p.role));
+      let star = null;
+      if (this.play && this.play.type === 'pass') {
+        const scored = rec.filter((p) => p.route && !p.route.block && !p.route.mesh).map((p) => {
+          const d = this.def.reduce((a, q) => (!a || hyp(q.x - p.x, q.y - p.y) < hyp(a.x - p.x, a.y - p.y) ? q : a), null);
+          return { p, v: ((p.sStat || 65) * 0.6 + (p.hands || 65) * 0.4) - (d && d.info ? d.info.cov : 65) };
+        }).sort((a, b) => b.v - a.v);
+        if (scored.length && scored[0].v >= 4 && (scored.length < 2 || scored[0].v - scored[1].v >= 3)) star = scored[0].p;
+      }
+      for (const p of rec) {
+        if (!p.name) continue;
+        const last = p.name.split(' ').slice(-1)[0].toUpperCase().slice(0, 9), X = this.ax(p.x), Y = this.ay(p.y) + 4;
+        const t = (p === star ? '* ' : '') + last, w = Px.width(t);
+        g.fillStyle = 'rgba(16,24,42,.7)'; g.fillRect(Math.round(X - w / 2) - 2, Y - 1, w + 4, 8);
+        Px.text(g, t, X, Y, p === star ? '#ffd84a' : '#ffffff', 1, { center: true });
+      }
+    }
     drawBall() {
       const g = this.ag, b = this.ball;
       if (this.phase === 'kick' && this.kick && b.state === 'held') {   // on the spot under the holder's hand
@@ -3035,8 +3174,8 @@
     drawAim() {
       const g = this.ag, Px = GP.Pixel, t = this.aimTarget(), qb = this.qb;
       const X0 = this.ax(qb.x), Y0 = this.ay(qb.y) - 8, X1 = this.ax(t.x), Y1 = this.ay(t.y);
-      const peak = hyp(t.x - qb.x, t.y - qb.y) * YA * 0.11, n = Math.max(5, Math.floor(hyp(X1 - X0, Y1 - Y0) / 5));
-      g.fillStyle = '#ffffff';
+      const peak = hyp(t.x - qb.x, t.y - qb.y) * YA * (this.bulletMode ? 0.015 : 0.11), n = Math.max(5, Math.floor(hyp(X1 - X0, Y1 - Y0) / 5));
+      g.fillStyle = this.bulletMode ? '#7fe3ff' : '#ffffff';                 // a bullet: a flat, blue arc
       for (let i = 1; i < n; i++) {
         const u = i / n;
         g.fillRect(Math.round(X0 + (X1 - X0) * u), Math.round(Y0 + (Y1 - Y0) * u - 4 * peak * u * (1 - u)), 2, 2);
@@ -3053,8 +3192,8 @@
       if (k.stage === 'flight' || k.stage === 'bounce' || k.stage === 'return' || k.stage === 'loose') return;   // the ball's away: just watch
       const title = k.type === 'punt' ? `PUNT · RANGE ${k.range}` : k.type === 'ko' ? `KICKOFF · RANGE ${k.range}` : `${k.type === 'pat' ? 'EXTRA POINT' : k.dist + '-YARD FIELD GOAL'} · RANGE ${this.kickRange}`;
       const stretch = (k.stage === 'aim' && this.kaim && k.over > 0) || (k.stage === 'meter' && k.over > 0), full = stretch ? title + ' · STRETCH' : title;
-      Px.box(g, Math.round(AW / 2 - Px.width(full) / 2) - 6, 18, Px.width(full) + 12, 12, 'rgba(16,24,42,.85)');
-      Px.text(g, full, AW / 2, 21, stretch ? '#ffd84a' : k.type !== 'punt' && k.dist > k.range * 1.25 ? '#ff8a5c' : '#ffffff', 1, { center: true });
+      Px.box(g, Math.round(AW / 2 - Px.width(full) / 2) - 6, SB + 5, Px.width(full) + 12, 12, 'rgba(16,24,42,.85)');
+      Px.text(g, full, AW / 2, SB + 8, stretch ? '#ffd84a' : k.type !== 'punt' && k.dist > k.range * 1.25 ? '#ff8a5c' : '#ffffff', 1, { center: true });
       // the hold spot and the uprights
       g.fillStyle = '#ffd84a'; g.fillRect(X0 - 1, Y0 - 1, 3, 3);
       const aimLine = (t, col) => {
@@ -3083,5 +3222,5 @@
   GP.Match = Match;
   GP.PLAYS = PLAYS;
   GP.PLAY_TYPES = PLAY_TYPES;
-  GP.setOcFit = (f) => { OC_FIT = f; };
+  GP.setOcFit = (f) => { OC_FIT = f; addRpoFit(); };
 })();
