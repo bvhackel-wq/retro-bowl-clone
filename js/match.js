@@ -19,6 +19,7 @@
   const setArtWidth = (aw) => { AW = aw; W = aw * 2; VIEW = W / PPY; };
   const QLEN = 120;                // seconds per quarter
   const RUNOFF = 8;                // extra clock burned after an in-bounds play
+  const STAMINA = 1.2;             // everyone's stamina in games: 20% more (tiring drains and run fades are divided by it)
   const CAM_RATE = 2;              // camera follow responsiveness (higher = snappier)
   const PI_RADIUS = 2.5;           // yards: an early swipe only draws a flag on a defender this close to the receiver
   const CUT_TIME = 0.5;            // seconds a swipe angles the runner toward a sideline
@@ -875,9 +876,9 @@
           te: this.off.find((p) => p.role === 'TE'), rb: this.rb, db: 7, lb: 7, dl1: this.def[1], lbBlitz: dc.lbBlitz }, { reuse }));
       }
       this.defNoteNext = `DEFENSE: ${COVERAGES[real].toUpperCase()}` + (shown !== real ? ` (SHOWED ${COVERAGES[shown].toUpperCase()})` : '');
-      this.energy = Math.max(0, this.energy - (3 + (100 - this.qbs.sta) * 0.07));
+      this.energy = Math.max(0, this.energy - (3 + (100 - this.qbs.sta) * 0.07) / STAMINA);
       // the line tires too, each man by his own stamina
-      for (const p of this.off) if (p.role === 'OL') this.olEnergy[p.slot] = Math.max(0, this.olEnergy[p.slot] - (3 + (100 - p.sta) * 0.06));
+      for (const p of this.off) if (p.role === 'OL') this.olEnergy[p.slot] = Math.max(0, this.olEnergy[p.slot] - (3 + (100 - p.sta) * 0.06) / STAMINA);
     }
 
     mk(team, role, x, y, spd) {
@@ -1247,8 +1248,8 @@
     // slowly if he has stamina, at most 10%. Returns the speed multiplier.
     runFade(p, dt) {
       p.runT = (p.runT || 0) + dt;
-      const rate = Math.max(0.004, 0.05 - ((p.sta != null ? p.sta : 70) - 50) * 0.001);
-      const start = p.role === 'WR1' || p.role === 'WR2' || p.role === 'TE' ? 2 : 3;   // receivers run all play long
+      const rate = Math.max(0.004, 0.05 - ((p.sta != null ? p.sta : 70) - 50) * 0.001) / STAMINA;
+      const start = (p.role === 'WR1' || p.role === 'WR2' || p.role === 'TE' ? 2 : 3) * STAMINA;   // receivers run all play long
       return 1 - clamp((p.runT - start) * rate, 0, 0.1);
     }
     followRoute(p, dt) {
