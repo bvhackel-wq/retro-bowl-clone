@@ -1192,6 +1192,16 @@
     }
 
     // Linemen lock a defender up; a receiver's block only slows him and he can still tackle.
+    // A pursuer aims where the ball carrier is going, but never at a spot further down the carrier's path than he
+    // already is: a man in front of the runner steps into the lane and meets him. (Without this, a long lead,
+    // like a busted defender's overrun or a fast runner's, put the aim point behind a defender who was already in the
+    // way, and he backpedaled away from the ball.)
+    capLead(d, r, lead) {
+      const v = hyp(r.vx, r.vy);
+      if (v < 0.5) return lead;
+      const ahead = ((d.x - r.x) * r.vx + (d.y - r.y) * r.vy) / v;      // how far along the runner's path he is
+      return ahead > 0 ? Math.min(lead, ahead / v) : lead;
+    }
     blockFactor(d, dt) {
       d.held = false;
       if (d.eng >= d.shed) return 1;
@@ -1368,8 +1378,9 @@
         const f = this.blockFactor(d, dt);
         let tx, ty, sp = d.spd;
         if (runPhase || (!isPass && this.t > d.react)) {
-          const lead = d.bust === 'run' ? Math.min(2, (hyp(ref.x - d.x, ref.y - d.y) / d.spd) * 1.6)   // busted: overruns it
+          let lead = d.bust === 'run' ? Math.min(2, (hyp(ref.x - d.x, ref.y - d.y) / d.spd) * 1.6)   // busted: overruns it
             : Math.min(0.8, (hyp(ref.x - d.x, ref.y - d.y) / d.spd) * 0.6);
+          lead = this.capLead(d, ref, lead);
           tx = ref.x + ref.vx * lead; ty = ref.y + ref.vy * lead;
           // contain: closing in, he stays outside the runner on his side so the runner can't get the edge; then he tackles
           if (d.contain && (ref.y - MID) * d.contain > 0 && hyp(ref.x - d.x, ref.y - d.y) > 2.2) ty = d.contain > 0 ? Math.max(ty, ref.y + 1.2) : Math.min(ty, ref.y - 1.2);
@@ -2355,7 +2366,7 @@
         if (c.stun > 0) { c.stun -= dt; continue; }
         // a pursuit angle: aim for where he'll be, further ahead the further away he is, and cut him off
         // rather than chase him (cover men behind him have to run him down)
-        const lead = Math.min(1.4, hyp(R.x - c.x, R.y - c.y) / c.spd * 0.9);
+        const lead = this.capLead(c, R, Math.min(1.4, hyp(R.x - c.x, R.y - c.y) / c.spd * 0.9));
         go(c, Math.max(R.x + R.vx * lead, 0), R.y + R.vy * lead, c.spd, dt, 9);
       }
       this.returnBlocks(dt);
