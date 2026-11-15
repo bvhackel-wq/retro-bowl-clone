@@ -154,6 +154,8 @@
 
       this.q = 1; this.clock = QLEN;
       this.score = { me: 0, opp: 0 };
+      const fk = cfg.film || {}; this.filmDC = new Set(fk.dc || []); this.filmOC = new Set(fk.oc || []);   // what your coordinators saw on film
+      this.tos = { me: 3, opp: 3 }; this.lastRunoff = 0;   // timeouts left this half; the clock the last play ran off after it ended
       const newStats = () => ({ att: 0, comp: 0, pyd: 0, ptd: 0, int: 0, ryd: 0, rtd: 0, sack: 0, jukes: 0, broken: 0, jbroken: 0, yac: 0, fum: 0 });
       this.myStats = this.stats = newStats(); this.oppStats = newStats();     // your offense / theirs
       // Each side's defenders have a jersey number, tackling (TKL), speed and coverage, drawn from the defense's
@@ -271,6 +273,7 @@
       const $ = (id) => document.getElementById(id);
       this.pz = { box: $('pause'), main: $('pause-main'), confirm: $('pause-confirm'), score: $('pause-score'), btn: $('pause-btn') };
       this.pz.btn.onclick = () => this.pause();
+      this.toBtn = $('to-btn'); this.toBtn.onclick = () => this.callTimeout();
       $('pause-resume').onclick = () => this.resume();
       $('pause-quit').onclick = () => { this.pz.main.hidden = true; this.pz.confirm.hidden = false; };
       $('pause-back').onclick = () => this.resume();
@@ -310,6 +313,7 @@
     destroy() {
       this.dead = true; cancelAnimationFrame(this.raf);
       if (this.pz) { this.pz.box.hidden = true; this.pz.btn.hidden = true; document.removeEventListener('visibilitychange', this.onHide); }
+      if (this.toBtn) this.toBtn.hidden = true;
       this.el.chip.hidden = true;
       this.cv.removeEventListener('pointerdown', this.onDown);
       this.cv.removeEventListener('pointermove', this.onMove);
@@ -446,6 +450,7 @@
     key(e, down) {
       const k = e.key.toLowerCase();
       if (down && !e.repeat && (k === 'escape' || k === 'p')) { this.paused ? this.resume() : this.pause(); return; }
+      if (down && !e.repeat && k === 't' && !this.paused) { this.callTimeout(); return; }
       if (this.paused) return;
       if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' '].includes(k)) e.preventDefault();
       this.keys[k] = down;
@@ -499,7 +504,7 @@
       const row = document.createElement('div'); row.className = 'opts'; p.appendChild(row);
       for (const o of opts) {
         const b = document.createElement('button');
-        b.className = modal ? 'btn' : 'opt' + (o.kick ? ' kick' : '') + (o.rec ? ' rec' : '');
+        b.className = modal ? 'btn' : 'opt' + (o.kick ? ' kick' : '') + (o.sim ? ' sim' : '') + (o.rec ? ' rec' : '');
         if (modal) b.textContent = o.label;
         else { const n = document.createElement('b'); n.textContent = o.label; const s = document.createElement('small'); s.textContent = o.rec ? (this.defending ? "DC's call" : "OC's call") + (o.recName ? ': ' + o.recName : '') : o.sub || ''; b.append(n, s); }
         b.onclick = () => { this.hidePanel(); o.fn(); };
@@ -734,8 +739,20 @@
       sit.pa += clamp(runShare - 0.35, -0.3, 0.4) * 4;                                                     // play action works after you've run
       // his read of the coverage the defense shows (a better coordinator reads it more often)
       const reads = Math.random() < 0.1 + stars * 0.18, fit = OC_FIT[coverKey(this.dcall.shown || this.dcall.type)] || {};
+      // and what he saw on film of their defense: the coverages they lean on (man or zone, how often they blitz,
+      // their 3rd-and-long call). If the film says they disguise, he trusts the pre-snap look less.
+      const sc = this.cfg.oppScheme, F = this.filmOC, mix = {};
+      if (sc && F.size) {
+        const add = (c, x) => { if (x > 0) mix[c] = (mix[c] || 0) + x; };
+        if (F.has('man')) { if (sc.man > 0) { add('cover1', sc.man); add('2man', sc.man * 0.5); } else { add('cover3', -sc.man); add('cover2', -sc.man * 0.6); } }
+        if (F.has('blitz')) { add('cover0', sc.blitz - 1); add('firezone', sc.blitz - 1); }
+        if (F.has('long3') && this.down === 3 && togo >= 7) add(sc.long3, 1.5);
+      }
+      const mw = Object.values(mix).reduce((a, b) => a + b, 0);
+      const filmFit = (id) => (mw ? Object.entries(mix).reduce((a, [c, x]) => a + ((OC_FIT[c] || {})[id] || 0) * x, 0) / mw : 0);
+      const trust = F.has('disguise') && sc && sc.disguise >= 1.2 ? 1 : 1.5;
       this.ocScores = {};
-      for (const p of PLAYS) this.ocScores[p.id] = sit[p.cat] + (reads ? (fit[p.id] || 0) * 1.5 : 0) + gauss() * (5.2 - stars) * 0.9;
+      for (const p of PLAYS) this.ocScores[p.id] = sit[p.cat] + (reads ? (fit[p.id] || 0) * trust : 0) + filmFit(p.id) * 0.9 + gauss() * (5.2 - stars) * 0.9;
       const best = PLAYS.slice().sort((a, b) => this.ocScores[b.id] - this.ocScores[a.id])[0];
       let call = { play: best };
       if (this.down === 4) {
@@ -780,6 +797,7 @@
         opts.push({ label: 'Field Goal', sub: `${dist} yds · range ${this.kickRange}${far}`, kick: true, rec: call.kick === 'fg', fn: () => this.startKick('fg') });
       }
       if (this.down === 4) opts.push({ label: 'Punt', sub: 'Flip the field', kick: true, rec: call.kick === 'punt', fn: () => this.punt() });
+      if (!this.conv) opts.push({ label: 'Simulate drive', sub: 'Let your coordinator finish the drive', sim: true, fn: () => this.simDrive() });
       this.showPanel(title, '', opts);
     }
 
@@ -813,6 +831,7 @@
       else this.playList(this.down === 4 ? '4th down — your call' : 'Call the play — ' + this.downText());
     }
     snap() {
+      this.lastRunoff = 0;
       // on runs the second level reacts a beat late; linemen's hold times are already set by run blocking
       // deep defenders guard against the pass first, so they read the run late
       // defensive backs in man watch their receiver, not the backfield, so they find the run late too;
@@ -967,6 +986,18 @@
         for (const k of ['cover2', 'cover3', 'cover4']) mul(k, 1 - 0.6 * sc.man);
         mul('cover0', sc.blitz); mul('firezone', sc.blitz);
         if (this.down === 3 && togo >= 8) { if (w[sc.long3] == null) w[sc.long3] = 10; mul(sc.long3, 3); }
+      }
+      // your DC on defense: what he saw on film of their offense (only the tendencies he's found so far)
+      const fo = this.defending && this.cfg.oppScheme, F = this.filmDC;
+      if (fo && F.size && !(late && lead > 0)) {
+        const stop = { inside: ['cover0', 'firezone', 'cover1'], outside: ['cover3', 'cover2', 'cover4'], quick: ['cover1p'],
+          deep: ['cover4', '2man', 'cover2'], screen: ['cover2', 'cover3', 'cover4'], pa: ['cover4', '2man'] };
+        const lean = (cat, f) => { for (const k of stop[cat]) mul(k, f); if (cat === 'screen') { mul('cover0', 1 / f); mul('firezone', 1 / f); } };
+        if (F.has('run')) { if (fo.run > 0) { lean('inside', 1 + 0.6 * fo.run); mul('cover4', 1 - 0.3 * fo.run); mul('2man', 1 - 0.3 * fo.run); } else lean('outside', 1 - 0.4 * fo.run); }
+        if (F.has('deep')) { if (fo.deep > 0) lean('deep', 1 + 0.7 * fo.deep); else { lean('quick', 1 - 0.6 * fo.deep); mul('cover0', 1 - 0.3 * fo.deep); } }
+        if (F.has('fav')) lean(fo.fav, 1.25);
+        if (F.has('third') && this.down === 3 && togo >= 7) lean(fo.third, 2);
+        if (F.has('red') && this.los >= 90) lean(fo.red, 1.8);
       }
       this.defW = w;                                   // kept so the defensive menu can rank calls
       let r = Math.random() * Object.values(w).reduce((a, b) => a + b, 0), type = 'cover3';
@@ -1754,7 +1785,10 @@
       if (oob) msg += ' (out of bounds)';
       else if (this.clock !== Infinity) {
         const hurry = !this.defending && GP.hasSkill(this.cfg.staff, 'OC', 'twomin') && (this.q === 2 || this.q === 4) && this.clock < 60;   // OC skill
+        const before = this.clock;
         this.clock = Math.max(0, this.clock - RUNOFF * (hurry ? 0.5 : 1));
+        this.lastRunoff = before - this.clock;
+        if (this.cpuTimeout()) msg += ` · TIMEOUT ${this.cfg.opp.abbr}`;
       }
       if (this.los >= this.fdx) {
         this.down = 1; this.fdx = Math.min(this.los + 10, 110);
@@ -1765,6 +1799,28 @@
         this.down++;
         this.endPlay(msg, () => this.checkClock(() => this.nextDown()));
       }
+    }
+    // ---------- timeouts ----------
+    // Three a half for each team (two in overtime). A play that ends in bounds lets the clock run on to the next
+    // snap (RUNOFF); a timeout before that snap stops it, so it gives that time back. With the clock already
+    // stopped (an incompletion, out of bounds) there's nothing to save and it isn't used up.
+    timeoutOpen() { return (this.phase === 'choose' || this.phase === 'presnap' || this.phase === 'dead') && !this.kick && !this.conv && this.clock !== Infinity; }
+    callTimeout() {
+      if (this.paused || !this.timeoutOpen()) return this.pop('No timeout now');
+      if (this.tos.me <= 0) return this.pop('No timeouts left');
+      if (this.lastRunoff <= 0) return this.pop('The clock is already stopped');
+      this.tos.me--; this.clock += this.lastRunoff; this.lastRunoff = 0;
+      this.banner = { text: `TIMEOUT ${this.cfg.me.abbr} · ${this.tos.me} left`, t: 1.4 };
+    }
+    // Their coach: in the last two minutes of the game when trailing or tied (on defense only if it's still a
+    // one- or two-score game), and with the ball late in the first half to save time for a score.
+    cpuTimeout() {
+      if (this.tos.opp <= 0 || this.lastRunoff <= 0 || this.clock === Infinity) return false;
+      const theirBall = this.defending, behind = this.score.me - this.score.opp;
+      const want = (this.q === 4 && this.clock < 120 && behind >= 0 && (theirBall || behind <= 16)) || (this.q === 2 && this.clock < 60 && theirBall);
+      if (!want) return false;
+      this.tos.opp--; this.clock += this.lastRunoff; this.lastRunoff = 0;
+      return true;
     }
     endPlay(msg, after, hold) {
       this.defNote = this.defNoteNext || null; this.defNoteNext = null;
@@ -2351,6 +2407,42 @@
         [{ label: 'Continue', fn: () => this.checkClock(() => (nextX === 'ko' ? this.receiveKick() : this.startDrive(nextX))) }], true);
     }
 
+    // Your drive, simulated from where it stands: your offense (its starters plus your OC's stars) against their
+    // defense, the field position, the down, and your kicker's range for a field goal. The mirror of oppDriveSim.
+    simDrive() {
+      const R = this.cfg.roster, st = this.cfg.staff, o = this.cfg.opp;
+      const ovr = (k) => (R[k] && R[k].ovr) || 65;
+      const myOff = (ovr('QB') + ovr('RB') + ovr('WR1') + ovr('WR2') + ovr('TE') + ovr('OL')) / 6 + (st ? st.OC.stars * 1.5 : 0);
+      const dist = 110 - this.los, toGo = this.fdx - this.los;
+      // a late down with a long way to go makes it harder to keep the drive alive
+      const downPen = (this.down - 1) * 0.04 + (this.down >= 3 ? Math.min(toGo, 15) * 0.006 : 0);
+      const pTD = clamp(0.24 + (myOff - this.cfg.oppDef) * 0.008 + (75 - dist) * 0.004 - downPen, 0.06, 0.8);
+      const fgAt = rnd(0.3, 0.75), fgSpot = this.los + (dist - 3) * fgAt, fgDist = Math.round(120 - fgSpot) + 7;
+      const pFG = fgDist <= this.kickRange ? 0.3 : fgDist <= this.kickRange * 1.15 ? 0.15 : 0.05;
+      const pTO = 0.12;
+      let need = (25 + rnd(0, 30)) * clamp(dist / 75, 0.35, 1.1), text, next;
+      const r = Math.random(), fin = this.clock !== Infinity && this.clock < 12;
+      if (fin) { text = 'The clock runs out on your drive.'; need = this.clock; next = () => this.oppDrive(rnd(65, 75), 'They take over.'); }
+      else if (r < pTD) { this.score.me += 6; text = `TOUCHDOWN! Your offense goes the last ${Math.round(dist)} yards.`; next = () => (this.q === 5 ? this.final() : this.afterTD()); }
+      else if (r < pTD + pFG) {
+        const good = Math.random() < clamp(1.05 - fgDist / (this.kickRange * 1.4), 0.3, 0.97);
+        if (good) { this.score.me += 3; text = `The drive stalls; a ${fgDist}-yard field goal is GOOD.`; next = () => this.kickoff(); }
+        else { text = `The drive stalls; the ${fgDist}-yard field goal is NO GOOD.`; const x = Math.max(fgSpot, 30); next = () => this.oppDrive(x - 10, 'They take over after the miss.'); }
+      } else if (r < pTD + pFG + pTO) {
+        const x = clamp(this.los + rnd(0, dist * 0.6), 15, 105);
+        text = Math.random() < 0.5 ? 'Intercepted! The drive ends in a pick.' : 'Fumble! They recover.';
+        next = () => this.oppDrive(x - 10, 'They take over after the turnover.');
+      } else {
+        const stall = clamp(this.los + rnd(0, Math.max(0, dist - 30)), this.los, 85), land = clamp(stall + rnd(38, 48), stall + 20, 110);
+        text = 'The drive stalls. You punt it away.';
+        next = () => this.oppDrive(land >= 110 ? 80 : land - 10, land >= 110 ? 'Touchback.' : 'They take over after the punt.');
+      }
+      if (this.clock !== Infinity) this.clock = Math.max(0, this.clock - need);
+      this.phase = 'opp'; this.kick = null;
+      this.showPanel('Your drive, simulated', `${text}\n\n${this.cfg.me.abbr} ${this.score.me} — ${this.score.opp} ${o.abbr}`,
+        [{ label: 'Continue', fn: () => this.checkClock(next) }], true);
+    }
+
     checkClock(next) {
       const s = this.score;
       if (this.q === 5) {
@@ -2368,11 +2460,11 @@
       if (this.q === 1 || this.q === 3) { this.q++; this.clock = QLEN; this.banner = { text: `Start of Q${this.q}`, t: 1.5 }; return next(); }
       const line = `${this.cfg.me.abbr} ${s.me} — ${s.opp} ${this.cfg.opp.abbr}`;
       if (this.q === 2) {
-        this.q = 3; this.clock = QLEN; this.phase = 'opp';
+        this.q = 3; this.clock = QLEN; this.phase = 'opp'; this.tos = { me: 3, opp: 3 };
         return this.showPanel('Halftime', line, [{ label: 'Start 2nd half', fn: () => this.kickoff() }], true);
       }
       if (s.me === s.opp) {
-        this.q = 5; this.clock = Infinity; this.phase = 'opp';
+        this.q = 5; this.clock = Infinity; this.phase = 'opp'; this.tos = { me: 2, opp: 2 };
         // the coin toss; the winner takes the ball
         const youReceive = Math.random() < 0.5, po = !!this.cfg.playoff;
         this.ot = { drives: [] }; this.clock = po ? Infinity : Math.round(QLEN * 10 / 15);
@@ -2467,6 +2559,12 @@
       const b = this.pz.btn, k = this.cv.getBoundingClientRect().width / AW;
       const left = Math.round((this.pauseX - 4) * k) + 'px';
       if (b.style.left !== left) { b.style.left = left; b.style.width = Math.round(20 * k) + 'px'; }
+      // the timeout button: shown on offense and defense while a game is on, over the TO drawn in the strip
+      const t = this.toBtn; if (!t || this.toX == null) return;
+      const on = !this.paused && this.phase !== 'final' && this.phase !== 'opp' && this.phase !== 'convert' && this.phase !== 'kick' && !this.dead;
+      if (t.hidden === on) t.hidden = !on;
+      const tl = Math.round((this.toX - 2) * k) + 'px';
+      if (t.style.left !== tl) { t.style.left = tl; t.style.width = Math.round(22 * k) + 'px'; }
     }
     hud() {
       const c = this.clock, set = (id, v) => { if (this.hudCache[id] !== v) { this.hudCache[id] = v; this.el[id].textContent = v; } };
@@ -2540,10 +2638,22 @@
         return w;
       };
       const L = 4 + (this.safeL || 0), Rx = AW - 4 - (this.safeR || 0);
-      box(me, this.score.me, L, false);
+      // three little bars beside each score: the timeouts left this half
+      const bars = (n, x) => { for (let i = 0; i < 3; i++) { m.fillStyle = i < n ? '#ffd84a' : 'rgba(255,255,255,.18)'; m.fillRect(x + i * 3, 4, 2, 6); } };
+      const lw = box(me, this.score.me, L, false);
+      bars(this.tos.me, L + lw + 2);
       const rw = box(opp, this.score.opp, Rx, true);
-      // pause icon, just left of the opponent's score
-      const px = Rx - rw - 16;
+      bars(this.tos.opp, Rx - rw - 10);
+      // pause icon, just left of the opponent's score and timeouts
+      const px = Rx - rw - 26;
+      // the timeout button, left of the pause icon
+      const tx = px - 22, toOn = this.toBtn && !this.toBtn.hidden;
+      if (toOn) {
+        const ok = this.timeoutOpen() && this.tos.me > 0;
+        m.fillStyle = ok ? 'rgba(255,180,58,.9)' : 'rgba(255,255,255,.14)'; m.fillRect(tx, 2, 18, 10);
+        m.fillStyle = ok ? '#1b1300' : 'rgba(255,255,255,.5)'; m.fillText('TO', tx + 3, 6.7);
+      }
+      this.toX = tx;
       if (this.pz && !this.pz.btn.hidden) {
         m.fillStyle = 'rgba(255,255,255,.18)'; m.fillRect(px, 2, 12, 10);
         m.fillStyle = '#ffffff'; m.fillRect(px + 3.5, 4, 2, 6); m.fillRect(px + 6.5, 4, 2, 6);

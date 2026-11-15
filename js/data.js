@@ -378,45 +378,51 @@
     const st = (k, x) => off[k].stats[x], offTips = [], defTips = [];
     // ---- their offense (your DC) ----
     const runText = sc.run > 0 ? `${nm} want to run the ball${sc.run > 0.6 ? ' — a lot' : ''}.` : `${nm} would rather throw it${sc.run < -0.6 ? ' — they barely run' : ''}.`;
-    offTips.push({ w: Math.abs(sc.run), head: sc.run > 0 ? 'Run-first offense' : 'Pass-first offense', text: runText,
+    offTips.push({ key: 'run', w: Math.abs(sc.run), head: sc.run > 0 ? 'Run-first offense' : 'Pass-first offense', text: runText,
       fix: sc.run > 0 ? `Early downs: ${STOP.inside}.` : `Sit in zone (Cover 3, Cover 4) and make them be patient.` });
-    offTips.push({ w: Math.abs(sc.deep) * 0.9, head: sc.deep > 0 ? 'They take deep shots' : 'Short, quick passing game',
+    offTips.push({ key: 'deep', w: Math.abs(sc.deep) * 0.9, head: sc.deep > 0 ? 'They take deep shots' : 'Short, quick passing game',
       text: sc.deep > 0 ? `When they throw, they look deep${sc.deep > 0.6 ? ' every chance they get' : ''}.` : `They throw short and quick${sc.deep < -0.6 ? ', almost nothing downfield' : ''}.`,
       fix: sc.deep > 0 ? `Play ${STOP.deep}.` : `${STOP.quick}, and you can take a chance with a blitz.` });
-    offTips.push({ w: 0.8, head: `Favorite: ${CAT[sc.fav]}`, text: `They call ${CAT[sc.fav]} far more than a typical team.`, fix: `When you expect it: ${STOP[sc.fav]}.` });
-    offTips.push({ w: 0.75, head: '3rd and long', text: `On 3rd and long they go to ${CAT[sc.third]}.`, fix: `${STOP[sc.third][0].toUpperCase() + STOP[sc.third].slice(1)}.` });
-    offTips.push({ w: 0.6, head: 'In the red zone', text: `Inside your 20 they lean on ${CAT[sc.red]}.`, fix: `${STOP[sc.red][0].toUpperCase() + STOP[sc.red].slice(1)}.` });
+    offTips.push({ key: 'fav', w: 0.8, head: `Favorite: ${CAT[sc.fav]}`, text: `They call ${CAT[sc.fav]} far more than a typical team.`, fix: `When you expect it: ${STOP[sc.fav]}.` });
+    offTips.push({ key: 'third', w: 0.75, head: '3rd and long', text: `On 3rd and long they go to ${CAT[sc.third]}.`, fix: `${STOP[sc.third][0].toUpperCase() + STOP[sc.third].slice(1)}.` });
+    offTips.push({ key: 'red', w: 0.6, head: 'In the red zone', text: `Inside your 20 they lean on ${CAT[sc.red]}.`, fix: `${STOP[sc.red][0].toUpperCase() + STOP[sc.red].slice(1)}.` });
     const wrs = ['WR1', 'WR2', 'TE'].map((k) => ({ k, spd: st(k, 'spd'), hands: st(k, 'hands') })).sort((a, b) => b.spd - a.spd);
     const lab = { WR1: 'their #1 receiver', WR2: 'their #2 receiver', TE: 'their tight end' };
-    offTips.push({ w: 0.55, head: 'Deep threat', text: `${lab[wrs[0].k][0].toUpperCase() + lab[wrs[0].k].slice(1)} is their fastest target (speed ${wrs[0].spd}).`, fix: 'Keep a safety over the top of him on obvious passing downs.' });
+    offTips.push({ key: 'threat', w: 0.55, head: 'Deep threat', text: `${lab[wrs[0].k][0].toUpperCase() + lab[wrs[0].k].slice(1)} is their fastest target (speed ${wrs[0].spd}).`, fix: 'Keep a safety over the top of him on obvious passing downs.' });
     const qa = st('QB', 'arm'), qc = st('QB', 'acc');
-    offTips.push({ w: 0.5, head: 'Quarterback', text: qa - qc >= 5 ? `Big arm (${qa}), shaky accuracy (${qc}): he'll throw into tight windows and miss.` : qc - qa >= 5 ? `Accurate (${qc}) more than strong (${qa}): he lives on short, on-time throws.` : `Balanced arm (${qa}) and accuracy (${qc}).`,
+    offTips.push({ key: 'qb', w: 0.5, head: 'Quarterback', text: qa - qc >= 5 ? `Big arm (${qa}), shaky accuracy (${qc}): he'll throw into tight windows and miss.` : qc - qa >= 5 ? `Accurate (${qc}) more than strong (${qa}): he lives on short, on-time throws.` : `Balanced arm (${qa}) and accuracy (${qc}).`,
       fix: qa - qc >= 5 ? 'Play the ball in the air: go for the pick (swipe up) when he forces it.' : qc - qa >= 5 ? 'Pressure beats him: blitz and dive at him with your ringed lineman.' : 'Mix it up; nothing to exploit here.' });
     const rb = off.RB.stats;
-    offTips.push({ w: 0.4, head: 'Running back', text: rb.pow - rb.spd >= 5 ? `Their back runs through people (power ${rb.pow}).` : rb.spd - rb.pow >= 5 ? `Their back has breakaway speed (${rb.spd}).` : `Their back is a little of everything.`,
+    offTips.push({ key: 'rb', w: 0.4, head: 'Running back', text: rb.pow - rb.spd >= 5 ? `Their back runs through people (power ${rb.pow}).` : rb.spd - rb.pow >= 5 ? `Their back has breakaway speed (${rb.spd}).` : `Their back is a little of everything.`,
       fix: rb.pow - rb.spd >= 5 ? 'Gang tackle; arm tackles slide off.' : rb.spd - rb.pow >= 5 ? 'Keep contain on outside runs.' : 'Fill your gaps.' });
     // ---- their defense (your OC) ----
-    defTips.push({ w: Math.abs(sc.man), head: sc.man > 0 ? 'Man coverage team' : 'Zone coverage team', text: sc.man > 0 ? `${nm} love to play man${sc.man > 0.6 ? ' — Cover 1 most snaps' : ''}.` : `${nm} sit in zone${sc.man < -0.6 ? ' — mostly Cover 3 and Cover 2' : ''}.`,
+    defTips.push({ key: 'man', w: Math.abs(sc.man), head: sc.man > 0 ? 'Man coverage team' : 'Zone coverage team', text: sc.man > 0 ? `${nm} love to play man${sc.man > 0.6 ? ' — Cover 1 most snaps' : ''}.` : `${nm} sit in zone${sc.man < -0.6 ? ' — mostly Cover 3 and Cover 2' : ''}.`,
       fix: sc.man > 0 ? `${BEAT.cover1}.` : 'Dagger, Post and Comeback find the holes; Outs get jumped by Cover 3.' });
-    defTips.push({ w: Math.abs(Math.log(sc.blitz)) + 0.1, head: sc.blitz >= 1.4 ? 'They blitz a lot' : sc.blitz <= 0.7 ? 'They rarely blitz' : 'Average blitz rate',
+    defTips.push({ key: 'blitz', w: Math.abs(Math.log(sc.blitz)) + 0.1, head: sc.blitz >= 1.4 ? 'They blitz a lot' : sc.blitz <= 0.7 ? 'They rarely blitz' : 'Average blitz rate',
       text: sc.blitz >= 1.4 ? `Expect Cover 0 and Fire Zone pressure, especially on 3rd down.` : sc.blitz <= 0.7 ? 'They rush four and drop everybody else.' : 'They pick their spots to bring pressure.',
       fix: sc.blitz >= 1.4 ? `${BEAT.cover0}; a screen can go a long way.` : sc.blitz <= 0.7 ? 'You will have time: let the deep routes develop.' : 'Have a quick throw ready on 3rd down.' });
-    defTips.push({ w: 0.8, head: '3rd and long', text: `On 3rd and long they call ${CALL[sc.long3]}.`, fix: `${BEAT[sc.long3]}.` });
-    defTips.push({ w: Math.abs(sc.disguise - 1) * 0.7 + 0.2, head: sc.disguise >= 1.2 ? 'They disguise coverages' : 'What you see is what you get',
+    defTips.push({ key: 'long3', w: 0.8, head: '3rd and long', text: `On 3rd and long they call ${CALL[sc.long3]}.`, fix: `${BEAT[sc.long3]}.` });
+    defTips.push({ key: 'disguise', w: Math.abs(sc.disguise - 1) * 0.7 + 0.2, head: sc.disguise >= 1.2 ? 'They disguise coverages' : 'What you see is what you get',
       text: sc.disguise >= 1.2 ? `They show one shell and rotate to another at the snap${sc.disguise >= 2 ? ' — often' : ''}.` : 'The shell they show before the snap is usually what they play.',
       fix: sc.disguise >= 1.2 ? 'After the play, the banner shows what they really ran: check it before you trust a look.' : 'Read the pre-snap shell and pick the play that beats it.' });
     const cbs = Object.values(def).filter((d) => d.pos === 'CB').sort((a, b) => a.cov - b.cov);
-    if (cbs.length > 1 && cbs[1].cov - cbs[0].cov >= 3) defTips.push({ w: 0.6, head: 'Weak corner', text: `Cornerback #${cbs[0].num} is their weak link in coverage (${cbs[0].cov}, against ${cbs[1].cov} for #${cbs[1].num}).`, fix: 'Throw at whichever receiver he covers.' });
+    if (cbs.length > 1 && cbs[1].cov - cbs[0].cov >= 3) defTips.push({ key: 'cb', w: 0.6, head: 'Weak corner', text: `Cornerback #${cbs[0].num} is their weak link in coverage (${cbs[0].cov}, against ${cbs[1].cov} for #${cbs[1].num}).`, fix: 'Throw at whichever receiver he covers.' });
     const saf = Object.values(def).filter((d) => d.pos === 'S').sort((a, b) => a.spd - b.spd);
-    if (saf.length) defTips.push({ w: 0.45, head: 'Safeties', text: `Safety #${saf[0].num} is the slowest man in their secondary (speed ${saf[0].spd}).`, fix: 'Posts and deep middle throws test him.' });
+    if (saf.length) defTips.push({ key: 'saf', w: 0.45, head: 'Safeties', text: `Safety #${saf[0].num} is the slowest man in their secondary (speed ${saf[0].spd}).`, fix: 'Posts and deep middle throws test him.' });
     const lbs = Object.values(def).filter((d) => d.pos === 'LB'), lbSpd = Math.round(lbs.reduce((a, d) => a + d.spd, 0) / Math.max(1, lbs.length));
-    defTips.push({ w: 0.35, head: 'Linebackers', text: lbSpd < r.def - 3 ? `Their linebackers are slow (speed ${lbSpd}).` : `Their linebackers can run (speed ${lbSpd}).`,
+    defTips.push({ key: 'lb', w: 0.35, head: 'Linebackers', text: lbSpd < r.def - 3 ? `Their linebackers are slow (speed ${lbSpd}).` : `Their linebackers can run (speed ${lbSpd}).`,
       fix: lbSpd < r.def - 3 ? 'Screens and crossers get outside of them.' : 'Attack the edges with outside runs instead.' });
     const order = (a) => a.sort((x, y) => y.w - x.w);
     return { off: order(offTips), def: order(defTips), scheme: sc };
   };
   // How much of the film your coordinator can show you: 1 tendency in week 1, one more every 3 weeks, plus 1 at
   // 3 stars and 1 at 5 stars; from week 6 (or with a 4-star coordinator) each comes with how to beat it.
+  // What each of your coordinators has on tape this week (the same tendencies the film screen shows you):
+  // the keys of the first n tips, n from filmReveal. They call plays with it during the game.
+  GP.filmKnown = function (s, oppId) {
+    const f = GP.film(s, oppId), n = (role) => GP.filmReveal(s, s.staff[role].stars).n;
+    return { dc: f.off.slice(0, n('DC')).map((t) => t.key), oc: f.def.slice(0, n('OC')).map((t) => t.key) };
+  };
   GP.filmReveal = (s, stars) => {
     const wk = s.phase === 'regular' ? s.week + 1 : (s.schedule ? s.schedule.length : 14) + 1;
     return { n: 1 + Math.floor((wk - 1) / 3) + (stars >= 3 ? 1 : 0) + (stars >= 5 ? 1 : 0), detail: wk >= 6 || stars >= 4, week: wk };
@@ -633,13 +639,18 @@
     const get = o.get.players.map((id) => GP.playerValue(block.find((p) => p.id === id))).reduce((a, b) => a + b, 0)
       + o.get.picks.reduce((a, k) => a + GP.pickValue(s, k), 0);
     const rosterAfter = s.players.length - o.give.players.length + o.get.players.length;
+    // they only deal if they come out ahead: a little against the other conference, more against a team they
+    // could meet in the playoffs, and most against a division rival they play twice a year
+    const me = GP.team(s.teamId), them = GP.team(o.partner);
+    const rival = me.conf !== them.conf ? null : me.div === them.div ? 'division' : 'conference';
+    const premium = rival === 'division' ? 1.4 : rival === 'conference' ? 1.25 : 1.1;
     let reason = null;
     if (!GP.tradeStatus(s).open) reason = GP.tradeStatus(s).note;
     else if (!o.give.players.length && !o.give.picks.length) reason = 'Offer something';
     else if (!o.get.players.length && !o.get.picks.length) reason = 'Ask for something';
     else if (rosterAfter > GP.ROSTER_MAX) reason = `That would put you at ${rosterAfter} players (max ${GP.ROSTER_MAX})`;
-    else if (give < get * 1.1) reason = 'They want more in return';   // they only deal if they come out a little ahead
-    return { give, get, ok: !reason, reason, need: get * 1.1 };
+    else if (give < get * premium) reason = rival ? `They want more from a ${rival} rival` : 'They want more in return';
+    return { give, get, ok: !reason, reason, need: get * premium, rival };
   };
   GP.executeTrade = function (s, o) {
     if (!GP.evaluateTrade(s, o).ok) return false;

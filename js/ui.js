@@ -2,7 +2,7 @@
 (function () {
   const GP = window.GP;
   const $ = (s) => document.querySelector(s);
-  let S = null, viewConf = 0, draftPos = 'ALL', newDiff = 'normal';
+  let S = null, viewConf = 0, draftPos = 'ALL';
   let offer = null;   // trade being built: { partner, give: {players, picks}, get: {players, picks} }
 
   function show(id) {
@@ -58,6 +58,44 @@
   const badge = (t) => h('span', { class: 'badge', style: `background:${t.c1};border-color:${t.c2};color:${t.c2}` });
   const full = (t) => t.name;                 // teams go by their city
 
+  // An in-game dialog (instead of the browser's confirm, which a browser can silence). Returns a close function.
+  function dialog(title, body, buttons, wide) {
+    const ov = h('div', { class: 'dlg-ov' }), close = () => ov.remove();
+    ov.onclick = (e) => { if (e.target === ov) close(); };       // a tap outside closes it
+    ov.append(h('div', { class: 'pg-box dlg' + (wide ? ' wide' : ''), role: 'dialog', 'aria-label': title },
+      h('div', { class: 'pg-head' }, h('h3', { class: 'px' }, title)),
+      body,
+      h('div', { class: 'dlg-btns' }, ...buttons.map((b) => h('button', { class: 'btn' + (b.ghost ? ' ghost' : '') + (b.danger ? ' danger' : ''), onclick: () => { if (b.fn() !== false) close(); } }, b.label)))));
+    document.body.append(ov);
+    return close;
+  }
+  const DIFF_DESC = { easy: 'Throws are led for you, a slower pass rush, fewer interceptions', normal: 'Light lead help, scaled by your quarterback’s accuracy', hard: 'No passing help, more interceptions' };
+  // Starting a career in an empty slot: pick a team and a difficulty.
+  function newCareerDialog(slot) {
+    let team = null, diff = 'normal', close = null;
+    const body = h('div', { class: 'nc' }), go = () => {
+      if (!team) return false;
+      S = GP.newCareer(team, diff); S.slot = slot; GP.save(S); viewConf = GP.team(team).conf; renderHub();
+    };
+    const draw = () => {
+      body.innerHTML = '';
+      const teams = h('div', { class: 'nc-confs' });
+      GP.CONFS.forEach((cn, c) => teams.append(h('div', { class: 'nc-conf' }, h('div', { class: 'px dim nc-cn' }, cn),
+        h('div', { class: 'nc-teams' }, ...GP.TEAMS.filter((t) => t.conf === c).map((t) =>
+          h('button', { class: 'nc-team' + (team === t.id ? ' on' : ''), title: t.name, onclick: () => { team = t.id; draw(); } }, badge(t), h('span', null, t.abbr)))))));
+      body.append(teams,
+        h('div', { class: 'nc-diff' }, h('b', null, 'Difficulty'),
+          h('div', { class: 'tabs' }, ...Object.entries(GP.DIFFICULTY).map(([k, label]) =>
+            h('button', { class: 'btn small' + (k === diff ? '' : ' ghost'), onclick: () => { diff = k; draw(); } }, label))),
+          h('div', { class: 'dim' }, DIFF_DESC[diff])),
+        h('div', { class: 'dim nc-pick' }, team ? `${GP.team(team).name} · ${GP.CONFS[GP.team(team).conf]} ${GP.DIVS[GP.team(team).div]}` : 'Pick a team'));
+      const start = document.querySelector('.dlg .dlg-btns .btn:not(.ghost)'); if (start) start.disabled = !team;
+    };
+    draw();
+    close = dialog('New career', body, [{ label: 'Cancel', ghost: true, fn: () => {} }, { label: 'Start career', fn: go }], true);
+    draw();
+  }
+
   function renderTitle() {
     const act = $('#title-actions'); act.innerHTML = '';
     // five career slots: the one you played last on top, then your other careers, then the empty slots
@@ -65,10 +103,8 @@
     GP.slots().forEach(({ slot, s }, i) => {
       if (!s) {
         // New career: the team is picked during setup (not built yet); until then you get a random team
-        list.append(h('button', { class: 'slot empty', onclick: () => {
-          const t = GP.TEAMS[Math.floor(Math.random() * GP.TEAMS.length)];
-          S = GP.newCareer(t.id, newDiff); S.slot = slot; GP.save(S); viewConf = t.conf; renderHub();
-        } }, h('span', { class: 'slot-plus' }, '+'), h('span', null, h('b', null, 'New career'), h('span', { class: 'dim' }, `Slot ${slot} · ${GP.DIFFICULTY[newDiff]}`))));
+        list.append(h('button', { class: 'slot empty', onclick: () => newCareerDialog(slot) },
+          h('span', { class: 'slot-plus' }, '+'), h('span', null, h('b', null, 'New career'), h('span', { class: 'dim' }, `Slot ${slot}`))));
         return;
       }
       const t = GP.team(s.teamId), r = GP.rec(s, s.teamId) || { w: 0, l: 0 };
@@ -77,26 +113,17 @@
           badge(t),
           h('span', null, h('b', null, (i === 0 ? 'Continue · ' : '') + full(t)),
             h('span', { class: 'dim' }, `Season ${s.season} · ${r.w}-${r.l} · ${GP.DIFFICULTY[s.difficulty || 'normal']}`))),
-        h('button', { class: 'slot-del', title: 'Delete this career', 'aria-label': `Delete the ${full(t)} career`, onclick: () => {
-          if (!confirm(`Delete your ${full(t)} career (season ${s.season})? This can't be undone.`)) return;
-          GP.wipe(slot); renderTitle();
-        } }, '×')));
+        h('button', { class: 'slot-del', title: 'Delete this career', 'aria-label': `Delete the ${full(t)} career`, onclick: () =>
+          dialog('Delete career?', h('p', null, `Your ${full(t)} career (season ${s.season}, ${r.w}-${r.l}) will be gone for good. This can't be undone.`),
+            [{ label: 'Keep it', ghost: true, fn: () => {} }, { label: 'Delete', danger: true, fn: () => { GP.wipe(slot); renderTitle(); } }]) }, '×')));
     });
     act.append(list);
-    act.append(h('div', { class: 'dim', style: 'width:100%;font-size:13px' }, 'For now a new career gives you a random team; choosing one will be part of career setup.'));
     // iPhone Safari can't go full screen from a web page; the Home Screen version can
     const iphone = /iPhone|iPod/.test(navigator.userAgent) && !navigator.standalone;
     if (iphone) act.append(h('div', { class: 'card tip' },
       h('b', null, 'Play full screen'),
       h('div', { class: 'dim' }, 'In Safari tap Share, then "Add to Home Screen". Open the game from that icon and it runs with no browser bars.'),
       h('div', { class: 'dim', style: 'font-size:13px' }, 'The Home Screen version keeps its own careers, separate from these.')));
-    // difficulty for a new career
-    const diffDesc = { easy: 'Throws are led for you, a slower pass rush, fewer interceptions', normal: 'Light lead help, scaled by your quarterback’s accuracy', hard: 'No passing help, more interceptions' };
-    act.append(h('div', { class: 'card tip' },
-      h('b', null, 'Difficulty for a new career'),
-      h('div', { class: 'tabs' }, ...Object.entries(GP.DIFFICULTY).map(([k, label]) =>
-        h('button', { class: 'btn small' + (k === newDiff ? '' : ' ghost'), onclick: () => { newDiff = k; renderTitle(); } }, label))),
-      h('div', { class: 'dim' }, diffDesc[newDiff])));
     show('title');
   }
 
@@ -469,7 +496,7 @@
         !rv.detail ? h('div', { class: 'dim ft-note' }, 'From week 6 (or with a 4-star coordinator) each tip comes with how to beat it.') : null);
     };
     const seen = GP.filmReveal(S, S.staff.OC.stars).n + GP.filmReveal(S, S.staff.DC.stars).n;
-    hub.append(h('div', { class: 'dim film-sub' }, `${game.label} · ${game.home === false ? 'at' : 'vs'} ${full(o)} · ${Math.min(seen, total)} of ${total} tendencies on tape`));
+    hub.append(h('div', { class: 'dim film-sub' }, `${game.label} · ${game.home === false ? 'at' : 'vs'} ${full(o)} · ${Math.min(seen, total)} of ${total} tendencies on tape · your coordinators call plays with what they've seen`));
     hub.append(h('div', { class: 'filmcols' }, col('DC', f.off, 'their offense'), col('OC', f.def, 'their defense')));
     hub.append(h('div', { class: 'film-go' }, h('button', { class: 'btn play', onclick: () => pregame(game) }, 'Play game')));
     show('hub');
@@ -499,7 +526,7 @@
     show('match');
     GP.match = new GP.Match($('#field'), {
       me: GP.team(S.teamId), opp: GP.team(game.oppId), roster: GP.lineup(S), staff: S.staff, difficulty: S.difficulty || 'normal',
-      oppOff: or.off, oppDef: or.def, oppDC: GP.oppDC(S, game.oppId),
+      oppOff: or.off, oppDef: or.def, oppDC: GP.oppDC(S, game.oppId), film: GP.filmKnown(S, game.oppId),
       playoff: S.phase === 'playoffs', oppSeed: `${game.oppId}|${S.season}`, oppScheme: GP.teamScheme(game.oppId, S.season), home: game.home !== false, uniform: S.uniform || 'auto', playDefense: S.playDefense !== false, label: game.label,
       onEnd: (my, opp, st, info) => {
         GP.match = null; GP.advance(S, my, opp);

@@ -127,6 +127,7 @@ body.playing #app{max-width:none;padding:0;height:100%}
 #panel .opt b{display:block}
 #panel .opt small{color:var(--dim)}
 #panel .opt.kick{background:#2a2440}
+#panel .opt.sim{background:#1d3a35}
 @media(max-width:640px){#panel .opt{min-width:0;padding:6px 9px;font-size:13px}#panel .opt small{display:none}}
 @media(max-height:480px){
   #panel .opts{gap:5px}
@@ -176,6 +177,8 @@ button.link:hover{color:var(--bad)}
 #pause-btn{position:absolute;top:0;height:calc(100% * 16 / 270);min-height:26px;z-index:3;padding:0;background:transparent;border:0}
 #pause-btn i{display:none}
 #pause-btn[hidden]{display:none}
+#to-btn{position:absolute;top:0;height:calc(100% * 16 / 270);min-height:26px;z-index:3;padding:0;background:transparent;border:0}
+#to-btn[hidden]{display:none}
 #pause{position:absolute;inset:0;z-index:4;background:rgba(10,14,24,.82);display:flex;align-items:center;justify-content:center;text-align:center}
 #pause[hidden]{display:none}
 #pause .pbox{display:flex;flex-direction:column;align-items:center;gap:6px;padding:16px}
@@ -370,3 +373,23 @@ button.pcard:hover{box-shadow:inset 0 0 0 2px var(--accent),0 3px 0 rgba(0,0,0,.
 .ft-note{font-size:12px;margin-top:4px}
 .film-go{margin-top:12px;display:flex;justify-content:center}
 @media (max-width:700px) and (orientation:portrait){.filmcols{grid-template-columns:1fr}}
+
+/* in-game dialogs (confirmations, new career) */
+.dlg-ov{position:fixed;inset:0;z-index:40;background:rgba(6,10,20,.78);display:flex;align-items:center;justify-content:center;
+  padding:max(12px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left))}
+.dlg{width:min(420px,100%)}
+.dlg.wide{width:min(760px,100%)}
+.dlg p{margin:0 0 12px;line-height:1.4}
+.dlg-btns{display:flex;gap:10px;justify-content:flex-end;margin-top:12px;position:sticky;bottom:-14px;background:var(--bg);padding:8px 0 2px}
+.btn.danger{background:var(--bad);color:#2a0606}
+.nc-confs{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.nc-cn{font-size:12px;margin-bottom:4px}
+.nc-teams{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px}
+.nc-team{display:flex;flex-direction:column;align-items:center;gap:1px;padding:3px 2px;border-radius:6px;background:var(--card);box-shadow:inset 0 0 0 1px var(--line);font-family:Silkscreen,monospace;font-size:11px}
+.nc-team .badge{width:20px;height:20px;border-width:3px}
+.nc-team.on{box-shadow:inset 0 0 0 2px var(--accent);background:#24304a}
+.nc-diff{margin-top:10px;display:flex;align-items:center;gap:6px 12px;flex-wrap:wrap}
+.nc-diff .tabs{margin:0}
+.nc-diff .dim{flex-basis:100%;font-size:13px}
+.nc-pick{margin-top:8px}
+@media (max-width:560px){ .nc-confs{grid-template-columns:1fr} }
