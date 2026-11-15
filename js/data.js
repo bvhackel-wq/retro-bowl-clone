@@ -327,6 +327,13 @@
   // a deal for n seasons; signed in the offseason it starts next season
   GP.contract = (s, sal, n) => ({ sal, years: n + (s.phase === 'offseason' ? 1 : 0) });
   GP.expiring = (s, p) => !!p.contract && p.contract.years <= 1;
+  // seasons still to play on his deal (in the offseason the season just finished no longer counts)
+  GP.yearsLeft = (s, p) => p.contract.years - (s.phase === 'offseason' ? 1 : 0);
+  // a rookie: drafted this offseason, through the end of his first season
+  GP.isRookie = (s, p) => !!p.rookieYear && p.rookieYear === GP.capYear(s);
+  // players retire at 36: in their last three seasons (33-35) their hair goes gray
+  GP.RETIRE_AGE = 36;
+  GP.nearRetirement = (p) => p.age != null && p.age >= GP.RETIRE_AGE - 3;
   // re-sign (or extend) him at his ask for n seasons
   GP.resign = function (s, id, n) {
     const p = s.players.find((x) => x.id === id);
@@ -813,7 +820,7 @@
     d.pool = d.pool.filter((p) => p !== prospect);
     d.log.push({ no: pick.no, round: pick.round, owner: pick.owner, name: prospect.name, pos: prospect.pos, stars: prospect.stars });
     if (pick.owner === s.teamId) {
-      delete prospect.est; prospect.scouted = true; prospect.rookie = true;
+      delete prospect.est; prospect.scouted = true; prospect.rookie = true; prospect.rookieYear = s.season + 1;
       rookieSeason = s.season + 1; prospect.contract = GP.contract(s, rookieSal(pick.no), 4);
       s.players.push(prospect);
       s.news = (s.news || []).concat(`You drafted ${prospect.name} (${prospect.pos}, ${prospect.stars}★) with pick #${pick.no}.`);
@@ -1005,7 +1012,7 @@
     s.players = s.players.filter((r) => {
       if (r.contract) { r.contract.years -= 1; if (r.contract.years <= 0) { s.news.push(`${r.name} (${r.pos}) left in free agency: his contract ran out.`); return false; } }
       r.age++;
-      if (r.age >= 36) { s.news.push(`${r.name} (${r.pos}) retired.`); return false; }   // his spot opens up
+      if (r.age >= GP.RETIRE_AGE) { s.news.push(`${r.name} (${r.pos}) retired.`); return false; }   // his spot opens up
       for (const [k] of GP.statsFor(r.pos)) {
         let v = r.stats[k];
         if (r.age <= 26) v += GP.rint(0, 2);

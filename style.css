@@ -428,3 +428,4 @@ button.pcard:hover{box-shadow:inset 0 0 0 2px var(--accent),0 3px 0 rgba(0,0,0,.
 .capexp .card{margin:0}
 .card.blocked{display:flex;flex-direction:column;gap:8px;box-shadow:inset 0 0 0 2px var(--bad);margin-top:10px}
 .card.blocked .tabs{margin:0}
+.rookieb{position:absolute;left:6px;bottom:4px;background:#4fd18b;color:#06301a;font-family:Silkscreen,monospace;font-size:11px;padding:1px 4px;border-radius:3px}

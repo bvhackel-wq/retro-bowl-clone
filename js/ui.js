@@ -162,7 +162,7 @@
   // a player's portrait: his own face (picked at random when he was created, and kept) in a team's home jersey
   const portrait = (r, teamId) => {
     if (r.face == null) r.face = GP.rint(0, 999999999);      // players from before portraits get one now
-    const c = GP.Pixel.portrait(r.face, GP.kit(teamId || S.teamId, 'home'));
+    const c = GP.Pixel.portrait(r.face, GP.kit(teamId || S.teamId, 'home'), { gray: GP.nearRetirement(r) });
     const img = document.createElement('canvas'); img.width = c.width; img.height = c.height;
     img.getContext('2d').drawImage(c, 0, 0); img.className = 'portrait';
     return img;
@@ -194,11 +194,11 @@
     return h('button', { class: 'pcard' + (e.starter === false ? ' bench' : ''), onclick: () => renderPlayer(i) },
       h('div', { class: 'top' + (GP.isDef(r.pos) ? ' def' : ''), style: `background-color:${e.unit ? me.c2 : me.c1};color:${e.unit ? me.c1 : me.c2}` },
         h('span', { class: 'pos' }, e.unit ? 'DEF' : e.pos), r.num ? h('span', { class: 'num' }, '#' + r.num) : null,
-        r.inj ? h('span', { class: 'injb' }, `INJ ${r.inj}W`) : null,
+        r.inj ? h('span', { class: 'injb' }, `INJ ${r.inj}W`) : GP.isRookie(S, r) ? h('span', { class: 'rookieb' }, 'ROOKIE') : null,
         e.unit ? h('span', { class: 'unitmark' }, 'UNIT') : portrait(r)),
       h('div', { class: 'nm' }, e.unit ? e.label : lastName(r.name)), stars(r.stars),
       h('div', { class: 'ovrline' }, h('span', { class: 'ovr' }, String(r.ovr)), h('span', { class: 'dim' }, ` / ${pot}`)),
-      r.contract ? h('div', { class: 'dim pay' + (GP.expiring(S, r) ? ' exp' : '') }, `${GP.money(r.contract.sal)} · ${GP.expiring(S, r) ? 'expiring' : r.contract.years + ' yrs'}`) : null,
+      r.contract ? h('div', { class: 'dim pay' + (GP.expiring(S, r) ? ' exp' : '') }, `${GP.money(r.contract.sal)} · ${GP.expiring(S, r) ? 'expiring' : GP.yearsLeft(S, r) + ' yrs'}`) : null,
       h('div', { class: 'bar grow' }, h('i', { style: `width:${clamp01(r.ovr / Math.max(1, pot)) * 100}%` })));
   }
   const clamp01 = (x) => Math.max(0, Math.min(1, x));
@@ -231,7 +231,7 @@
     const pot = potential(r);
     const profile = h('div', { class: 'card profile' },
       h('div', { class: 'phead', style: `background:${me.c1};color:${me.c2}` }, e.unit ? h('span', { class: 'unitmark big' }, 'UNIT') : portrait(r),
-        h('div', null, h('div', { class: 'px' }, e.unit ? e.label : GP.PLAYER_POS[r.pos]), h('div', { class: 'role' }, e.unit ? 'Defense' : (r.num ? `#${r.num} · ` : '') + (e.starter ? `${e.side === 'D' ? 'Defense' : 'Offense'} starter · ${e.slot}` : 'Bench')))),
+        h('div', null, h('div', { class: 'px' }, e.unit ? e.label : GP.PLAYER_POS[r.pos]), h('div', { class: 'role' }, e.unit ? 'Defense' : (GP.isRookie(S, r) ? 'Rookie · ' : '') + (r.num ? `#${r.num} · ` : '') + (e.starter ? `${e.side === 'D' ? 'Defense' : 'Offense'} starter · ${e.slot}` : 'Bench')))),
       h('div', { class: 'facts' },
         e.unit ? null : h('div', null, h('span', { class: 'dim' }, 'Age'), h('b', null, String(r.age))),
         h('div', null, h('span', { class: 'dim' }, 'Overall'), h('b', null, String(r.ovr))),
@@ -476,7 +476,7 @@
   function contractBox(r, redo) {
     const c = r.contract, exp = GP.expiring(S, r);
     const box = h('div', { class: 'contract' }, h('div', null, h('span', { class: 'dim' }, 'Contract '),
-      h('b', null, `${GP.money(c.sal)} a season · ${exp ? 'expiring' : c.years + ' seasons left'}`)));
+      h('b', null, `${GP.money(c.sal)} a season · ${exp ? 'expiring' : GP.yearsLeft(S, r) + ' seasons left'}`)));
     if (exp) {
       const ask = GP.askFor(S, r), room = GP.capRoom(S) + (GP.onBooks(S, r) ? c.sal : 0);
       box.append(h('div', { class: 'dim' }, `He asks ${GP.money(ask)} a season.` + (ask > room ? ` You only have ${GP.money(Math.max(0, room))} of cap room for him.` : ' Unsigned, he leaves when the new season starts.')),
@@ -502,7 +502,7 @@
     const exp = list.filter((p) => GP.expiring(S, p));
     const row = (p) => h('div', { class: 'caprow' + (GP.expiring(S, p) ? ' exp' : '') },
       h('span', { class: 'px cappos' }, p.pos), h('span', { class: 'capnm' }, p.name, h('small', { class: 'dim' }, ` · ${p.ovr} ovr · age ${p.age}`)),
-      h('b', null, GP.money(p.contract.sal)), h('span', { class: 'dim capyr' }, GP.expiring(S, p) ? 'expiring' : `${p.contract.years} yrs`));
+      h('b', null, GP.money(p.contract.sal)), h('span', { class: 'dim capyr' }, GP.expiring(S, p) ? 'expiring' : `${GP.yearsLeft(S, p)} yrs`));
     if (exp.length) {
       hub.append(h('h2', null, `Expiring · ${exp.length}`));
       hub.append(h('div', { class: 'capexp' }, ...exp.map((p) => h('div', { class: 'card' }, row(p), contractBox(p, renderCap)))));

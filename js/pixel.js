@@ -147,8 +147,11 @@
   const shade = (hex, f) => '#' + [1, 3, 5].map((i) => Math.round(parseInt(hex.slice(i, i + 2), 16) * f).toString(16).padStart(2, '0')).join('');
   const faceCache = {};
   P.FACES = FACE_SKIN.length * 12 * 6;      // distinct looks before color and extras
-  P.portrait = function (face, kit) {
-    const key = face + '|' + kit.jersey + kit.number;
+  // opts.gray: true for gray hair (a player near the end of his career), false for never gray (everyone else);
+  // left out (coaches), the hair color is whatever the face number picks
+  P.portrait = function (face, kit, opts) {
+    const gray = opts && opts.gray;
+    const key = face + '|' + kit.jersey + kit.number + '|' + gray;
     if (faceCache[key]) return faceCache[key];
     let t = (face >>> 0) + 0x6d2b79f5;        // a small seeded generator, so a face number is always the same face
     const rnd = () => { t = (t + 0x6d2b79f5) | 0; let x = Math.imul(t ^ (t >>> 15), 1 | t); x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x; return ((x ^ (x >>> 14)) >>> 0) / 4294967296; };
@@ -158,7 +161,9 @@
     const row = (y, x0, x1, c) => { for (let x = x0; x <= x1; x++) set(x, y, c); };
     const si = pick(FACE_SKIN.length), skin = FACE_SKIN[si], dark = shade(skin, 0.78);
     // darker skin tones mostly have black or dark brown hair; any tone can be gray
-    const hair = HAIR_COL[si >= 3 ? [0, 0, 0, 0, 1, 1, 1, 5][pick(8)] : [0, 1, 1, 2, 2, 3, 3, 4, 5][pick(9)]];
+    let hair = HAIR_COL[si >= 3 ? [0, 0, 0, 0, 1, 1, 1, 5][pick(8)] : [0, 1, 1, 2, 2, 3, 3, 4, 5][pick(9)]];
+    if (gray === true) hair = HAIR_COL[5];
+    else if (gray === false && hair === HAIR_COL[5]) hair = HAIR_COL[si >= 3 ? 0 : 1];   // not gray yet
     const style = pick(12), beard = [0, 0, 0, 0, 1, 2, 3, 4, 5][pick(9)];
     // shoulders and jersey
     row(12, 4, 11, kit.jersey); row(13, 2, 13, kit.jersey);
