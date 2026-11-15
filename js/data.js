@@ -807,12 +807,27 @@
     return true;
   };
 
-  const KEY = 'pocket-gridiron-save';
-  GP.save = (s) => { try { localStorage.setItem(KEY, JSON.stringify(s)); } catch (e) {} };
-  GP.load = () => {
+  // Five career slots, each its own save. The save from before slots moves into slot 1 the first time.
+  GP.SAVE_SLOTS = 5;
+  const OLD_KEY = 'pocket-gridiron-save', KEY = (n) => `pocket-gridiron-save-${n}`;
+  try {
+    const old = localStorage.getItem(OLD_KEY);
+    if (old && !localStorage.getItem(KEY(1))) localStorage.setItem(KEY(1), old);
+    if (old && localStorage.getItem(KEY(1))) localStorage.removeItem(OLD_KEY);
+  } catch (e) { /* private mode */ }
+  // saving also marks the career as the one last played (it goes to the top of the title screen)
+  GP.save = (s, quiet) => { s.slot = s.slot || 1; if (!quiet) s.played = Date.now(); try { localStorage.setItem(KEY(s.slot), JSON.stringify(s)); } catch (e) {} };
+  // every slot, the most recently played career first, then the empty ones in slot order
+  GP.slots = () => {
+    const out = [];
+    for (let n = 1; n <= GP.SAVE_SLOTS; n++) out.push({ slot: n, s: GP.load(n) });
+    return out.sort((a, b) => (b.s ? b.s.played || 1 : 0) - (a.s ? a.s.played || 1 : 0) || a.slot - b.slot);
+  };
+  GP.load = (slot) => {
     try {
-      const s = JSON.parse(localStorage.getItem(KEY));
+      const s = JSON.parse(localStorage.getItem(KEY(slot)));
       if (!s || (s.v !== 2 && s.v !== 3)) return null;
+      s.slot = slot;
       if (s.news) s.news = s.news.filter((n) => !/three individual linemen/.test(n));   // an old one-time notice
       // saves from before agility existed: give the current back a rating near his overall
       if (s.v === 2 && s.roster.RB.agi == null && !s.roster.RB.stats) s.roster.RB.agi = GP.clamp(s.roster.RB.ovr + GP.rint(-6, 6), 40, 99);
@@ -860,9 +875,9 @@
       // careers from before portraits: everyone gets a face now, saved so it never changes
       for (const r of [...s.players, ...Object.values(s.blocks || {}).flat(), ...((s.draft && s.draft.pool) || [])])
         if (r.face == null) { r.face = GP.rint(0, 999999999); changed = true; }
-      if (changed) { GP.syncUser(s); GP.save(s); }
+      if (changed) { GP.syncUser(s); GP.save(s, true); }   // quietly: just looking at a slot doesn't make it the current career
       return s;
     } catch (e) { return null; }
   };
-  GP.wipe = () => { try { localStorage.removeItem(KEY); } catch (e) {} };
+  GP.wipe = (slot) => { try { localStorage.removeItem(KEY(slot)); } catch (e) {} };
 })();

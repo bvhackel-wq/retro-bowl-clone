@@ -59,25 +59,37 @@
   const full = (t) => t.name;                 // teams go by their city
 
   function renderTitle() {
-    const saved = GP.load();
     const act = $('#title-actions'); act.innerHTML = '';
-    if (saved) {
-      const t = GP.team(saved.teamId);
-      act.append(h('button', { class: 'btn', onclick: () => { S = saved; viewConf = t.conf; renderHub(); } }, `Continue — ${full(t)}, season ${saved.season}`));
-    }
-    // New career: the team is picked during setup (not built yet); until then you get a random team
-    act.append(h('button', { class: 'btn' + (saved ? ' ghost' : ''), onclick: () => {
-      if (saved && !confirm('Start a new career? This replaces your current save.')) return;
-      const t = GP.TEAMS[Math.floor(Math.random() * GP.TEAMS.length)];
-      S = GP.newCareer(t.id, newDiff); GP.save(S); viewConf = t.conf; renderHub();
-    } }, 'New career'));
+    // five career slots: the one you played last on top, then your other careers, then the empty slots
+    const list = h('div', { class: 'slots' });
+    GP.slots().forEach(({ slot, s }, i) => {
+      if (!s) {
+        // New career: the team is picked during setup (not built yet); until then you get a random team
+        list.append(h('button', { class: 'slot empty', onclick: () => {
+          const t = GP.TEAMS[Math.floor(Math.random() * GP.TEAMS.length)];
+          S = GP.newCareer(t.id, newDiff); S.slot = slot; GP.save(S); viewConf = t.conf; renderHub();
+        } }, h('span', { class: 'slot-plus' }, '+'), h('span', null, h('b', null, 'New career'), h('span', { class: 'dim' }, `Slot ${slot} · ${GP.DIFFICULTY[newDiff]}`))));
+        return;
+      }
+      const t = GP.team(s.teamId), r = GP.rec(s, s.teamId) || { w: 0, l: 0 };
+      list.append(h('div', { class: 'slot' + (i === 0 ? ' current' : '') },
+        h('button', { class: 'slot-go', onclick: () => { S = s; viewConf = t.conf; GP.save(S); renderHub(); } },
+          badge(t),
+          h('span', null, h('b', null, (i === 0 ? 'Continue · ' : '') + full(t)),
+            h('span', { class: 'dim' }, `Season ${s.season} · ${r.w}-${r.l} · ${GP.DIFFICULTY[s.difficulty || 'normal']}`))),
+        h('button', { class: 'slot-del', title: 'Delete this career', 'aria-label': `Delete the ${full(t)} career`, onclick: () => {
+          if (!confirm(`Delete your ${full(t)} career (season ${s.season})? This can't be undone.`)) return;
+          GP.wipe(slot); renderTitle();
+        } }, '×')));
+    });
+    act.append(list);
     act.append(h('div', { class: 'dim', style: 'width:100%;font-size:13px' }, 'For now a new career gives you a random team; choosing one will be part of career setup.'));
     // iPhone Safari can't go full screen from a web page; the Home Screen version can
     const iphone = /iPhone|iPod/.test(navigator.userAgent) && !navigator.standalone;
     if (iphone) act.append(h('div', { class: 'card tip' },
       h('b', null, 'Play full screen'),
       h('div', { class: 'dim' }, 'In Safari tap Share, then "Add to Home Screen". Open the game from that icon and it runs with no browser bars.'),
-      h('div', { class: 'dim', style: 'font-size:13px' }, 'The Home Screen version keeps its own save, separate from this one.')));
+      h('div', { class: 'dim', style: 'font-size:13px' }, 'The Home Screen version keeps its own careers, separate from these.')));
     // difficulty for a new career
     const diffDesc = { easy: 'Throws are led for you, a slower pass rush, fewer interceptions', normal: 'Light lead help, scaled by your quarterback’s accuracy', hard: 'No passing help, more interceptions' };
     act.append(h('div', { class: 'card tip' },
