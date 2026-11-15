@@ -297,6 +297,11 @@
       h('button', { class: 'btn ghost small', onclick: renderTitle }, 'Menu')));
 
 
+    // over the cap or the roster limit: no games (or new season) until it's fixed
+    const stop = GP.blocked(S);
+    const stopCard = () => h('div', { class: 'card blocked' }, h('b', null, 'Get compliant to play on'), h('div', { class: 'dim' }, stop.text),
+      h('div', { class: 'tabs' }, h('button', { class: 'btn small', onclick: renderCap }, 'Salary cap'), h('button', { class: 'btn small ghost', onclick: renderRoster }, 'Roster'),
+        GP.tradeStatus(S).open ? h('button', { class: 'btn small ghost', onclick: () => renderTrade() }, 'Trades') : null));
     // next game / bye / offseason on the left, your team on the right (side by side in landscape)
     const L = h('div', { class: 'hub-col' }), Rt = h('div', { class: 'hub-col' });
     hub.append(h('div', { class: 'hub-cols' }, L, Rt));
@@ -305,7 +310,8 @@
         h('div', null, h('div', { class: 'vs' }, game.regular ? 'Bye week' : 'First-round bye'),
           h('div', { class: 'dim' }, game.regular ? 'No game this week: the rest of the league plays, and you are back next week.' : 'You earned the top seed. Rest up while the wild cards play.')),
         h('span', { style: 'flex:1' }),
-        h('button', { class: 'btn', onclick: () => { GP.advance(S, null, null); renderHub(); } }, 'Advance')));
+        h('button', { class: 'btn', disabled: !!stop, onclick: () => { GP.advance(S, null, null); renderHub(); } }, 'Advance')));
+      if (stop) L.append(stopCard());
     } else if (game) {
       const o = GP.team(game.oppId), or = GP.rec(S, game.oppId);
       // the matchup: you and them side by side, then a big Play button (uniform and defense come in the pre-game dialog)
@@ -315,7 +321,7 @@
       L.append(h('h2', null, (S.phase === 'playoffs' ? 'Playoffs — ' : '') + game.label), h('div', { class: 'card gamecard' },
         h('div', { class: 'vsline px' }, (game.home === false ? 'at ' : 'vs ') + full(o)),
         h('div', { class: 'matchup' }, side(me, rec, true), h('div', { class: 'at px' }, game.home === false ? 'AT' : 'VS'), side(o, or, false)),
-        h('button', { class: 'btn play big', onclick: () => pregame(game) }, 'Play game'),
+        stop ? stopCard() : h('button', { class: 'btn play big', onclick: () => pregame(game) }, 'Play game'),
         h('button', { class: 'btn ghost filmbtn', onclick: () => renderFilm(game) }, 'Watch opponent film')));
     } else {
       const ch = GP.team(S.champion);
@@ -327,10 +333,11 @@
         h('span', { style: 'flex:1' }),
         h('div', { class: 'stack' },
           h('button', { class: 'btn', onclick: renderDraft }, S.draft && !S.draft.done ? 'Go to the draft' : 'Review the draft'),
-          h('button', { class: 'btn ghost', onclick: () => {
+          h('button', { class: 'btn ghost', disabled: !!stop, onclick: () => {
             if (S.draft && !S.draft.done && GP.myPicks(S).length && !confirm('Skip the rest of the draft? Your remaining picks are passed.')) return;
             GP.newSeason(S); renderHub();
           } }, 'Start next season'))));
+      if (stop) L.append(stopCard());
     }
 
     // tiles
@@ -620,7 +627,7 @@
     const seen = GP.filmReveal(S, S.staff.OC.stars, 'OC').n + GP.filmReveal(S, S.staff.DC.stars, 'DC').n;
     hub.append(h('div', { class: 'dim film-sub' }, `${game.label} · ${game.home === false ? 'at' : 'vs'} ${full(o)} · ${Math.min(seen, total)} of ${total} tendencies on tape · your coordinators call plays with what they've seen`));
     hub.append(h('div', { class: 'filmcols' }, col('DC', f.off, 'their offense'), col('OC', f.def, 'their defense')));
-    hub.append(h('div', { class: 'film-go' }, h('button', { class: 'btn play', onclick: () => pregame(game) }, 'Play game')));
+    hub.append(h('div', { class: 'film-go' }, h('button', { class: 'btn play', disabled: !!GP.blocked(S), onclick: () => pregame(game) }, 'Play game')));
     show('hub');
   }
   // Between Play game and kickoff: pick the uniform and whether you play defense, then kick off.
@@ -644,6 +651,7 @@
           h('button', { class: 'btn play pg-go', onclick: () => { close(); startMatch(game); } }, 'Kick off')))));
   }
   function startMatch(game) {
+    if (GP.blocked(S)) return renderHub();
     const or = GP.rec(S, game.oppId);
     show('match');
     GP.match = new GP.Match($('#field'), {

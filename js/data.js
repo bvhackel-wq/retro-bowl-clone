@@ -272,10 +272,14 @@
     return L;
   };
   GP.findPlayer = (s, id) => (s.units || {})[id] || s.players.find((p) => p.id === id);
-  // Releasing a player: half of his salary this season stays on the cap as dead money.
+  // Releasing a player: half of his salary this season stays on the cap as dead money, up to 20% of the cap in
+  // all (so releasing players can always get you back under it).
   GP.release = function (s, id) {
     const p = s.players.find((x) => x.id === id);
-    if (p && p.contract && GP.onBooks(s, p)) { const y = GP.capYear(s); s.dead = s.dead || {}; s.dead[y] = (s.dead[y] || 0) + p.contract.sal * 0.5; }
+    if (p && p.contract && GP.onBooks(s, p)) {
+      const y = GP.capYear(s); s.dead = s.dead || {};
+      s.dead[y] = Math.min((s.dead[y] || 0) + p.contract.sal * 0.5, Math.max(s.dead[y] || 0, GP.cap(s) * 0.2));
+    }
     s.players = s.players.filter((x) => x.id !== id);
     GP.syncUser(s); GP.save(s);
   };
@@ -290,6 +294,13 @@
   GP.onBooks = (s, p) => !(s.phase === 'offseason' && p.contract && p.contract.years <= 1);   // still under contract for the cap year
   GP.payroll = (s) => s.players.reduce((a, p) => a + (p.contract && GP.onBooks(s, p) ? p.contract.sal : 0), 0) + ((s.dead || {})[GP.capYear(s)] || 0);
   GP.capRoom = (s) => GP.cap(s) - GP.payroll(s);
+  // What stops you playing on: over the salary cap, or over your roster limit. null when you're clear.
+  GP.blocked = function (s) {
+    const over = GP.payroll(s) - GP.cap(s), extra = s.players.length - GP.rosterMax(s);
+    if (over > 0.001) return { cap: true, text: `You are ${GP.money(over)} over the salary cap. Release or trade players to get under it.` };
+    if (extra > 0) return { roster: true, text: `You have ${extra} player${extra > 1 ? 's' : ''} more than your roster limit of ${GP.rosterMax(s)}. Release or trade to get down to it.` };
+    return null;
+  };
   // what a player is worth on the market: his overall (steeply), his position, his stars and his age
   const POS_PAY = { QB: 1.7, WR: 1.05, OL: 0.8, DL: 0.95, CB: 0.9, LB: 0.75, S: 0.75, RB: 0.6, TE: 0.7, K: 0.25 };
   GP.salaryFor = function (p) {
@@ -967,6 +978,7 @@
   };
 
   GP.newSeason = function (s) {
+    if (GP.blocked(s)) return false;
     if (s.draft && !s.draft.done) { while (!s.draft.done) { if (GP.draftCurrent(s).owner === s.teamId) GP.draftPass(s); else GP.draftAdvance(s); } }
     const drafted = (s.news || []).filter((n) => n.startsWith('You drafted'));
     s.draft = null;
