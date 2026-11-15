@@ -2559,9 +2559,10 @@
       const b = this.pz.btn, k = this.cv.getBoundingClientRect().width / AW;
       const left = Math.round((this.pauseX - 4) * k) + 'px';
       if (b.style.left !== left) { b.style.left = left; b.style.width = Math.round(20 * k) + 'px'; }
-      // the timeout button: shown on offense and defense while a game is on, over the TO drawn in the strip
+      // the timeout button, over the TO drawn in the strip: on offense and defense, only while the clock is
+      // running down to the next snap (a timeout would stop it); hidden while it's stopped or the ball is live
       const t = this.toBtn; if (!t || this.toX == null) return;
-      const on = !this.paused && this.phase !== 'final' && this.phase !== 'opp' && this.phase !== 'convert' && this.phase !== 'kick' && !this.dead;
+      const on = !this.paused && !this.dead && this.timeoutOpen() && this.lastRunoff > 0;
       if (t.hidden === on) t.hidden = !on;
       const tl = Math.round((this.toX - 2) * k) + 'px';
       if (t.style.left !== tl) { t.style.left = tl; t.style.width = Math.round(22 * k) + 'px'; }
