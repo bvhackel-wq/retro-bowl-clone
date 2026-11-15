@@ -134,7 +134,7 @@
       this.difCpu = { scatter: { easy: 1.3, normal: 1, hard: 0.85 }[cfg.difficulty || 'normal'], tire: 1, rush: 1, window: 0, pick: 1 };
       this.dif = this.difMine;
       this.applyQB(r, true);
-      this.energy = 100;
+      this.energy = 100; this.olEnergy = [100, 100, 100];
       // the opponent's offense, for when you're on defense: each player's stats scattered around the team's
       // offense rating
       // A rating gap between their offense and your defense matters about three times as much on the field
@@ -363,6 +363,7 @@
       if (this.phase === 'choose' && !this.el.panel.hidden && this.el.panel.className !== 'modal') return this.takeCall();
       if (this.phase === 'kick' && this.kick && this.kick.cpu) {
         const k = this.kick;
+        if (k.type === 'fg' || k.type === 'pat') { this.gesture = { x: p.x, y: p.y, t: performance.now(), done: false }; return; }   // swipe up to leap
         if (k.stage === 'flight' && !k.fairCall) { k.fairCall = true; this.pop('Fair catch!'); }
         else if (k.stage === 'return') this.gesture = { x: p.x, y: p.y, t: performance.now(), done: false };
         return;
@@ -379,6 +380,10 @@
       if (this.aim) { this.aim.cx = p.x; this.aim.cy = p.y; return; }
       const g = this.gesture;
       if (!g || g.done) return;
+      if (this.kick && this.kick.cpu && (this.kick.type === 'fg' || this.kick.type === 'pat')) {
+        if (p.y - g.y < -22 && Math.abs(p.y - g.y) > Math.abs(p.x - g.x)) { g.done = true; this.kickLeap(); }
+        return;
+      }
       if (this.defending && !this.kick) {
         if (p.y - g.y < -22 && Math.abs(p.y - g.y) > Math.abs(p.x - g.x)) { g.done = true; this.intSwipe(); }
         else if (p.x - g.x < -22 && Math.abs(p.x - g.x) > Math.abs(p.y - g.y)) { g.done = true; this.lineDive(); }
@@ -456,7 +461,8 @@
       this.keys[k] = down;
       if (this.kick && this.kick.cpu) {                     // their punt: space calls the fair catch, then runner keys
         if (down && !e.repeat) {
-          if (this.kick.stage === 'flight' && k === ' ' && !this.kick.fairCall) { this.kick.fairCall = true; this.pop('Fair catch!'); }
+          if (this.kick.type === 'fg' || this.kick.type === 'pat') { if (k === 'arrowup' || k === 'w' || k === ' ') this.kickLeap(); }   // their kick: leap to block it
+          else if (this.kick.stage === 'flight' && k === ' ' && !this.kick.fairCall) { this.kick.fairCall = true; this.pop('Fair catch!'); }
           else if (this.kick.stage === 'return') {
             if (k === ' ') this.lastTap = performance.now();
             else if (k === 'arrowleft' || k === 'a') this.lunge();
@@ -613,12 +619,7 @@
       const togo = this.fdx - this.los, fg = this.fgDist(), o = this.cfg.opp.name;
       const desperate = (this.q >= 4 && this.clock < 150 && this.score.opp <= this.score.me) || (this.q === 5 && fg > 44);
       if (desperate || (togo <= 1 && this.los >= 45) || (togo <= 3 && this.los >= 62 && fg > 46)) return false;
-      if (fg <= 46) {
-        const good = Math.random() < clamp(1.02 - (fg - 12) * 0.014, 0.35, 0.98);
-        if (good) { this.score.opp += 3; this.endPlay(`${o}: ${fg}-yard field goal is GOOD`, () => this.checkClock(() => this.receiveKick()), 2); }
-        else this.endPlay(`${o}: ${fg}-yard field goal NO GOOD`, () => this.checkClock(() => this.startDrive(clamp(120 - (this.los - 7), 30, 105))), 2);
-        return true;
-      }
+      if (fg <= 46) { this.cpuFG(clamp(1.02 - (fg - 12) * 0.014, 0.35, 0.98)); return true; }
       if (this.cfg.playDefense !== false) { this.cpuPunt(); return true; }      // you return it
       const land = this.los + rnd(36, 47), x = land >= 110 ? 30 : clamp(120 - land, 11, 95);
       const spot = Math.round(x - 10);
@@ -1789,19 +1790,25 @@
       }
       this.cpuPAT();
     }
-    // Their extra point: their kicker (his accuracy: about 94% at 70), and your rushers can still block it.
-    cpuPAT() {
+    // Their field goal, played out like their extra point: lined up, snapped, kicked (you can block it).
+    cpuFG(pGood) { this.cpuKickAt('fg', pGood, `${this.cfg.opp.name.toUpperCase()} FIELD GOAL`); }
+    cpuKickAt(type, pGood, banner) {
       this.setSide(true); this.carrier = null;
       const ks = this.ks, kr = this.oppRoster.K.stats || {};
       this.ks = { leg: kr.leg || 70, acc: kr.acc || 70 };
-      this.startKick('pat');
+      this.startKick(type);
       this.ks = ks;
       const k = this.kick; k.cpu = true; k.started = true; k.target = { x: 120, y: MID };
-      const good = Math.random() < clamp(0.94 + ((kr.acc || 70) - 70) * 0.003, 0.85, 0.99);
-      const ey = good ? MID + rnd(-2.2, 2.2) : MID + (Math.random() < 0.5 ? -1 : 1) * rnd(3.4, 5);
+      const good = Math.random() < pGood;
+      const ey = good ? MID + rnd(-2.2, 2.2) : MID + (Math.random() < 0.5 ? -1 : 1) * rnd(3.4, 5.5);
       k.res = { good, why: ey < MID ? 'wide left' : 'wide right', ex: 121.5, ey };
       k.stage = 'approach'; k.ap = 0.9;                       // the snap, the hold, the kicker's steps
-      this.banner = { text: `${this.cfg.opp.name.toUpperCase()} EXTRA POINT`, t: 1.2 };
+      this.banner = { text: banner, t: 1.2 };
+    }
+    // Their extra point: their kicker (his accuracy: about 94% at 70), and your rushers can still block it.
+    cpuPAT() {
+      const kr = this.oppRoster.K.stats || {};
+      this.cpuKickAt('pat', clamp(0.94 + ((kr.acc || 70) - 70) * 0.003, 0.85, 0.99), `${this.cfg.opp.name.toUpperCase()} EXTRA POINT`);
     }
     // the try is over: 2 points if it got in, then the kickoff (theirs after their try)
     convOver(good) {
@@ -1975,6 +1982,25 @@
       // a rusher who gets to the ball before it's kicked blocks it
       if (nearest < 0.5 && k.stage !== 'flight' && k.stage !== 'blocked') this.kickBlocked();
     }
+    // Their field goal or extra point: swipe up just as the kicker's foot meets the ball and your man in the middle
+    // leaps for it. Within about a tenth of a second of the kick he gets a hand on it (80%); too early he's up and
+    // down before it's kicked, too late it's past him. One leap a kick.
+    kickLeap() {
+      const k = this.kick;
+      if (!k || !k.cpu || k.leapt || (k.type !== 'fg' && k.type !== 'pat')) return;
+      if (k.stage !== 'approach' && k.stage !== 'flight') return;
+      k.leapt = true;
+      const L = this.def.filter((d) => !d.idle).reduce((a, d) => (!a || Math.abs(d.y - k.sy) < Math.abs(a.y - k.sy) ? d : a), null);
+      const num = L && L.info && L.info.num ? `#${L.info.num} ` : '';   // kick-unit rushers have no number to show
+      if (k.stage === 'flight') {
+        // a hair late still counts while the ball's just off his foot
+        if (this.ball.u < 0.05 && Math.random() < 0.8) { this.pop(`${num}GETS A HAND ON IT!`, '#5df2ff'); return this.kickBlocked(); }
+        return this.pop(`${num}Too late!`, '#ff8a5c');
+      }
+      if (k.ap > 0.1) return this.pop(`${num}Leaps too early!`, '#ff8a5c');
+      k.leapBlock = Math.random() < 0.8;
+      this.pop(k.leapBlock ? `${num}GETS A HAND ON IT!` : `${num}Just misses it!`, k.leapBlock ? '#5df2ff' : '#ffb43a');
+    }
     kickBlocked() {
       const k = this.kick; k.stage = 'blocked'; k.res = { blocked: true };
       this.pop('BLOCKED!', '#ff6b6b');
@@ -2028,7 +2054,7 @@
     // the moment of contact: a rusher close to the ball may get a hand on it
     kickContact() {
       const k = this.kick, res = k.res;
-      if (k.started && k.nearest < 2 && Math.random() < ((2 - k.nearest) / 2) * 0.85) return this.kickBlocked();
+      if (k.leapBlock || (k.started && k.nearest < 2 && Math.random() < ((2 - k.nearest) / 2) * 0.85)) return this.kickBlocked();
       k.stage = 'flight'; this.kicker.pose = 'kick'; this.kicker.poseT = 0.5;
       const d = hyp(res.ex - k.sx, res.ey - k.sy);
       this.ball = { state: 'air', sx: k.sx, sy: k.sy, tx: res.ex, ty: res.ey, u: 0, dur: res.punt ? 3 : 0.7 + d / 45, t0: 0, dist: d * (res.punt ? 1.7 : 1.3) };
@@ -2379,7 +2405,8 @@
       if (r.punt && !r.blocked) return this.puntLand();
       if (r.blocked) {
         this.kick = null;
-        if (k.type === 'pat') return this.endPlay('Extra point BLOCKED', after);
+        if (k.type === 'pat') return this.endPlay(k.cpu ? 'Their extra point is BLOCKED!' : 'Extra point BLOCKED', after);
+        if (k.type === 'fg' && k.cpu) return this.endPlay('FIELD GOAL BLOCKED — your ball!', () => this.checkClock(() => this.startDrive(clamp(120 - k.sx, 11, 105))), 2);
         if (k.type === 'punt' && k.cpu) return this.endPlay('PUNT BLOCKED — your ball!', () => this.checkClock(() => this.startDrive(clamp(120 - k.sx, 11, 105))), 2);
         if (k.type === 'punt') return this.endPlay('Punt BLOCKED', () => this.checkClock(() => this.oppDrive(clamp(k.sx - 10, 5, 95), 'They recovered the blocked punt.')));
         const dist = clamp(k.sx - 10, 5, 95);                     // they take over at the spot
@@ -2389,6 +2416,9 @@
         if (r.good) { if (k.cpu) this.score.opp += 1; else this.score.me += 1; }
         const who = k.cpu ? `${this.cfg.opp.name}: ` : '';
         this.endPlay(r.good ? `${who}Extra point is GOOD` : `${who}Extra point NO GOOD (${r.why})`, after);
+      } else if (k.cpu) {                                    // their field goal: you get the ball back at the spot of the kick (or your 20) on a miss
+        if (r.good) { this.score.opp += 3; this.endPlay(`${this.cfg.opp.name}: ${k.dist}-yard field goal is GOOD`, after, 2); }
+        else this.endPlay(`${this.cfg.opp.name}: ${k.dist}-yard field goal NO GOOD (${r.why})`, () => this.checkClock(() => this.startDrive(clamp(120 - k.sx, 30, 105))), 2);
       } else if (r.good) {
         this.score.me += 3;
         this.endPlay(`${k.dist}-yard field goal is GOOD`, after);
@@ -2785,6 +2815,8 @@
         : `${this.play ? this.play.name.toUpperCase() + ' · ' : ''}TAP THE FIELD TO SNAP`, 'CHANGE');
       else if (this.phase === 'live' && this.defending) this.hint(this.ringOn() && !this.ringD.dove ? `SWIPE LEFT: #${this.ringD.info.num} DIVES AT THE BALL CARRIER` : 'SWIPE UP AS THE BALL ARRIVES TO GO FOR THE PICK');
       else if (this.phase === 'live' && this.passing() && !this.aim) this.hint('DRAG BACK TO THROW · TAP A RECEIVER: BULLET · SWIPE AHEAD: RUN');
+      else if (this.phase === 'kick' && this.kick && this.kick.cpu && (this.kick.type === 'fg' || this.kick.type === 'pat'))
+        this.hint(this.kick.stage === 'approach' && !this.kick.leapt ? 'SWIPE UP JUST AS HE KICKS IT TO BLOCK' : '');
       else if (this.phase === 'kick' && this.kick && this.kick.cpu) this.hint({ flight: this.kick.fairCall ? (this.kick.type === 'ko' ? 'FAIR CATCH / TOUCHBACK CALLED' : 'FAIR CATCH CALLED') : this.kick.type === 'ko' ? 'TAP FOR A FAIR CATCH OR TOUCHBACK' : 'TAP TO CALL A FAIR CATCH',
         return: 'UP/DOWN: CUT · TAP+SWIPE: JUKE · SWIPE LEFT: LUNGE · RIGHT: STOP' }[this.kick.stage] || '');
       else if (this.phase === 'kick' && this.kick) this.hint({ set: 'TAP THE FIELD TO START THE KICK', aim: 'DRAG BACK TO AIM · RELEASE TO KICK',
