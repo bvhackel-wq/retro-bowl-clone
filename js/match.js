@@ -1670,12 +1670,14 @@
       const d = this.ringD, c = this.carrier;
       if (!this.ringOn() || this.phase !== 'live' || !d || d.dove || d.stun > 0) return;
       d.dove = true;
-      const tied = d.held || (d.eng > 0 && d.eng < d.shed);
+      // still at the line counts as tied up too: right after the snap the blocks haven't landed yet, and a man
+      // who hasn't gotten into the backfield has to beat his blocker before he can dive (it used to skip that)
+      const tied = d.held || (d.eng > 0 && d.eng < d.shed) || d.x > this.los - 0.5;
       if (tied) {
         const blocker = this.off.find((o) => o.role === 'OL' && (o.mark === d || o.otarget === d)) || { blk: 65 };
         const stat = this.play.type === 'run' ? d.info.run : d.info.rush;
         if (Math.random() > clamp(0.12 + (stat - blocker.blk) * 0.015 + Math.min(this.t, 3) * 0.16, 0.08, 0.85)) {
-          d.stun = 1.0; d.eng = d.shed; this.pop(`#${d.info.num} stonewalled!`, '#ff8a5c'); return;   // lost the battle, on the ground
+          d.stun = 1.0; d.eng = 0; this.pop(`#${d.info.num} stonewalled!`, '#ff8a5c'); return;   // lost the battle, on the ground (and still has to get past his man after)
         }
         d.eng = d.shed;                                                  // beat his man
       }
@@ -1814,6 +1816,8 @@
       const ey = good ? MID + rnd(-2.2, 2.2) : MID + (Math.random() < 0.5 ? -1 : 1) * rnd(3.4, 5.5);
       k.res = { good, why: ey < MID ? 'wide left' : 'wide right', ex: 121.5, ey };
       k.stage = 'approach'; k.ap = 0.9;                       // the snap, the hold, the kicker's steps
+      // your man in the middle of the line: ringed, he's the one who leaps when you swipe up
+      k.leaper = this.def.filter((d) => !d.idle).reduce((a, d) => (!a || Math.abs(d.y - k.sy) < Math.abs(a.y - k.sy) ? d : a), null);
       this.banner = { text: banner, t: 1.2 };
     }
     // Their extra point: their kicker (his accuracy: about 94% at 70), and your rushers can still block it.
@@ -2000,8 +2004,8 @@
       const k = this.kick;
       if (!k || !k.cpu || k.leapt || (k.type !== 'fg' && k.type !== 'pat')) return;
       if (k.stage !== 'approach' && k.stage !== 'flight') return;
-      k.leapt = true;
-      const L = this.def.filter((d) => !d.idle).reduce((a, d) => (!a || Math.abs(d.y - k.sy) < Math.abs(a.y - k.sy) ? d : a), null);
+      k.leapt = true; k.leapAt = performance.now();
+      const L = k.leaper;
       const num = L && L.info && L.info.num ? `#${L.info.num} ` : '';   // kick-unit rushers have no number to show
       if (k.stage === 'flight') {
         // a hair late still counts while the ball's just off his foot
@@ -2118,6 +2122,10 @@
       k.cover = this.off.filter((p) => p !== this.kicker);
       // jammers hold the gunners up at the line for a moment; the interior men release sooner
       for (const c of k.cover) { c.spd = c.role === 'WR' ? 8 : c.role === 'RB' ? 7.2 : 6.5; c.lane = c.y - MID; c.stun = 0; c.hold = r.ko ? 0 : c.role === 'WR' ? rnd(0, 1.1) : rnd(0, 0.5); }
+      // the widest man on each side keeps contain on the return
+      const byLane = k.cover.slice().sort((a, b) => a.lane - b.lane);
+      for (const c of k.cover) c.contain = 0;
+      if (byLane.length > 2) { byLane[0].contain = -1; byLane[byLane.length - 1].contain = 1; }
       k.fairAt = rnd(7, 14);                                    // how close the coverage gets before he calls for a fair catch
       this.kicker.spd = 6.2; this.kicker.lane = 0; this.kicker.hold = 0;
       for (const p of this.def) if (!p.idle) p.spd = 6;
@@ -2169,7 +2177,8 @@
           if (b.wall == null) b.wall = clamp(MID + (b.y - MID) * 1.8 + rnd(-1.5, 1.5), 2, FW - 2);
           go(b, k.retX - 9, b.wall, b.spd, dt, 8); continue;
         }
-        if (!t) { go(b, R.x + 4, b.y, b.spd * 0.6, dt, 8); continue; }
+        // nobody left to block: lead the way a few yards ahead of the returner, spread across the field, rather than trail him
+        if (!t) { go(b, R.x - 5, clamp(R.y + ((b.wall != null ? b.wall : b.y) - MID) * 0.4, 1, FW - 1), b.spd * 0.8, dt, 8); continue; }
         const d = hyp(R.x - t.x, R.y - t.y) || 1;
         go(b, t.x + ((R.x - t.x) / d) * 0.9, t.y + ((R.y - t.y) / d) * 0.9, b.spd, dt, 9);
         if (hyp(t.x - b.x, t.y - b.y) < 1.2 && !(t.hold > 0) && !(t.shedCd > 0)) { t.hold = k.res.ko ? rnd(0.7, 1.8) : rnd(0.2, 0.5); t.blockedBy = b; }   // punt coverage comes in fast: shorter blocks
@@ -2366,8 +2375,17 @@
         if (c.stun > 0) { c.stun -= dt; continue; }
         // a pursuit angle: aim for where he'll be, further ahead the further away he is, and cut him off
         // rather than chase him (cover men behind him have to run him down)
-        const lead = this.capLead(c, R, Math.min(1.4, hyp(R.x - c.x, R.y - c.y) / c.spd * 0.9));
-        go(c, Math.max(R.x + R.vx * lead, 0), R.y + R.vy * lead, c.spd, dt, 9);
+        const dist = hyp(R.x - c.x, R.y - c.y), lead = this.capLead(c, R, Math.min(1.4, dist / c.spd * 0.9));
+        let ty = R.y + R.vy * lead;
+        // lane discipline: while he's still in front of the returner, each cover man keeps his lane's spacing
+        // relative to the ball, so the coverage comes down the field as a fence instead of one pile, and only
+        // closes in when he's near; the two widest men keep contain (outside the returner on their side)
+        if (c !== this.kicker && c.x < R.x + 1) {
+          const spread = clamp((dist - 3) / 12, 0, 1);
+          ty += (c.lane || 0) * 0.55 * spread;
+          if (c.contain) ty = c.contain > 0 ? Math.max(ty, R.y + 2.5 * spread) : Math.min(ty, R.y - 2.5 * spread);
+        }
+        go(c, Math.max(R.x + R.vx * lead, 0), clamp(ty, 0.5, FW - 0.5), c.spd, dt, 9);
       }
       this.returnBlocks(dt);
       if (R.x <= 10) {
@@ -2801,6 +2819,16 @@
       if (show) {
         const all = [...this.def, ...this.off].sort((a, b) => a.y - b.y);
         for (const p of all) this.drawPlayer(p);
+        // on their field goal or extra point, a bouncing arrow over your leaper (on top of everyone): he's yours to play
+        const kk = this.kick;
+        if (kk && kk.cpu && kk.leaper && (kk.type === 'fg' || kk.type === 'pat') && kk.stage === 'approach' && !kk.leapt) {
+          // beside him on his side of the line, pointing back at him (the line is too tightly packed for one overhead)
+          const ax = this.ax(kk.leaper.x) + 9 + Math.round(Math.abs(Math.sin(this.animT * 5)) * 3), Y = this.ay(kk.leaper.y) - 6;
+          g.fillStyle = '#10182a'; g.fillRect(ax - 1, Y - 4, 3, 9); g.fillRect(ax + 2, Y - 5, 2, 11); g.fillRect(ax + 4, Y - 6, 7, 13);
+          g.fillStyle = '#ffd84a';
+          for (let i = 0; i < 6; i++) g.fillRect(ax + i, Y - i, 1, 2 * i + 1);    // a solid triangle pointing left
+          g.fillRect(ax + 6, Y - 2, 4, 5);                                         // and its tail
+        }
         this.drawBall();
       }
       if (this.aim && this.passing()) this.drawAim();
@@ -2934,7 +2962,10 @@
       const side = this.defending ? (p.team === 'O' ? 'D' : 'O') : p.team;   // on defense their offense wears their kit
       const img = this.kits[side][p.skin || 0][pose][p.face];
       g.fillStyle = 'rgba(0,0,0,.28)'; g.fillRect(X - 4, Y + 1, 9, 2); g.fillRect(X - 3, Y + 3, 7, 1);
-      if (p === this.ringD && this.ringOn() && !p.dive) {
+      const kk = this.kick, leaper = kk && kk.cpu && kk.leaper === p && (kk.type === 'fg' || kk.type === 'pat');
+      // his leap: up and down in under half a second
+      const jt = leaper && kk.leapAt ? (performance.now() - kk.leapAt) / 450 : 1, lift = jt < 1 ? Math.round(Math.sin(Math.PI * jt) * 9) : 0;
+      if ((p === this.ringD && this.ringOn() && !p.dive) || (leaper && kk.stage === 'approach' && !kk.leapt)) {
         Px.ring(g, X, Y + 2, 9, 4, 'rgba(16,24,42,.55)'); Px.ring(g, X, Y + 1, 9, 4, '#ffffff'); Px.ring(g, X, Y + 1, 8, 3, '#ffffff');
       }
       const party = this.celebrate && this.celebrate.who === p && this.celebrate.arrived;   // he's dropped the ball to celebrate
@@ -2946,7 +2977,7 @@
         if (live) Px.ring(g, X, Y + 1, 11, 5, '#ffd84a');
       }
       if (p.pose) g.drawImage(img, X - Math.floor(img.width / 2), Y - img.height + 3 - (p.hop || 0));
-      else if (sliding) g.drawImage(img, X - 8, Y - 9); else if (down) g.drawImage(img, X - 8, Y - 8); else g.drawImage(img, X - 6, Y - 13);
+      else if (sliding) g.drawImage(img, X - 8, Y - 9); else if (down) g.drawImage(img, X - 8, Y - 8); else g.drawImage(img, X - 6, Y - 13 - lift);
       if (p === this.carrier && !down && !party && this.ball.state === 'held') {
         const bx = X + (p.face ? -6 : 3);
         g.fillStyle = '#10182a'; g.fillRect(bx - 1, Y - 7, 5, 4);
@@ -2981,6 +3012,21 @@
       const u = Math.min(1, b.u), x = b.sx + (b.tx - b.sx) * u, y = b.sy + (b.ty - b.sy) * u;
       const z = b.state === 'air' ? Math.sin(Math.PI * u) * b.dist * 0.22 : 0;
       const X = this.ax(x), Y = this.ay(y), lift = Math.round(z * YA * 0.5);
+      if (this.phase === 'kick' && b.state === 'air') {
+        // a kicked ball: bigger, tumbling end over end, with its shadow on the grass and a short trail
+        g.fillStyle = 'rgba(0,0,0,.3)'; g.fillRect(X - 2, Y + 1, 5, 1);
+        for (let i = 1; i <= 3; i++) {
+          const v = Math.max(0, u - i * 0.035), tx = this.ax(b.sx + (b.tx - b.sx) * v), ty = this.ay(b.sy + (b.ty - b.sy) * v) - Math.round(Math.sin(Math.PI * v) * b.dist * 0.22 * YA * 0.5);
+          g.fillStyle = `rgba(255,255,255,${0.35 - i * 0.09})`; g.fillRect(tx - 1, ty - 2, 2, 2);
+        }
+        const tumble = Math.floor(u * 14) % 2, top = Y - lift;
+        g.fillStyle = '#10182a';
+        if (tumble) g.fillRect(X - 2, top - 5, 5, 7); else g.fillRect(X - 4, top - 3, 8, 5);
+        g.fillStyle = '#8a4b22';
+        if (tumble) { g.fillRect(X - 1, top - 4, 3, 5); } else { g.fillRect(X - 3, top - 2, 6, 3); }
+        g.fillStyle = '#ffffff'; if (tumble) g.fillRect(X, top - 3, 1, 2); else g.fillRect(X - 1, top - 1, 2, 1);
+        return;
+      }
       g.fillStyle = 'rgba(0,0,0,.3)'; g.fillRect(X - 1, Y + 1, 3, 1);
       g.fillStyle = '#8a4b22'; g.fillRect(X - 1, Y - lift - 2, 3, 2); g.fillRect(X - 2, Y - lift - 1, 5, 1);
       g.fillStyle = '#ffffff'; g.fillRect(X, Y - lift - 2, 1, 1);
