@@ -286,10 +286,11 @@
 
   // ---------- the salary cap (your team) ----------
   // Every player has a contract: a salary (in millions) and the seasons left, counting the current one. The cap is
-  // $150M in season 1 and grows $6M a season. In the offseason the books are next season's: deals in their last
+  // $200M in season 1 and grows 7% a season (the NFL's rate, 2015-2025). In the offseason the books are next season's: deals in their last
   // year drop off unless re-signed. Signing, trading, drafting and re-signing must fit under it.
   GP.capYear = (s) => (s.phase === 'offseason' ? s.season + 1 : s.season);
-  GP.cap = (s) => 150 + (GP.capYear(s) - 1) * 6;
+  GP.capGrowth = (season) => 1.07 ** (season - 1);   // the cap, and the market for players, both grow 7% a season
+  GP.cap = (s) => Math.round(200 * GP.capGrowth(GP.capYear(s)) * 10) / 10;
   GP.money = (m) => `$${(Math.round(m * 10) / 10).toFixed(1)}M`;
   GP.onBooks = (s, p) => !(s.phase === 'offseason' && p.contract && p.contract.years <= 1);   // still under contract for the cap year
   GP.payroll = (s) => s.players.reduce((a, p) => a + (p.contract && GP.onBooks(s, p) ? p.contract.sal : 0), 0) + ((s.dead || {})[GP.capYear(s)] || 0);
@@ -301,16 +302,28 @@
     if (extra > 0) return { roster: true, text: `You have ${extra} player${extra > 1 ? 's' : ''} more than your roster limit of ${GP.rosterMax(s)}. Release or trade to get down to it.` };
     return null;
   };
-  // what a player is worth on the market: his overall (steeply), his position, his stars and his age
-  const POS_PAY = { QB: 1.7, WR: 1.05, OL: 0.8, DL: 0.95, CB: 0.9, LB: 0.75, S: 0.75, RB: 0.6, TE: 0.7, K: 0.25 };
-  GP.salaryFor = function (p) {
-    const x = GP.clamp((p.ovr - 50) / 45, 0, 1.2);
-    let sal = 0.75 + x ** 2.2 * 28 * (POS_PAY[p.pos] || 0.8) + (p.stars || 0) * 0.4;
-    if (p.age >= 31) sal *= 0.85; else if (p.age <= 24) sal *= 0.95;
-    return Math.round(sal * 20) / 20;
+  // What a player is worth on the market, from NFL contract values (average per season, 2025) at five levels of
+  // play: minimum, backup, average starter, good starter, elite (top five at his position). Overall 52 or less is a
+  // minimum deal, 62 a backup, 75 an average starter, 85 a good one, 95 elite; in between it's interpolated
+  // (geometrically, so pay climbs faster near the top). A veteran (31+) takes about 15% less. Season 1 is 2025's
+  // market; it grows with the cap after that.
+  const PAY = {   //  minimum, backup, average, good, elite ($M a season)
+    QB: [1.1, 4, 28, 45, 56], WR: [1.0, 3, 13, 24, 36], DL: [1.0, 3, 12, 22, 36], OL: [1.0, 2.5, 10, 18, 26],
+    CB: [1.0, 2.5, 10, 18, 27], S: [1.0, 2, 7.5, 13, 19], LB: [1.0, 2, 7, 13, 21], TE: [1.0, 2, 6.5, 11.5, 17],
+    RB: [1.0, 1.5, 5, 10, 18], K: [0.9, 1.2, 3, 4.5, 6],
   };
+  const PAY_AT = [52, 62, 75, 85, 95];
+  GP.marketValue = function (p) {
+    const t = PAY[p.pos] || PAY.OL, o = GP.clamp(p.ovr, PAY_AT[0], 99);
+    let i = 0; while (i < 3 && o > PAY_AT[i + 1]) i++;
+    const f = (o - PAY_AT[i]) / (PAY_AT[i + 1] - PAY_AT[i]);
+    let sal = t[i] * (t[i + 1] / t[i]) ** f;                 // geometric between the two levels (past 95, it keeps climbing)
+    if (p.age >= 31) sal *= 0.85;
+    return Math.max(t[0], sal);
+  };
+  GP.salaryFor = (p, s) => Math.round(GP.marketValue(p) * GP.capGrowth(s ? s.season : 1) * 20) / 20;
   // what he asks for on a new deal this season: his market value, give or take a little (the same all season)
-  GP.askFor = (s, p) => Math.round(GP.salaryFor(p) * (1 + ((GP.hash(p.name + '|' + s.season) % 18) - 5) / 100) * 20) / 20;
+  GP.askFor = (s, p) => Math.round(GP.salaryFor(p, s) * (1 + ((GP.hash(p.name + '|' + s.season) % 18) - 5) / 100) * 20) / 20;
   // a deal for n seasons; signed in the offseason it starts next season
   GP.contract = (s, sal, n) => ({ sal, years: n + (s.phase === 'offseason' ? 1 : 0) });
   GP.expiring = (s, p) => !!p.contract && p.contract.years <= 1;
@@ -325,10 +338,13 @@
     GP.save(s);
     return true;
   };
-  // rookie deals: four seasons, scaled by where he was picked
-  const rookieSal = (no) => Math.round(Math.max(0.75, 6.5 - no * 0.06) * 20) / 20;
+  // rookie deals: four seasons on the NFL's rookie scale (about $11M a season for the first pick, $3.3M at the end
+  // of round 1, $2.4M down to $1.6M in round 2, about $1.3M down to $1M in round 3), growing with the cap
+  let rookieSeason = 1;
+  const rookieSal = (no) => Math.round((no <= 32 ? 11 - (no - 1) * 0.25 : no <= 64 ? 2.4 - (no - 33) * 0.025 : Math.max(1, 1.35 - (no - 65) * 0.011))
+    * GP.capGrowth(rookieSeason) * 20) / 20;
   // give anyone without a contract one (new careers, older saves, trade blocks): 1-4 seasons at his value
-  GP.ensureContract = function (s, p) { if (!p.contract) p.contract = { sal: GP.salaryFor(p), years: GP.rint(1, 4) }; return p.contract; };
+  GP.ensureContract = function (s, p) { if (!p.contract) p.contract = { sal: GP.salaryFor(p, s), years: GP.rint(1, 4) }; return p.contract; };
 
   // Older saves: give each player stars and caps that fit his current ratings, never lowering them.
   function migratePlayer(r, key) {
@@ -387,6 +403,7 @@
       s.players = order.sort((a, b) => b.v - a.v).slice(0, GP.rosterMax(s)).map((o) => o.p);
     }
     for (const p of s.players) GP.ensureContract(s, p);
+    s.payScale = 2;
     GP.syncUser(s);
     return s;
   };
@@ -797,7 +814,7 @@
     d.log.push({ no: pick.no, round: pick.round, owner: pick.owner, name: prospect.name, pos: prospect.pos, stars: prospect.stars });
     if (pick.owner === s.teamId) {
       delete prospect.est; prospect.scouted = true; prospect.rookie = true;
-      prospect.contract = GP.contract(s, rookieSal(pick.no), 4);
+      rookieSeason = s.season + 1; prospect.contract = GP.contract(s, rookieSal(pick.no), 4);
       s.players.push(prospect);
       s.news = (s.news || []).concat(`You drafted ${prospect.name} (${prospect.pos}, ${prospect.stars}★) with pick #${pick.no}.`);
     }
@@ -816,11 +833,11 @@
   };
   GP.draftPick = function (s, id) {
     const cur = GP.draftCurrent(s), p = s.draft && s.draft.pool.find((x) => x.id === id);
-    if (!cur || cur.owner !== s.teamId || !p || s.players.length >= GP.rosterMax(s) || rookieSal(cur.no) > GP.capRoom(s)) return false;
+    if (!cur || cur.owner !== s.teamId || !p || s.players.length >= GP.rosterMax(s) || (rookieSeason = s.season + 1, rookieSal(cur.no)) > GP.capRoom(s)) return false;
     draftTake(s, p); GP.syncUser(s); GP.draftAdvance(s);
     return true;
   };
-  GP.rookieSal = (s) => { const cur = GP.draftCurrent(s); return cur ? rookieSal(cur.no) : 0; };
+  GP.rookieSal = (s) => { const cur = GP.draftCurrent(s); rookieSeason = s.season + 1; return cur ? rookieSal(cur.no) : 0; };
   GP.draftPass = function (s) {
     const d = s.draft, cur = GP.draftCurrent(s);
     if (!cur || cur.owner !== s.teamId) return;
@@ -1094,6 +1111,10 @@
       if (!s.staff) { s.staff = { OC: genCoach('OC', 1), DC: genCoach('DC', 1) }; changed = true; }
       for (const c of [s.staff.OC, s.staff.DC, ...((s.staffPool && [...s.staffPool.OC, ...s.staffPool.DC]) || [])]) changed = migrateCoach(c) || changed;
       for (const p of [...s.players, ...(s.fa || []), ...Object.values(s.blocks || {}).flat()]) if (!p.contract) { GP.ensureContract(s, p); changed = true; }
+      if ((s.payScale || 1) < 2) {                        // contracts from the first cap model: revalue on the NFL scale
+        for (const p of [...s.players, ...(s.fa || []), ...Object.values(s.blocks || {}).flat()]) if (p.contract) p.contract.sal = GP.salaryFor(p, s);
+        s.payScale = 2; s.dead = {}; changed = true;
+      }
       for (const r of s.players) changed = addMissingStats(r, r.pos) || changed;
       // careers from before portraits: everyone gets a face now, saved so it never changes
       for (const r of [...s.players, ...Object.values(s.blocks || {}).flat(), ...((s.draft && s.draft.pool) || [])])

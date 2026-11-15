@@ -495,7 +495,7 @@
         h('span', { class: 'px', style: `color:${over ? 'var(--bad)' : 'var(--good)'}` }, over ? `${GP.money(pay - cap)} OVER` : `${GP.money(cap - pay)} ROOM`)),
       h('div', { class: 'bar capbar' }, h('i', { style: `width:${Math.min(100, (pay / cap) * 100)}%;background:${over ? 'var(--bad)' : 'var(--accent)'}` })),
       h('div', { class: 'dim' }, (dead ? `Includes ${GP.money(dead)} of dead money from released players. ` : '')
-        + 'The cap grows $6M a season. Signing, trading, drafting and re-signing must fit under it.'
+        + 'The cap grows 7% a season, like the NFL\'s, and so do players\' asking prices. Signing, trading, drafting and re-signing must fit under it.'
         + (S.phase === 'offseason' ? ' Expiring deals are off the books until you re-sign them.' : '')
         + (over ? ' You are over the cap: release or trade someone before you can add anyone.' : ''))));
     const list = S.players.filter((p) => p.contract).sort((a, b) => b.contract.sal - a.contract.sal);
