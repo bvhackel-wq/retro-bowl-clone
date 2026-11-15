@@ -69,14 +69,16 @@
     document.body.append(ov);
     return close;
   }
+  const ROSTER_DESC = (n) => (n >= 32 ? 'A full roster: starters plus backups for injuries.'
+    : `A lean ${n}-man roster: with 18 starting spots, unnamed reserves (rated 40-55) play the rest. Cheaper, but a real handicap.`);
   const DIFF_DESC = { easy: 'Throws are led for you, a slower pass rush, fewer interceptions', normal: 'Light lead help, scaled by your quarterback’s accuracy', hard: 'No passing help, more interceptions',
     extreme: 'No help, wilder throws, a faster rush, tight catch windows, more picks, and their quarterback is sharp' };
   // Starting a career in an empty slot: pick a team and a difficulty.
   function newCareerDialog(slot) {
-    let team = null, diff = 'normal', close = null;
+    let team = null, diff = 'normal', size = 32, close = null;
     const body = h('div', { class: 'nc' }), go = () => {
       if (!team) return false;
-      S = GP.newCareer(team, diff); S.slot = slot; GP.save(S); viewConf = GP.team(team).conf; renderHub();
+      S = GP.newCareer(team, diff, { rosterMax: size }); S.slot = slot; GP.save(S); viewConf = GP.team(team).conf; renderHub();
     };
     const draw = () => {
       body.innerHTML = '';
@@ -89,6 +91,10 @@
           h('div', { class: 'tabs' }, ...Object.entries(GP.DIFFICULTY).map(([k, label]) =>
             h('button', { class: 'btn small' + (k === diff ? '' : ' ghost'), onclick: () => { diff = k; draw(); } }, label))),
           h('div', { class: 'dim' }, DIFF_DESC[diff])),
+        h('div', { class: 'nc-diff' }, h('b', null, 'Roster'),
+          h('div', { class: 'tabs' }, ...GP.ROSTER_SIZES.map((n) =>
+            h('button', { class: 'btn small' + (n === size ? '' : ' ghost'), onclick: () => { size = n; draw(); } }, `${n} players`))),
+          h('div', { class: 'dim' }, ROSTER_DESC(size))),
         h('div', { class: 'dim nc-pick' }, team ? `${GP.team(team).name} · ${GP.CONFS[GP.team(team).conf]} ${GP.DIVS[GP.team(team).div]}` : 'Pick a team'));
       const start = document.querySelector('.dlg .dlg-btns .btn:not(.ghost)'); if (start) start.disabled = !team;
     };
@@ -200,7 +206,7 @@
   function renderRoster() {
     const hub = $('#hub'); hub.innerHTML = '';
     const order = rosterOrder();
-    hub.append(backBar(`Roster ${S.players.length}/${GP.ROSTER_MAX}`, renderHub));
+    hub.append(backBar(`Roster ${S.players.length}/${GP.rosterMax(S)}`, renderHub));
     const grid = (list) => h('div', { class: 'pcards' }, ...list.map(([e, i]) => playerCard(e, i)));
     const idx = order.map((e, i) => [e, i]);
     const avg = (side) => { const st = order.filter((e) => e.side === side); return Math.round(st.reduce((a, e) => a + e.r.ovr, 0) / st.length); };
@@ -336,7 +342,7 @@
     const tile = (title, line, fn, opts) => h('button', { class: 'tile' + (opts && opts.off ? ' off' : ''), disabled: !!(opts && opts.off), onclick: fn },
       h('div', { class: 'tt px' }, title), h('div', { class: 'tl dim' }, line), h('span', { class: 'go' }, '›'));
     Rt.append(h('h2', null, 'Your team'), h('div', { class: 'tiles' },
-      tile('Roster', `${S.players.length}/${GP.ROSTER_MAX} players · starters avg ${avgStars}★` + (holes ? ` · ${holes} empty spot${holes > 1 ? 's' : ''}` : ''), renderRoster),
+      tile('Roster', `${S.players.length}/${GP.rosterMax(S)} players · starters avg ${avgStars}★` + (holes ? ` · ${holes} empty spot${holes > 1 ? 's' : ''}` : ''), renderRoster),
       tile('Standings', `${['1st', '2nd', '3rd', '4th'][place - 1] || ''} in the ${GP.CONFS[me.conf]} ${GP.DIVS[me.div]}`, renderStandings),
       tile('Coaching staff', `OC ${starText(S.staff.OC.stars)} · DC ${starText(S.staff.DC.stars)}`, renderStaff),
       tile('Trades', ts.note, () => renderTrade(), { off: !ts.open }),
@@ -410,6 +416,11 @@
     const diff = S.difficulty || 'normal', q = S.qlen || 2;
     hub.append(h('div', { class: 'card setting' }, h('b', null, 'Difficulty'),
       seg(Object.entries(GP.DIFFICULTY), diff, (v) => { S.difficulty = v; }), h('div', { class: 'dim' }, DIFF_DESC[diff])));
+    const rm = GP.rosterMax(S), n = S.players.length;
+    hub.append(h('div', { class: 'card setting' }, h('b', null, 'Roster limit'),
+      h('div', { class: 'tabs' }, ...GP.ROSTER_SIZES.map((v) => h('button', { class: 'btn small' + (v === rm ? '' : ' ghost'), disabled: v < n && v !== rm,
+        onclick: () => { S.rosterMax = v; GP.save(S); renderSettings(); } }, `${v} players`))),
+      h('div', { class: 'dim' }, ROSTER_DESC(rm) + (GP.ROSTER_SIZES.some((v) => v < n) ? ` You have ${n} players: release some to go lower.` : ''))));
     hub.append(h('div', { class: 'card setting' }, h('b', null, 'Quarter length'),
       seg(GP.QUARTERS.map((m) => [m, `${m} min`]), q, (v) => { S.qlen = v; }),
       h('div', { class: 'dim' }, q > 4 ? `${q}-minute quarters, with a two-minute warning in each half. Longer quarters run more clock between plays, so a game has more snaps but isn't ${q / 2} times as long.`
@@ -436,8 +447,8 @@
   // ---------- free agents ----------
   function renderFA() {
     const hub = $('#hub'); hub.innerHTML = '';
-    hub.append(backBar(`Free agents · roster ${S.players.length}/${GP.ROSTER_MAX}`, renderHub));
-    const pool = GP.freeAgents(S), full = S.players.length >= GP.ROSTER_MAX;
+    hub.append(backBar(`Free agents · roster ${S.players.length}/${GP.rosterMax(S)}`, renderHub));
+    const pool = GP.freeAgents(S), full = S.players.length >= GP.rosterMax(S);
     hub.append(h('div', { class: 'dim film-sub' }, `Cap room ${GP.money(GP.capRoom(S))}. Unsigned players looking for a team; the pool turns over every 4 weeks and each season.`
       + (GP.hasSkill(S.staff, 'DC', 'recruiter') ? ' Your Recruiter gets them for half price.' : '') + (full ? ' Your roster is full: release someone first.' : '')));
     if (!pool.length) hub.append(h('div', { class: 'card dim' }, 'Nobody left this time. More in a few weeks.'));
@@ -516,7 +527,7 @@
 
     hub.append(h('div', { class: 'hub-head' },
       h('h1', null, 'Make a trade'), h('span', { class: 'sp' }),
-      h('span', { class: 'pill' }, `Roster ${S.players.length}/${GP.ROSTER_MAX}`),
+      h('span', { class: 'pill' }, `Roster ${S.players.length}/${GP.rosterMax(S)}`),
       h('button', { class: 'btn ghost small', onclick: () => { offer = null; renderHub(); } }, 'Back to team')));
     hub.append(h('div', { class: 'card next' }, h('div', null, h('div', { class: 'dim' }, 'Trading with'), select),
       h('span', { style: 'flex:1' }),
@@ -542,11 +553,11 @@
   function renderDraft() {
     const d = S.draft, hub = $('#hub'); hub.innerHTML = '';
     GP.draftAdvance(S);                               // other teams pick up to your turn
-    const cur = GP.draftCurrent(S), mine = cur && cur.owner === S.teamId, full = S.players.length >= GP.ROSTER_MAX;
+    const cur = GP.draftCurrent(S), mine = cur && cur.owner === S.teamId, full = S.players.length >= GP.rosterMax(S);
     const myLeft = GP.myPicks(S);
     hub.append(h('div', { class: 'hub-head' },
       h('h1', null, `Season ${d.season} Draft`), h('span', { class: 'sp' }),
-      h('span', { class: 'pill' }, `Roster ${S.players.length}/${GP.ROSTER_MAX}`),
+      h('span', { class: 'pill' }, `Roster ${S.players.length}/${GP.rosterMax(S)}`),
       h('span', { class: 'pill' }, 'Coaching points ', h('b', null, String(S.credits))),
       h('button', { class: 'btn ghost small', onclick: renderHub }, 'Back to team')));
 

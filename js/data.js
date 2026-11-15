@@ -188,6 +188,9 @@
   // The roster: up to 32 players, 18 of them starting (8 on offense, 9 on defense, and the kicker); the rest
   // are backups (the best healthy player at each spot starts).
   GP.ROSTER_MAX = 32;
+  // the roster limit is a setting: 32 (the default), or 15 or 10 for a lean team (reserves fill the rest of the 18 starting spots)
+  GP.ROSTER_SIZES = [10, 15, 32];
+  GP.rosterMax = (s) => (s && s.rosterMax) || GP.ROSTER_MAX;
   GP.PLAYER_POS = { QB: 'Quarterback', RB: 'Running Back', WR: 'Wide Receiver', TE: 'Tight End', OL: 'Offensive Lineman', K: 'Kicker',
                     DL: 'Defensive Lineman', LB: 'Linebacker', CB: 'Cornerback', S: 'Safety' };
   GP.SLOTS = [['QB', 'QB'], ['RB', 'RB'], ['WR1', 'WR'], ['WR2', 'WR'], ['TE', 'TE'], ['OL1', 'OL'], ['OL2', 'OL'], ['OL3', 'OL'], ['K', 'K']];   // a game's starters
@@ -348,7 +351,7 @@
 
   GP.DIFFICULTY = { easy: 'Easy', normal: 'Normal', hard: 'Hard', extreme: 'Extreme' };
   GP.QUARTERS = [2, 4, 5, 10, 15];                 // quarter lengths you can play, in minutes (a setting)
-  GP.newCareer = function (teamId, difficulty) {
+  GP.newCareer = function (teamId, difficulty, opts) {
     const s = {
       v: 3, teamId, season: 1, week: 0, credits: 4, phase: 'regular', playoff: null, champion: null, history: [],
       players: [], nextId: 1, fillers: {}, news: [], difficulty: difficulty || 'normal',
@@ -365,6 +368,13 @@
     const defense = GP.DEF_SLOTS.map(([, pos]) => pos);
     defense.splice(GP.rint(0, defense.length - 1), 1);
     for (const pos of defense) s.players.push(newPlayer(s, pos, GP.pick([2, 2, 3, 3, 3]), GP.rint(22, 29)));
+    // a smaller roster limit: keep the players who matter most (quarterback first, kicker and extra linemen last)
+    s.rosterMax = opts && opts.rosterMax;
+    if (s.players.length > GP.rosterMax(s)) {
+      const keep = { QB: 10, WR: 7, RB: 6, DL: 6, CB: 6, OL: 5, TE: 5, LB: 5, S: 4, K: 2 };
+      const order = s.players.map((p, i) => ({ p, v: keep[p.pos] - s.players.slice(0, i).filter((q) => q.pos === p.pos).length * 2 + Math.random() }));
+      s.players = order.sort((a, b) => b.v - a.v).slice(0, GP.rosterMax(s)).map((o) => o.p);
+    }
     for (const p of s.players) GP.ensureContract(s, p);
     GP.syncUser(s);
     return s;
@@ -713,7 +723,7 @@
     if (!GP.tradeStatus(s).open) reason = GP.tradeStatus(s).note;
     else if (!o.give.players.length && !o.give.picks.length) reason = 'Offer something';
     else if (!o.get.players.length && !o.get.picks.length) reason = 'Ask for something';
-    else if (rosterAfter > GP.ROSTER_MAX) reason = `That would put you at ${rosterAfter} players (max ${GP.ROSTER_MAX})`;
+    else if (rosterAfter > GP.rosterMax(s)) reason = `That would put you at ${rosterAfter} players (max ${GP.rosterMax(s)})`;
     else if (capAfter > GP.cap(s) && capAfter > GP.payroll(s)) reason = `That would put you ${GP.money(capAfter - GP.cap(s))} over the cap`;
     else if (give < get * premium) reason = rival ? `They want more from a ${rival} rival` : 'They want more in return';
     return { give, get, ok: !reason, reason, need: get * premium, rival };
@@ -795,7 +805,7 @@
   };
   GP.draftPick = function (s, id) {
     const cur = GP.draftCurrent(s), p = s.draft && s.draft.pool.find((x) => x.id === id);
-    if (!cur || cur.owner !== s.teamId || !p || s.players.length >= GP.ROSTER_MAX || rookieSal(cur.no) > GP.capRoom(s)) return false;
+    if (!cur || cur.owner !== s.teamId || !p || s.players.length >= GP.rosterMax(s) || rookieSal(cur.no) > GP.capRoom(s)) return false;
     draftTake(s, p); GP.syncUser(s); GP.draftAdvance(s);
     return true;
   };
@@ -949,7 +959,7 @@
   GP.faCost = (s, p) => Math.max(1, Math.ceil(GP.FA_COST[p.stars] * (GP.hasSkill(s.staff, 'DC', 'recruiter') ? 0.5 : 1)));
   GP.signFA = function (s, id) {
     const pool = GP.freeAgents(s), i = pool.findIndex((p) => p.id === id), p = pool[i];
-    if (!p || s.players.length >= GP.ROSTER_MAX || s.credits < GP.faCost(s, p) || p.contract.sal > GP.capRoom(s)) return false;
+    if (!p || s.players.length >= GP.rosterMax(s) || s.credits < GP.faCost(s, p) || p.contract.sal > GP.capRoom(s)) return false;
     s.credits -= GP.faCost(s, p); pool.splice(i, 1); s.players.push(p);
     s.news = (s.news || []).concat(`You signed free agent ${p.name} (${p.pos}, ${p.stars}★).`);
     GP.syncUser(s); GP.save(s);
