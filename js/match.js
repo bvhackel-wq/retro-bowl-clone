@@ -177,6 +177,10 @@
       this.twoMinOn = this.qlen > 240; this.warned = {};
       this.q = 1; this.clock = this.qlen;
       this.score = { me: 0, opp: 0 };
+      // Which way you attack on screen: a coin toss for the first quarter, then the teams switch ends every
+      // quarter (and toss again for overtime). The game's own coordinates never change (the offense always goes
+      // toward 120); when the offense should be heading left, the picture is mirrored.
+      this.dir0 = Math.random() < 0.5 ? 1 : -1; this.otDir = Math.random() < 0.5 ? 1 : -1;
       const fk = cfg.film || {}; this.filmDC = new Set(fk.dc || []); this.filmOC = new Set(fk.oc || []);   // what your coordinators saw on film
       this.tos = { me: 3, opp: 3 }; this.lastRunoff = 0;   // timeouts left this half; the clock the last play ran off after it ended
       const newStats = () => ({ att: 0, comp: 0, pyd: 0, ptd: 0, int: 0, ryd: 0, rtd: 0, sack: 0, jukes: 0, broken: 0, jbroken: 0, yac: 0, fum: 0 });
@@ -286,6 +290,12 @@
       this.stats = def ? this.oppStats : this.myStats;
       [this.tend, this.otherTend] = [this.otherTend, this.tend];
     }
+    // +1: you attack to the right this quarter; -1: to the left
+    get myDir() { return this.q === 5 ? this.otDir : (this.q % 2 ? this.dir0 : -this.dir0); }
+    // mirror the picture when whoever has the ball is heading left (their offense always heads for your end zone)
+    get mirror() { return this.defending ? this.myDir === 1 : this.myDir === -1; }
+    get fx() { return this.mirror ? -1 : 1; }                     // a swipe's horizontal direction, in field terms
+    sideWord(fieldDir) { return fieldDir * this.fx > 0 ? 'RIGHT' : 'LEFT'; }   // the screen direction of a field direction
     roster() { return this.defending ? this.oppRoster : this.cfg.roster; }
     defRating() { return this.defending ? this.myDef : this.cfg.oppDef; }
     dcStars() { return this.defending ? (this.cfg.staff ? this.cfg.staff.DC.stars : 1) : this.oppDC; }
@@ -367,7 +377,7 @@
     // a point on the screen (canvas units) back to a spot on the field, through the zoom crop and the camera
     fieldAt(p) {
       const z = this.lastZ || { sx: 0, sy: SIDE, sw: AW, sh: AH };
-      const ax = z.sx + (p.x / W) * z.sw, ay = z.sy + (p.y / H) * z.sh;
+      const ax = z.sx + ((this.mirror ? W - p.x : p.x) / W) * z.sw, ay = z.sy + (p.y / H) * z.sh;
       return { x: (ax + (this.camPx || 0)) / YA, y: (ay - FT) / YA };
     }
     pos(e) {
@@ -411,10 +421,10 @@
       }
       if (this.defending && !this.kick) {
         if (p.y - g.y < -22 && Math.abs(p.y - g.y) > Math.abs(p.x - g.x)) { g.done = true; this.intSwipe(); }
-        else if (p.x - g.x < -22 && Math.abs(p.x - g.x) > Math.abs(p.y - g.y)) { g.done = true; this.lineDive(); }
+        else if ((p.x - g.x) * this.fx < -22 && Math.abs(p.x - g.x) > Math.abs(p.y - g.y)) { g.done = true; this.lineDive(); }   // toward the offense
         return;
       }
-      const fw = this.kick && this.kick.cpu ? -1 : 1;     // on a punt return, forward is to the left
+      const fw = (this.kick && this.kick.cpu ? -1 : 1) * this.fx;     // forward, on screen (a punt return runs the other way)
       // a swipe of 22px+ counts as soon as it happens, no need to lift the finger:
       // up/down cuts (or jukes after a tap), forward lunges, back stops for a moment
       const dy = p.y - g.y, dx = p.x - g.x;
@@ -426,7 +436,7 @@
       if (this.rpoG) {                                    // an RPO snap: swipe back to throw, tap the back to run
         const g = this.rpoG, dx = g.cx - g.x, dy = g.cy - g.y; this.rpoG = null;
         if (this.phase !== 'presnap') return;
-        if (dx < -30 && Math.abs(dx) > Math.abs(dy)) { this.hidePanel(); this.snap(); this.rpoDone = true; if (this.rb.route) this.rb.route.block = true; this.pop('KEEP IT: PASS', '#ffffff'); return; }
+        if (dx * this.fx < -30 && Math.abs(dx) > Math.abs(dy)) { this.hidePanel(); this.snap(); this.rpoDone = true; if (this.rb.route) this.rb.route.block = true; this.pop('KEEP IT: PASS', '#ffffff'); return; }
         if (hyp(dx, dy) < 14) {
           const f = this.fieldAt({ x: g.x, y: g.y }); this.hidePanel(); this.snap();
           if (hyp(f.x - this.rb.x, f.y - this.rb.y) < 3.5) this.rpoHandoff();   // tapped the back: hand it off at the snap
@@ -435,7 +445,7 @@
       }
       if (this.aim && this.phase === 'live' && this.passing()) {
         const a = this.aim, dx = a.cx - a.sx, dy = a.cy - a.sy;
-        if (dx > 30 && dx > Math.abs(dy)) this.tuck();          // swiped toward the end zone: run it
+        if (dx * this.fx > 30 && Math.abs(dx) > Math.abs(dy)) this.tuck();          // swiped toward the end zone: run it
         else if (hyp(dx, dy) > 14) {
           const t = this.leadAssist(this.aimTarget());
           if (this.bulletMode) this.bulletAt(t); else this.throwBall(t.x, t.y);
@@ -498,7 +508,9 @@
     }
     pop(text, color) { this.popup = { text, color: color || '#fff', t: 0.9 }; }
     key(e, down) {
-      const k = e.key.toLowerCase();
+      let k = e.key.toLowerCase();
+      // left and right follow the picture: mirrored, they swap
+      if (this.mirror) k = { arrowleft: 'arrowright', arrowright: 'arrowleft', a: 'd', d: 'a' }[k] || k;
       if (down && !e.repeat && (k === 'escape' || k === 'p')) { this.paused ? this.resume() : this.pause(); return; }
       if (down && !e.repeat && k === 't' && !this.paused) { this.callTimeout(); return; }
       if (down && !e.repeat && k === 'h' && !this.paused && !this.defending && this.phase === 'live') { this.rpoHandoff(); return; }
@@ -540,7 +552,7 @@
     }
     aimTarget() {
       const a = this.aim, qb = this.qb;
-      let vx = ((a.sx - a.cx) / PPY) * 2.2, vy = ((a.sy - a.cy) / PPY) * 2.2;
+      let vx = ((a.sx - a.cx) / PPY) * 2.2 * this.fx, vy = ((a.sy - a.cy) / PPY) * 2.2;
       const d = hyp(vx, vy), max = this.maxRange * (1 - this.fatigue() * 0.3);   // tired arm: less range
       if (d > max) { vx *= max / d; vy *= max / d; }
       return { x: qb.x + vx, y: qb.y + vy };
@@ -2151,7 +2163,7 @@
     // and even a clean one sails off target. Field goals stop at the range.
     kickAimTarget() {
       const a = this.kaim, k = this.kick, max = k.range * 1.25;      // any kick can be stretched a quarter past its range
-      let vx = ((a.sx - a.cx) / PPY) * 2.2, vy = ((a.sy - a.cy) / PPY) * 2.2;
+      let vx = ((a.sx - a.cx) / PPY) * 2.2 * this.fx, vy = ((a.sy - a.cy) / PPY) * 2.2;
       const d = hyp(vx, vy);
       if (d > max) { vx *= max / d; vy *= max / d; }
       k.over = clamp((Math.min(d, max) - k.range) / (k.range * 0.25), 0, 1);
@@ -2819,7 +2831,10 @@
       // your bench on the top sideline, theirs on the bottom (the same on both ends of the field)
       const side = { top: me, bot: opp, topKit: this.kits0.me, botKit: this.kits0.opp };
       this.fieldImg = GP.Pixel.field(me, opp, YA, TOPA, FW, PAD, SIDE, side);
-      this.fieldImgDef = GP.Pixel.field(opp, me, YA, TOPA, FW, PAD, SIDE, side);   // on defense they attack your end zone
+      this.fieldImgDef = GP.Pixel.field(opp, me, YA, TOPA, FW, PAD, SIDE, side);   // their end zone on the left
+      // mirrored copies: drawn into the art, which is itself mirrored on screen, so the lettering reads right
+      const flip = (c) => { const f = document.createElement('canvas'); f.width = c.width; f.height = c.height; const x = f.getContext('2d'); x.translate(c.width, 0); x.scale(-1, 1); x.drawImage(c, 0, 0); return f; };
+      this.fieldImgF = flip(this.fieldImg); this.fieldImgDefF = flip(this.fieldImgDef);
       this.kits = {
         // each side in its uniform for this game (see uniforms.js)
         O: GP.Pixel.sprites(this.kits0.me),
@@ -2909,7 +2924,10 @@
       this.zoomStep();
       if (this.zf > 1.001) this.camX = clamp(this.zl + AW / this.zf / YA / 2 - VIEW / 2, -3, 123 - VIEW);
       this.camPx = Math.round(this.camX * YA);
-      g.drawImage(this.defending ? this.fieldImgDef : this.fieldImg, -(this.camPx + Math.round(PAD * YA)), 0);
+      // the field as it should look on screen: your end zone behind you (on the left when you attack right)
+      const scr = this.myDir === 1 ? (this.mirror ? this.fieldImgF : this.fieldImg) : (this.mirror ? this.fieldImgDefF : this.fieldImgDef);
+      g.drawImage(scr, -(this.camPx + Math.round(PAD * YA)), 0);
+      this.lastZ = this.zoomCrop();                         // this frame's crop, for the overlay drawn below
 
       const show = this.phase !== 'opp' && this.phase !== 'final';
       if (show) {
@@ -2960,7 +2978,7 @@
         const c = this.carrier, w = Px.width(this.popup.text);
         const x = clamp(this.ax(c.x), Math.ceil(w / 2) + 2, AW - Math.ceil(w / 2) - 2);
         g.globalAlpha = Math.min(1, this.popup.t * 2.5);
-        Px.text(g, this.popup.text, x, this.ay(c.y) - 33, this.popup.color, 1, { center: true, shadow: '#10182a' });
+        this.fieldText(g, this.popup.text, x, this.ay(c.y) - 33, this.popup.color, { center: true, shadow: '#10182a' });
         g.globalAlpha = 1;
       }
       // everything below is the overlay
@@ -2974,16 +2992,16 @@
         Px.box(u, Math.round(AW / 2 - w / 2), SB + 4, w, 12, 'rgba(16,24,42,.8)');
         Px.text(u, t, AW / 2, SB + 7, '#ffd84a', 1, { center: true });
       }
-      if (this.phase === 'presnap') this.hint(this.defending ? `${callName(this.dcall).toUpperCase()} · ` + (this.ringD ? `RINGED #${this.ringD.info.num}: SWIPE LEFT TO DIVE · TAP TO SNAP` : 'TAP THE FIELD WHEN READY')
+      if (this.phase === 'presnap') this.hint(this.defending ? `${callName(this.dcall).toUpperCase()} · ` + (this.ringD ? `RINGED #${this.ringD.info.num}: SWIPE ${this.sideWord(-1)} TO DIVE · TAP TO SNAP` : 'TAP THE FIELD WHEN READY')
         : this.play && this.play.rpo ? `${this.play.name.toUpperCase()} · SWIPE BACK: SNAP AND THROW · TAP THE BACK: SNAP AND RUN`
         : `${this.play ? this.play.name.toUpperCase() + ' · ' : ''}TAP THE FIELD TO SNAP`, 'CHANGE');
-      else if (this.phase === 'live' && this.defending) this.hint(this.ringOn() && !this.ringD.dove ? `SWIPE LEFT: #${this.ringD.info.num} DIVES AT THE BALL CARRIER` : 'SWIPE UP AS THE BALL ARRIVES TO GO FOR THE PICK');
+      else if (this.phase === 'live' && this.defending) this.hint(this.ringOn() && !this.ringD.dove ? `SWIPE ${this.sideWord(-1)}: #${this.ringD.info.num} DIVES AT THE BALL CARRIER` : 'SWIPE UP AS THE BALL ARRIVES TO GO FOR THE PICK');
       else if (this.phase === 'live' && this.passing() && !this.aim) this.hint(this.play.rpo && !this.rpoDone ? 'TAP THE BACK TO HAND OFF · OR DRAG BACK TO THROW'
         : `DRAG BACK TO THROW · TAP: ${this.bulletMode ? 'LOB' : 'BULLET'} · SWIPE AHEAD: RUN`);
       else if (this.phase === 'kick' && this.kick && this.kick.cpu && (this.kick.type === 'fg' || this.kick.type === 'pat'))
         this.hint(this.kick.stage === 'approach' && !this.kick.leapt ? 'SWIPE UP JUST AS HE KICKS IT TO BLOCK' : '');
       else if (this.phase === 'kick' && this.kick && this.kick.cpu) this.hint({ flight: this.kick.fairCall ? (this.kick.type === 'ko' ? 'FAIR CATCH / TOUCHBACK CALLED' : 'FAIR CATCH CALLED') : this.kick.type === 'ko' ? 'TAP FOR A FAIR CATCH OR TOUCHBACK' : 'TAP TO CALL A FAIR CATCH',
-        return: 'UP/DOWN: CUT · TAP+SWIPE: JUKE · SWIPE LEFT: LUNGE · RIGHT: STOP' }[this.kick.stage] || '');
+        return: `UP/DOWN: CUT · TAP+SWIPE: JUKE · SWIPE ${this.sideWord(-1)}: LUNGE · ${this.sideWord(1)}: STOP` }[this.kick.stage] || '');
       else if (this.phase === 'kick' && this.kick) this.hint({ set: 'TAP THE FIELD TO START THE KICK', aim: 'DRAG BACK TO AIM · RELEASE TO KICK',
         meter: 'TAP WHEN THE MARKER IS IN THE GREEN', flight: '' }[this.kick.stage] || '');
       else if (this.phase === 'live' && this.running(this.carrier)) this.hint(`UP/DOWN: CUT · TAP+SWIPE: JUKE · FORWARD: ${this.carrier === this.qb ? 'SLIDE' : 'LUNGE'} · BACK: STOP`);
@@ -2998,9 +3016,11 @@
         }
       }
 
-      const m = this.g, z = this.zoomCrop(); this.lastZ = z;
+      const m = this.g, z = this.lastZ;
       m.setTransform(1, 0, 0, 1, 0, 0); m.imageSmoothingEnabled = false;
+      if (this.mirror) { m.save(); m.translate(this.cv.width, 0); m.scale(-1, 1); }   // the offense heading left
       m.drawImage(this.art, z.sx, z.sy, z.sw, z.sh, 0, 0, this.cv.width, this.cv.height);
+      if (this.mirror) m.restore();
       m.drawImage(this.ui, 0, 0, this.cv.width, this.cv.height);
       this.drawScoreboard(m);
     }
@@ -3022,17 +3042,27 @@
       const b = this.ball, c = this.carrier, k = this.kick, ph = this.phase;
       const returning = k && ph === 'kick' && (k.stage === 'return' || k.stage === 'loose');
       const inPlay = (ph === 'choose' || ph === 'presnap' || ph === 'live' || ph === 'tackling' || ph === 'dead') && !k;
-      const on = GP.prefs().zoom && (inPlay || returning);
       const fit = AH / (FW * YA + 18), tight = fit * 1.33;
+      // kicks: an extra point or field goal frames the kicker and the uprights together; a punt or kickoff you're
+      // aiming shows the whole field (you need its range), then the camera follows the ball in, and the return close
+      let kz = null, kf = null;
+      if (k && ph === 'kick' && !returning) {
+        if (k.type === 'pat' || k.type === 'fg') { kz = clamp(VIEW / (121 - k.sx + 20), 1, tight); kf = { x: (k.sx + 121) / 2, y: MID }; }
+        else if (b.state === 'air') kz = (fit + tight) / 2;
+        else if (b.state === 'bounce') { kz = (fit + tight) / 2; kf = { x: b.x, y: b.y }; }
+        else { kz = k.cpu ? fit : 1; kf = { x: k.sx + 14, y: MID }; }
+      }
+      const on = GP.prefs().zoom && (inPlay || returning || kz != null);
       const close = ph === 'tackling' || returning || (ph === 'live' && (b.state === 'air' || this.running(c)));
       // after the whistle the camera stays where the play ended
-      if (ph !== 'dead' || this.zGoal == null) this.zGoal = !on ? 1 : close ? tight : fit;
+      if (ph !== 'dead' || this.zGoal == null) this.zGoal = !on ? 1 : kz != null ? kz : close ? tight : fit;
       const ease = (tau) => 1 - Math.exp(-dt / tau);
-      // a kick is aimed on the unzoomed overlay, so it needs the whole field at once: no easing out
-      this.zf = k && ph === 'kick' && !returning ? 1 : (this.zf || 1) + (this.zGoal - (this.zf || 1)) * ease(0.75);
+      // easing in or out over about 0.75s; out to the whole field quickly when you're about to aim a punt or kickoff
+      this.zf = (this.zf || 1) + (this.zGoal - (this.zf || 1)) * ease(kz === 1 ? 0.25 : 0.75);
       // what it looks at: the ball in the air, whoever has it (a little ahead of him), or the line of scrimmage
       let f;
-      if (b.state === 'air') f = { x: b.sx + (b.tx - b.sx) * Math.min(1, b.u), y: b.sy + (b.ty - b.sy) * Math.min(1, b.u) };
+      if (kf) f = kf;
+      else if (b.state === 'air') f = { x: b.sx + (b.tx - b.sx) * Math.min(1, b.u), y: b.sy + (b.ty - b.sy) * Math.min(1, b.u) };
       else if (b.state === 'bounce' && returning) f = { x: b.x, y: b.y };
       else if (c && (returning || this.running(c))) {
         // a little ahead of him, eased, so a cut or juke (which flips his velocity at once) doesn't yank the view
@@ -3116,7 +3146,19 @@
         g.fillStyle = e > 0.6 ? '#4fd18b' : e > 0.3 ? '#ffd84a' : '#ff6b6b'; g.fillRect(X - 7, Y - 18, Math.round(15 * e), 2);
       }
       if (p.team === 'O' && p.route && this.phase !== 'dead' && !this.defending)
-        Px.text(g, p.role.replace(/\d/, ''), X, Y - 23, '#ffffff', 1, { center: true, shadow: '#10182a' });
+        this.fieldText(g, p.role.replace(/\d/, ''), X, Y - 23, '#ffffff', { center: true, shadow: '#10182a' });
+    }
+    // Text on the field: when the picture is mirrored, the text is flipped back about its own center so it reads.
+    fieldText(g, t, x, y, col, o) {
+      if (!this.mirror) return GP.Pixel.text(g, t, x, y, col, 1, o);
+      g.save(); g.translate(x, 0); g.scale(-1, 1); g.translate(-x, 0); GP.Pixel.text(g, t, x, y, col, 1, o); g.restore();
+    }
+    // A field spot on the overlay (the unzoomed, unmirrored layer the kick aim and hints are drawn on)
+    toOv(x, y) {
+      const z = this.lastZ || { sx: 0, sy: SIDE, sw: AW, sh: AH };
+      let ox = (this.ax(x) - z.sx) * AW / z.sw;
+      if (this.mirror) ox = AW - ox;
+      return [Math.round(ox), Math.round((this.ay(y) - z.sy) * AH / z.sh)];
     }
     // A run's path, drawn like a route: from the back to the hole, then upfield (outside runs bend to the edge
     // first). On an RPO, the back's path through the mesh.
@@ -3147,7 +3189,7 @@
         const last = p.name.split(' ').slice(-1)[0].toUpperCase().slice(0, 9), X = this.ax(p.x), Y = this.ay(p.y) + 4;
         const t = (p === star ? '* ' : '') + last, w = Px.width(t);
         g.fillStyle = 'rgba(16,24,42,.7)'; g.fillRect(Math.round(X - w / 2) - 2, Y - 1, w + 4, 8);
-        Px.text(g, t, X, Y, p === star ? '#ffd84a' : '#ffffff', 1, { center: true });
+        this.fieldText(g, t, X, Y, p === star ? '#ffd84a' : '#ffffff', { center: true });
       }
     }
     drawBall() {
@@ -3190,10 +3232,10 @@
       g.fillStyle = '#ffd84a'; g.fillRect(X1, Y1, 1, 1);
       // pull-back line
       const a = this.aim;
-      Px.dots(g, a.sx / 2, a.sy / 2, a.cx / 2, a.cy / 2, 'rgba(255,255,255,.55)', 4);
+      Px.dots(this.ug, a.sx / 2, a.sy / 2, a.cx / 2, a.cy / 2, 'rgba(255,255,255,.55)', 4);
     }
     drawKick() {
-      const g = this.ug, Px = GP.Pixel, k = this.kick, X0 = this.ax(k.sx), Y0 = this.oy(k.sy);
+      const g = this.ug, Px = GP.Pixel, k = this.kick, [X0, Y0] = this.toOv(k.sx, k.sy);
       if (k.cpu) return;                                  // their punt: nothing of yours to aim
       if (k.stage === 'flight' || k.stage === 'bounce' || k.stage === 'return' || k.stage === 'loose') return;   // the ball's away: just watch
       const title = k.type === 'punt' ? `PUNT · RANGE ${k.range}` : k.type === 'ko' ? `KICKOFF · RANGE ${k.range}` : `${k.type === 'pat' ? 'EXTRA POINT' : k.dist + '-YARD FIELD GOAL'} · RANGE ${this.kickRange}`;
@@ -3203,7 +3245,7 @@
       // the hold spot and the uprights
       g.fillStyle = '#ffd84a'; g.fillRect(X0 - 1, Y0 - 1, 3, 3);
       const aimLine = (t, col) => {
-        const X1 = this.ax(t.x), Y1 = this.oy(t.y), n = Math.max(5, Math.floor(hyp(X1 - X0, Y1 - Y0) / 5)), peak = hyp(t.x - k.sx, t.y - k.sy) * YA * 0.14;
+        const [X1, Y1] = this.toOv(t.x, t.y), n = Math.max(5, Math.floor(hyp(X1 - X0, Y1 - Y0) / 5)), peak = hyp(t.x - k.sx, t.y - k.sy) * YA * 0.14;
         g.fillStyle = col;
         for (let i = 1; i < n; i++) { const u = i / n; g.fillRect(Math.round(X0 + (X1 - X0) * u), Math.round(Y0 + (Y1 - Y0) * u - 4 * peak * u * (1 - u)), 2, 2); }
         Px.ring(g, X1, Y1, 6, 6, '#ffd84a'); Px.ring(g, X1, Y1, 5, 5, '#ffd84a');
