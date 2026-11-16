@@ -10,27 +10,337 @@ Open `index.html` in a browser (or serve the folder with any static server, e.g.
 
 ## How to play
 
-- **You run the offense.** Opponent drives are simulated from your Defense rating vs. their Offense.
+- **You run the offense,** and call the defense (or simulate opponent drives from your defense's rating vs. their offense).
 - **Pass:** after the snap, drag backwards anywhere on the field and release. The ring is where the
   ball lands, so lead the receiver. Nearby defenders can break it up or intercept.
-- **Run / after the catch:** hold on the field to steer toward your pointer, or use arrows / WASD.
-- **4th down:** go for it, punt, or kick a field goal. Kicks use a timing meter (tap or space).
-- **Read the defense.** The play-call strip sits under the field so you can see the alignment
-  before you choose. The defense mixes five calls:
-  - *Man* — corners 6 yards off, one deep safety. Beat it with crossing routes and speed mismatches.
-  - *Press man* — corners on the line. Quick throws are tight; deep routes win if your receiver is faster.
-  - *Two deep* — corners 9 yards off and bailing, safety walked up. Flats and the deep middle are open.
-  - *Three deep* — both corners and the safety deep. Throw underneath.
-  - *Blitz* — both linebackers creep up and nobody is deep. Get the ball out fast.
-- **Franchise:** 32 teams in two conferences (Frontier, Meridian), each with four divisions of four.
-  14-game season: 6 division games, 4 against another division in your conference, 4 against a
-  division in the other conference (pairings rotate each season). Six teams per conference make
-  the playoffs (four division winners plus two wild cards; top two seeds get a bye), then
-  Wild Card, Divisional, Conference Championship and the Championship Game. Wins earn coaching
+- **Bullet pass:** tap a receiver instead (or a spot) and the quarterback fires it flat and fast, about 60%
+  quicker than a lofted throw and led all the way. Range is 80% of a lofted throw. At the catch it's half as
+  likely to be picked off but harder to hold on to (roughly 10% drops in the open, more in traffic). It can't
+  go over anyone: a defender under its path can tip it or pick it off on the way. In testing it came out
+  about even with lofted throws on completions, with fewer interceptions; lofted throws keep the range and
+  the touch over coverage.
+- **Scramble:** instead of throwing, swipe toward the end zone (keyboard: right arrow or D) and the
+  quarterback tucks the ball and becomes a runner.
+- **Running:** anyone with the ball except a quarterback still in the pocket (the back, a receiver
+  after the catch, a scrambling quarterback) runs straight ahead automatically. Swipe up or down
+  to cut toward a sideline, or hold W/S or the up/down arrows.
+- **Lunge and stop:** any ball carrier (not a quarterback still in the pocket) can swipe forward to
+  lunge: a head-first dive of 1 yard (best of speed, power or agility at 50) up to 2.5 yards (90+), or for
+  a scrambling quarterback a feet-first slide of 0.75 to 2 yards. He goes down where he lands and
+  tacklers can't stop the dive itself. Swiping back stops him for about a second. Keyboard: right arrow / D and left arrow / A.
+- **Juke:** tap, then swipe (keyboard: space, then up/down). For a third of a second the runner
+  slips any tackle; time it just before contact. A juke into empty space costs speed, and there is a
+  short cooldown, so spamming it gains less than running straight.
+- **Agility (AGI):** a running back's agility lengthens the juke window, shortens the recovery between jukes, and is matched against the
+  tackler's TKL when a juke connects: an even matchup works 75% of the time, an agile back against
+  a poor tackler almost always. Quarterbacks use their own agility stat when scrambling. Receivers use their
+  own agility stat; tight ends juke with a fixed 55.
+- **Tackling:** each opposing defender has a jersey number and a tackling rating (TKL) built from
+  his team's defense (linebackers highest, corners lowest). Whether a tackle lands depends on TKL,
+  the runner's rating, the angle (head-on lands about 97% of the time; from the side or behind
+  much less) and both players' speed. Tackled runners fall forward up to about 2.5 yards. Big
+  head-on hits fumble about 1-2% of the time, and the defense recovers 60% of those. The box
+  score lists broken tackles, yards after contact, fumbles lost and the opponent's top tacklers.
+- **After a touchdown:** kick the extra point or go for 2: one play from the 2-yard line, called and run
+  like any other (no field goal option, no clock, and the play doesn't count in your season stats). Only
+  a touchdown on that play scores. Your coordinator highlights the usual chart in the second half: go for
+  two when the touchdown leaves you down 2, 5 or 10, or up 1, 4 or 5. Inside the 5 he leans to quick throws
+  and play action, since the defense loads the box.
+- **4th down:** go for it, punt, or kick a field goal. Past midfield, the play list also offers a field goal on
+  any down (marked "a stretch" past your kicker's range and "out of reach" more than 25% past it).
+- **Kicking:** tap the field to start the kick, drag back to aim (like a pass), and release to open the
+  timing meter. A field goal is snapped and kicked from the line of scrimmage (held a yard behind it), so its
+  distance is the line plus the 10-yard end zone, plus one. Kick distance sets how far you can aim: 30 yards at 40, about 45 at 70, 60 at 99 (a kick
+  from the 41). Kick accuracy sets the meter's zones and how fast the marker moves: green (about 13% of the bar
+  for a weak kicker up to 28% for a maxed one, the same for every kick and distance) goes where you aimed; the yellow
+  around it does so about half the time; outside it the kick is pushed wide.
+  Tapping to start is the snap: seven rushers fight the kick unit's blockers (your line's pass block
+  sets how long they hold), then charge the ball. On a field goal the line holds at the line of scrimmage
+  and only two rushers really try to get through, so the block comes at a different moment each kick:
+  with an even matchup, about 1 in 100 at 2.5 seconds from the snap to the kick, 1 in 8 at 3, 1 in 3 at
+  3.5, half at 4, and nearly certain by 5. A rusher who has beaten his block and is near the ball when
+  the kicker connects may block it, and one who reaches it first blocks it outright. A blocked field goal gives
+  the other team the ball at the spot. The kicker takes his steps and swings through on every kick.
+- **Landing marker:** once a pass is in the air, a yellow marker on the turf shows where it will come down
+  (after the throw's scatter), so you can see whether it's leading your receiver or floating to a defender.
+- **Punting:** the same three steps from 13 yards behind the line. Aim where it should land; you can drag
+  up to 25% past the range (the aim line turns yellow and the title says STRETCH), which shrinks the green
+  zone (to half at a full stretch) and makes even a clean punt sail a little. Field goals stretch the same
+  way: up to 25% past the kicker's range, with a smaller green zone, and a clean kick drifts (at a full
+  stretch about 1 in 4 clean kicks misses wide). There are no range rings on the field; the aim line and
+  the title tell you when you're past the range. A full punt
+  from a 71 kick-distance punter (about 3 stars) travels about 47 yards past the line, the NFL average;
+  about 33 at 40 and 60 at 99. A clean punt lands where you aimed; a shank falls
+  short and veers. Into the end zone is a
+  touchback, over the sideline is spotted where it went out. Otherwise the play runs out: your gunners
+  (held up a moment by jammers) and line cover downfield while the punter hangs back as the safety, the
+  return team drops into a wall, and the returner settles under it. If the coverage is close he calls a
+  fair catch; if not he returns it, picking a lane away from the coverage, with his blockers taking on
+  your cover men and missed tackles possible. Inside his 10, or if he can't get there, he lets it go:
+  the ball hops and rolls, with the odd bad hop sideways or back, until your coverage downs it, it dies,
+  rolls out of bounds or bounces into the end zone for a touchback. Hang time is set so the coverage
+  usually arrives close to the catch; a long line drive can outkick it.
+- **Playbook:** 18 plays in six types. Quick pass (Slants, Curls, Quick Outs, Stick), Deep pass
+  (Verticals, Post & Cross, Dagger, Comebacks), Inside run (HB Off Tackle, HB Dive, HB Power: the backside guard pulls behind the line and leads
+  through the hole onto the free linebacker, the answer to man coverage's extra man in the box), Outside run (Toss
+  Right/Left: to the edge, then up), Screen (RB Screen: the line releases to lead-block; WR Screen:
+  receiver steps back behind blockers) and Play action (PA Post, PA Crossers, PA Deep Shot: linebackers
+  and safeties bite on the fake, less if they cover well, more the more you've run that game). The
+  play list opens before every snap with the six types; the offensive coordinator's call is marked (with the
+  play's name), and picking a type gives his best play of that type for the situation. Shortcut: with the list
+  open, a tap on the field runs his call and snaps at once (1st to 3rd down; on 4th down his call may be a
+  punt or a field goal, so you pick). The play you picked is named in the hint at the bottom with a CHANGE
+  button that reopens the list until you snap. Defense works the same way (the field-tap shortcut runs your
+  defensive coordinator's call on any down). His read of each coverage
+  comes from measured results of every play against every call.
+- **Defenders have jobs, and make mistakes.** Man defenders play leverage: they shade a yard inside or
+  outside and give up the other way (inside in Cover 0, 2-Man and press; outside in Cover 1, where help
+  is in the middle). A man defender whose man stays in to block drops into the hole over the middle. With
+  one deep safety he plays the run fast; with two, both read pass first, so Cover 2 and 2-Man are the
+  shells to run against (Cover 4's safeties still fit the run). Before every snap each defender may bust
+  his assignment: he loses his man, jumps a short route, drops to the wrong spot, bites hard on play
+  action or overruns a run. Low-star players and low-star coordinators bust more: about 1 bust every 12
+  plays from a 5-star defense under a 5-star coordinator, 1 every 2 from 0 stars under 0 stars. Every
+  team's defensive coordinator has 0-5 stars, shown on the next-game card. A big catch a bust caused
+  pops up as "Busted coverage!".
+- **Blocking after the catch and on returns.** Once a pass is caught, every receiver, tight end and back turns
+  blocker: each picks a defender still in front of the ball carrier, gets between them and locks him up (the
+  tight end's blocking stat sets how long, about 0.9s for a receiver or back). On kickoff and punt returns the
+  return team forms a wall, each blocker takes a cover man coming at the returner (one nobody else has, if he
+  can) and stays on him: 0.7-1.8s on a kickoff, 0.2-0.5s on a punt (punt coverage arrives with the ball), then
+  the cover man is free for a moment before anyone can pick him up again. Measured with a returner who just
+  runs straight: punt returns about 11 yards (they were 5, with the blockers barely touching anyone), kickoff
+  returns about 16; steering into the gaps does better.
+- **Blocking is one-on-one.** A lineman holds only the man he's blocking, so the defense's numbers matter:
+  against a one-high man call (Cover 0, Cover 1, press) one defender near the line goes unblocked, and you
+  beat him with a juke or by throwing. Man defenders line up over their man, so the tight end's defender
+  follows him to the run side. In Cover 0 the blitzing linebacker comes off the tight end's edge and keeps
+  the runner inside; on outside runs the tight end kicks out the edge defender, and on inside runs he blocks
+  the man covering him. Cover 0 is a real all-out blitz: quick throws beat it, slow ones get sacked.
+- **Out of bounds:** a runner who steps out carries on and eases to a stop a couple of yards past the sideline
+  (about a second) while everyone else eases up, instead of freezing on the line. The ball is still spotted
+  where he went out.
+- **Scoreboard:** drawn at the screen's full resolution in the menus' pixel font, with the team boxes kept
+  inside the safe area (clear of the notch / Dynamic Island and the rounded corners) and the middle centered
+  on the screen. Down and distance reads "1ST AND 10" (the font's ampersand looks like a dollar sign).
+- **Touchdown celebrations.** Whoever scores (either team, including on a kick or punt return) carries on a
+  few yards deeper into the end zone, drops the ball, turns to the field and celebrates while teammates nearby
+  jog over: half the time a jump with his arms up, half the time the griddy (heel taps shuffling side to side,
+  then the glasses); then the game moves on to the extra point (or the kickoff).
+- **Kickoffs.** Every half, and every score, starts with a kickoff from the kicking team's 35 (you receive the
+  opening kickoff and kick to start the second half; in overtime the coin toss winner receives). Kicking: the same tap, aim and
+  meter as a punt, with the same stretch past the range (64 yards at 71 kick distance, about to the goal
+  line); your coverage team runs down and their returner brings it back. Receiving: your running back
+  returns it with the runner controls; tap while it's in the air for a fair catch (in the end zone, a
+  touchback). Out the back of the end zone, or a fair catch inside your 25: the ball at the 25. Out of
+  bounds: the 40. Their returner takes a knee on a ball caught 3+ yards deep. A kickoff that hits the
+  ground stays live for the returner to pick up.
+- **Punt returns.** When the opponent punts (with playable defense on), it's played out with your return
+  team: their punter aims for distance, or to pin you inside your 10 when he's close, and rarely shanks
+  one. Tap during the flight to call a fair catch; otherwise your returner (your running back's speed and
+  agility) catches it and you steer with the runner controls, with forward to the left: swipe up/down to
+  cut, tap then swipe to juke (a timed juke can break a tackle), swipe left to lunge, right to stop. If he
+  can't get to it, or it's inside your 10, he lets it bounce. A return touchdown goes to your extra point or
+  two-point choice; a blocked punt is your ball. Keyboard: space calls the fair catch, then arrows.
+- **Your lineman's dive.** On defense your best pass rusher among the linemen rushing on that call wears a
+  white ring. He plays his assignment; swipe left (or press left) and he goes for whoever has the ball, the
+  quarterback or the back on a run. If he's blocked he first has to beat his man (his pass rush, or run stop on
+  runs, against the blocker, much easier as the play goes on), then he bursts and dives up to about 6.5 yards.
+  A hit is a tackle attempt with a bonus (on the quarterback, almost always a sack). Lose the block or miss
+  and he's on the ground with the ball carrier free. One dive a play; the ring goes when the quarterback
+  throws. If another defender breaks through the line (past it, free of his blocker) while your ringed man
+  is still tied up, the ring and the dive jump to him (about 7% of snaps). Measured on pass plays: diving too early (0.4s) gives up more than not diving, about 1.6s is the
+  sweet spot (sacks on ~14% of plays against ~2% without), and by 2.2s the ball's usually gone.
+- **Go for the interception.** On defense, swipe up (or press up/space) as their pass arrives. The
+  defender nearest where it will come down plays the ball, and his coverage sets the timing window (about
+  0.15s at 60 coverage, 0.31s at 90). On time and close enough: he goes for the pick (an interception or a
+  breakup). Too early (any time before that window): pass interference, a spot foul and an automatic first
+  down. Too late, up to a second after the catch: he whiffs on the tackle. One try per pass.
+- **Sidelines.** Between each sideline and the stands: each team's area between the 25-yard lines (your team on
+  the top sideline, theirs on the bottom) with benches, a cooler, a loose crowd of players in the game's
+  uniform and coaches in team polos with headsets; TV camera operators on tripods further down; photographers
+  kneeling at each end zone. With zoom on, the camera drifts out over a sideline when the play nears it (as in
+  Retro Bowl); with zoom off the view is unchanged and the sidelines only peek in at the edges.
+- **Camera zoom** (on by default; turn it off in the pause menu, remembered on the device). As in Retro Bowl, the
+  line of scrimmage sits in the middle of the screen before the snap and the ball stays near the middle during
+  the play (near an end zone the camera stops at the end of the field). Its behavior is modeled on measurements of recorded
+  Retro Bowl gameplay (the spacing of the 5-yard lines in every frame): three zoom levels, and every change an
+  exponential ease with a time constant of about 0.75 seconds (it closes about 42% of the remaining gap every
+  0.4s), slow enough that you don't see it happen. Here: the whole field between plays and for kicks; cropped
+  to the field for the play call and while the quarterback holds the ball, so every receiver stays on screen
+  (Retro Bowl goes 1.27x closer there; its formations are narrower); and 1.33x closer, the same step Retro
+  Bowl takes, the moment the ball is thrown or someone runs with it. The view follows the ball in the air
+  and then the ball carrier (a little ahead of him), drifts slightly into the stands to follow a runner down a
+  sideline, holds still after the whistle, and cuts to the new line of scrimmage for the next play while the
+  zoom eases back out. Kick and punt returns zoom in on the returner the same way. The scoreboard and hints
+  stay their normal size at any zoom.
+- **Play defense (Phase 1: you call it).** When the opponent has the ball you play their drive: the field
+  flips so they attack your end zone, their offense calls a play (hidden from you), and your defensive
+  coordinator recommends a coverage. The call list opens before every snap with four groups: Man (Cover 1,
+  Cover 1 Press, 2-Man), Zone (Cover 3, Cover 2, Cover 4), Blitz (Cover 0, Fire Zone, Cover 1 Blitz) and
+  Prevent; his call is marked, and picking its group gives his call (another group gives his best call in it). Tap the field to snap and watch it play out. Their offense plays like a human,
+  mistakes included: the quarterback reads one receiver at a time, misses throws and sometimes throws
+  behind his man, sometimes stares down his first read, freezes and takes the sack when nobody's open, and
+  now and then forces it into coverage (weaker quarterbacks do all of this more); their runner only reacts
+  to what's in front of him, a few times a second. Their play-caller
+  learns which coverages you lean on and calls plays that beat them. On 4th down they go for it, kick a
+  field goal or punt. Interceptions and recovered fumbles give you the ball at the spot; a safety scores
+  you 2. Your defenders are your defensive players (below), plus your coordinator's stars, which also set how
+  often they bust. "Simulate drive" in the menu hands one drive to the old simulation, and your team page
+  has a Play it / Simulate switch for whole games. Balance: tuned over thousands of simulated drives so an
+  even matchup ends close to an NFL drive (about 25-30% touchdowns, ~57% completions, ~8 yards a throw,
+  ~4.8 a carry, ~2% interceptions, a sack every few drives). Those mistakes do most of the balancing; their
+  players also run 4% slower than their ratings, because yards after the catch run high against this
+  defense.
+- **Read the defense.** The opposing coordinator calls a coverage every snap from a nine-call playbook:
+  Cover 0 (all-out blitz, nobody deep), Cover 1 and Cover 1 Press (man with one deep safety), Cover 2,
+  Cover 3, Cover 4 (quarters), 2-Man (two deep, man under), Fire Zone (linebacker blitz, three deep, a
+  lineman dropping into coverage) and Prevent. Two-deep calls take a lineman off for a second safety.
+  He calls by down and distance (base looks on early downs, two-deep shells on 3rd and long, pressure on
+  3rd and short), field position (man in the red zone), clock and score (prevent to protect a late lead,
+  more blitzing when trailing), and your tendencies this game. Better defenses adapt more and sometimes
+  disguise, showing one shell and rotating at the snap. After each play a note shows what they were in.
+  Each call has holes: slants beat man and Cover 0, verticals beat Cover 2, posts beat Cover 3 and Fire
+  Zone, curls beat Cover 3 and Prevent.
+- **Stars and stats:** every player has a 0–5★ rating fixed for life. Stars set the general level
+  of his ceilings (about 52 at 0★ to 94 at 5★), and each stat has its own cap scattered around that
+  level, so two 3★ players can have different strengths. Upgrades stop at the cap; the bar's tick
+  marks it. Retiring players are replaced by rookies with fresh stars.
+- **Quarterback stats:** arm strength (range and ball speed), accuracy (how close throws land),
+  speed (scramble pace), agility (juking on scrambles) and stamina. His overall is computed from
+  these. Every snap drains his energy, faster with low stamina: a tired QB throws shorter and less
+  accurately and scrambles slower. The bar over his head shows it; he is fresh each new drive.
+- **Running back stats:** speed (top speed), agility (jukes), catching (passes thrown to him),
+  power (breaking tackles, falling forward, ball security) and stamina. After about three seconds
+  with the ball he starts to slow, up to 10% on a long run; high stamina barely fades. His overall
+  is computed from these.
+- **Wide receiver stats:** catching (catch chance), speed (routes and open field), agility (when he
+  breaks on a route, the defender in man coverage on him is wrong-footed for a moment; also his juke
+  after the catch), stamina (he slows after about two seconds of running, so it shows on deep routes)
+  and strength (winning contested catches, breaking tackles, falling forward). His overall is
+  computed from these.
+- **Tight end stats:** catching, strength, blocking, speed and stamina. On run plays he lines up on
+  the run side and climbs to block a linebacker or safety; blocking sets how long he holds him (about
+  half a second at 50, over two seconds at 90, varying block to block). A poor blocker loses his man
+  and hurts the run game; above about 70 the unblocked safety becomes the limit. His overall is
+  computed from these. Agility stays fixed at 55 for now.
+- **Roster:** up to 22 players. Eighteen start: nine on offense (quarterback, back, two receivers, tight
+  end, three linemen, kicker) and nine on defense (three linemen, two linebackers, two cornerbacks, two
+  safeties; the second safety plays in two-deep coverages). Each game starts your best player at each spot. If nobody on
+  the roster plays a starting spot, a nameless 0-1★ reserve with stats of 40-55 is fielded, and he
+  can't be upgraded. Players who retire (at 36) leave their spot open; you can also release players.
+  New careers start one back, receiver or tight end short, and one defender short.
+- **Draft:** three rounds after each season, worst record first and the champion last, from about
+  110 prospects aged 21-23. Unscouted prospects show only a star range and an overall range;
+  scouting one costs a coaching point and reveals his real stars, stats and caps. Other teams draft
+  by their own noisy read, so they can take your target. You need an open roster spot to draft.
+- **Trades:** open in the offseason and during the season until the deadline after week 9. Each team
+  has three players on its trade block each season, plus its picks in the next draft. Players are
+  valued by overall, stars, age and position; picks by round and how high they are likely to fall.
+  Other teams accept only if they come out about 10% ahead. A trade can't take you over 22 players.
+- **Defensive players:** each has 0-5 stars, per-stat ceilings, an overall from his stats, upgrades and
+  a jersey number, like the offense. Every stat does something on the field:
+  - **DL:** pass rush (how fast he beats his blocker on throws), run stop (how fast he sheds him on runs),
+    strength (driving the blocker back), speed, tackling.
+  - **LB:** tackling, run stop (how fast he reads and fills a run), coverage, speed, strength (shedding blocks).
+  - **CB:** coverage (staying with his man, breakups), speed, ball skills (interceptions and your swipe-up
+    window when he plays the ball), tackling.
+  - **S:** coverage, speed, tackling, ball skills, run stop.
+  Your coordinator's stars add to every defender on the field, and the rating gap against their offense is
+  narrowed the same way as before, so balance is unchanged (measured: player-built and rating-built
+  defenses give up touchdowns at the same rate). Defenders are drafted, traded, develop and retire like
+  everyone else. Older careers' defense unit becomes nine players at its level.
+- **Offensive line stats:** strength (holding ground against the pass rush), pass block (how long he
+  holds his man on passes), run block (how long he holds on runs), speed (a faster rusher gets around
+  a slow lineman sooner) and stamina (blocking fades up to 25% over a long drive; fresh each drive).
+- **Coordinators:** an offensive and a defensive coordinator, each with 0-5★ and one special skill
+  (two at 4★+) from a small set (`GP.SKILLS` in `js/data.js`). Hire them with coaching points from three
+  candidates per job that change each season (free at 0★ up to 14 points at 5★). The offensive
+  coordinator calls a play before every snap from the down, distance, field position, clock, score and
+  the defense's look; more stars means he reads the coverage more often (about 25% at 0-1★, 50% at 3★,
+  90% at 5★). His call is marked in the play list you open every down; you pick.
+  The defensive coordinator's stars and skills improve your simulated defense.
+- **Passing help and difficulty:** a throw released near a receiver is nudged toward the right lead
+  (partly on Normal, more for accurate quarterbacks; fully on Easy; not on Hard). Each opposing defender
+  has speed and coverage ratings: receivers and defensive backs share a speed scale, a receiver's route
+  break wrong-foots his man-coverage defender by his agility against the defender's coverage, and
+  defenders read a thrown ball sooner and from farther away the better they cover. Easy also throws
+  straighter, tires less, gets more time and a bigger catch window; Hard makes defenders read throws faster.
+  Choose the difficulty on the title screen; change it any time from the team page.
+- **New career:** choosing your team will be part of career setup (not built yet); for now New career
+  gives you a random team.
+- **Team page:** your team's banner, the next game as a big matchup card (both teams' badges, records and
+  ratings; tap Play game for the pre-game dialog: uniform, play or simulate your defense, then Kick off), then a
+  tile for each part of running the team: Roster, Standings, Coaching staff, Trades, Draft (offseason) and
+  Difficulty. The **roster** is a grid of cards (position, his own pixel portrait in your home jersey, name,
+  stars, overall against potential, and a bar for how far he's grown); empty spots show as dimmed reserve
+  cards. Tap a card for the **player card**: his profile on the left, attributes on the right (each bar
+  filled to his value, outlined up to his ceiling) with upgrade buttons, and arrows to step through the
+  roster. Menus use a pixel font (Silkscreen, from Google Fonts; plain monospace offline) and keep clear of the
+  notch / Dynamic Island in landscape.
+- **Opponent film.** Every team has a scheme for the season that its play calling and coverage calling follow:
+  run or pass first, short or deep, a favorite play type, a 3rd-and-long go-to and a red-zone go-to on offense;
+  man or zone, how often it blitzes, a favorite 3rd-and-long coverage and how often it disguises on defense.
+  Its players are the same all season too. Watch opponent film (under Play game) has your DC break down their
+  offense and your OC their defense, each tip with the number that matters (their fastest target, a weak
+  corner, the slowest safety, the quarterback's arm against his accuracy) and, later on, how to beat it. You
+  see 1 tendency per coordinator in week 1 and one more every 3 weeks, plus 1 with a 3-star and 1 with a 5-star
+  coordinator; from week 6 (or with a 4-star coordinator) each comes with how to beat it. Measured, what the
+  film tells you is worth knowing: a run-first team runs about 75% of snaps against about 40% for a pass-first
+  one; a man team plays man about 64% of snaps against 22% for a zone team; a blitz-heavy team about 34%
+  against 12%; a team's 3rd-and-long go-to goes from about 5% to 65-70% of those snaps; its 3rd-and-long
+  coverage from about 13% to about 42%; a screen team screens about 27% of snaps against 1%.
+- **Coaching staff page:** laid out like the roster. Your coordinators come first, as cards with a portrait in
+  a staff polo in your team's colors, their role, name, stars, age and skills; below them, the coaches
+  available for hire this season, grouped by job (in a plain gray polo until you hire them), each with a Hire
+  button and its cost. A coach's face comes from his name, so he always looks the same.
+- **Notices:** a trade, a staff hire, a draft pick, a retirement or a forfeit pops up once at the top of
+  the screen and leaves after about 6 seconds (tap the × or anywhere on it to close it sooner); nothing stays
+  pinned to the team page. At most three show at once: past that, the rest are folded into the third.
+- **Landscape only:** every screen is laid out for a phone held sideways. Held upright, a phone shows a
+  "turn your phone sideways" prompt over every screen, and a game in progress pauses. On a landscape phone
+  the title and team page split into two columns (the next game and Play on the left, your team's tiles on
+  the right) so Play is on screen without scrolling. Tablets and computers keep the wider layout. A web page
+  can't lock the rotation in iPhone Safari; the Home Screen version, and Android in full screen, do lock to
+  landscape.
+- **Player portraits:** every player gets a head-and-shoulders portrait in the game's pixel style, built
+  from parts picked at random when he's created and kept for his career: 6 skin tones, 12 hairstyles
+  (bald, buzz, short, flat top, afro, long, mohawk, locs, curly, swept fringe, headband, high top), hair
+  colors, 6 kinds of facial hair, eyebrows and eye black. Players from older careers get one when the save
+  loads.
+- **Franchise:** 32 teams in two conferences (American, National), each with four divisions of four,
+  laid out like the NFL: the American Conference is the AFC and the National the NFC, every team plays in
+  its NFL counterpart's city and division, in that team's colors. Teams go by their city alone; where two
+  share a city, the AFC team takes its stadium's location (New Jersey and New York, Inglewood and Los Angeles).
+- **Uniforms:** every team has four, modeled on its NFL counterpart in that team's official colors
+  (js/uniforms.js): home (dark), away (white), alternate (throwback or third jersey) and Color Rush
+  (monochrome). Games have a home team: the host wears home and the visitor white, and if the jerseys look
+  too alike the opponent switches. Pick yours for the next game on your team page (Auto, or any of the four),
+  with a preview of each and of what the opponent will wear.
+  14-game season over 15 weeks: 6 division games, 4 against another division in your conference, 4 against a
+  division in the other conference (pairings rotate each season), and one bye week per team, as in the NFL:
+  each division rests together in one of its division weeks, somewhere in weeks 4-11 (4 or 8 teams off a
+  week), and the last week is all division games. On your bye the team page shows Bye week and Advance. Seven teams per conference make
+  the playoffs, as in the NFL since 2020: the four division winners are seeds 1-4 by record, three wild cards
+  5-7; only the 1 seed has a bye (Wild Card games: 2 vs 7, 3 vs 6, 4 vs 5), the top remaining seed plays the
+  lowest after each round, and the higher seed hosts. Then Divisional, Conference Championship and the
+  Championship Game. Ties in the standings are broken NFL-style (simplified): head-to-head among the tied
+  teams, division record (within a division), conference record, strength of victory, point differential,
+  then a coin flip. Overtime follows the NFL's 2024 rules: a coin toss, both teams get the ball at least
+  once, then the next score wins (a safety or a return score by the team without the ball ends it at once);
+  in the regular season it's one period (10 minutes, scaled) and can end in a tie (W-L-T, half a win), in
+  the playoffs it goes on until someone wins. Wins earn coaching
   points for roster upgrades; players age between seasons. Progress saves to `localStorage`.
+
+## Art
+
+The field is drawn as pixel art: everything is rendered in whole pixels on a 480x270 canvas and scaled
+up without smoothing. Sprites, the 5x7 font and the field are original and generated in code
+(`js/pixel.js`); there are no image files.
 
 ## Layout
 
 - `js/data.js` — teams, career state, schedule, season simulation, save/load
+- `js/pixel.js` — pixel font, player sprites and the pre-rendered field
 - `js/match.js` — on-field game (plays, player AI, passing, kicking, clock, rendering)
 - `js/ui.js` — title, franchise hub, match launch

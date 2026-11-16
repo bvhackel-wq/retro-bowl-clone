@@ -1,37 +1,42 @@
 name: Deploy to GitHub Pages
 
+# Copies the game into the gh-pages branch, which Pages serves ("Deploy from a branch").
+# Runs on main and on every Claude session branch, so each session's work is previewable when it pushes.
 on:
   push:
-    branches: [main]
+    branches: [main, 'claude/**']
   workflow_dispatch:
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
 
 concurrency:
   group: pages
   cancel-in-progress: true
 
 jobs:
-  deploy:
+  publish:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
-      - name: Stage site (game files only)
+      - name: Publish game files to gh-pages
+        env:
+          TOKEN: ${{ github.token }}
         run: |
-          mkdir -p _site
-          cp index.html style.css _site/
+          mkdir _site
+          cp index.html style.css manifest.webmanifest icon-180.png icon-512.png _site/
           cp -r js _site/
-      - uses: actions/configure-pages@v5
-        with:
-          enablement: true
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: _site
-      - id: deployment
-        uses: actions/deploy-pages@v4
+          touch _site/.nojekyll
+          # cache-busting: give every script and stylesheet a new URL per deploy, so phones that cached
+          # an older copy (Safari holds them well past GitHub's 10-minute cache) load the new one
+          V="${GITHUB_SHA::7}"
+          sed -i -E "s#(src=\"js/[a-z]+\.js)\"#\1?v=$V\"#g; s#(href=\"style\.css)\"#\1?v=$V\"#" _site/index.html
+          grep -E 'v=[0-9a-f]{7}' _site/index.html
+          cd _site
+          git init -q
+          git checkout -q -b gh-pages
+          git add -A
+          git -c user.name="github-actions[bot]" \
+              -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+              commit -qm "Deploy ${GITHUB_REF_NAME} @ ${GITHUB_SHA::7}"
+          git push -f "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git" gh-pages
