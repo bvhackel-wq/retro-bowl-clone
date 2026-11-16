@@ -912,6 +912,7 @@
     }
     snap() {
       this.lastRunoff = 0; this.rpoDone = false; this.bulletMode = false;
+      this.skillWin = this.defending ? { at: rnd(0.45, 1.1), len: 0.45, used: false } : null;   // your lineman's one chance at a skill move
       // on runs the second level reacts a beat late; linemen's hold times are already set by run blocking
       // deep defenders guard against the pass first, so they read the run late
       // defensive backs in man watch their receiver, not the backfield, so they find the run late too;
@@ -1467,28 +1468,9 @@
       const recs = this.off.filter((p) => p.route);
       for (const d of this.def) {
         if (d.dive) {                                          // diving: a burst at the ball carrier, then down if he missed
-          d.dive.t -= dt; d.held = false; go(d, d.x + d.dive.dx * 5, d.y + d.dive.dy * 5, 9, dt, 40);   // a short lunge: about 2.5 yards
+          d.dive.t -= dt; d.held = false; go(d, d.x + d.dive.dx * 5, d.y + d.dive.dy * 5, 9, dt, 40);   // a short lunge: about 3 yards
           if (d.dive.t <= 0) { d.dive = null; d.stun = 1.0; this.pop(`#${d.info.num} missed!`, '#ff8a5c'); }
           continue;
-        }
-        // your lineman after a swipe: free of his blocker, he rushes the ball carrier at full tilt (15% over his
-        // speed) and dives when he gets within about 2 yards. If the ball's gone, he's back to playing the down.
-        if (d.armed && !(d.stun > 0)) {
-          const cc = this.carrier;
-          if (!cc || this.ball.state !== 'held' || (cc !== this.qb && cc !== this.rb)) d.armed = false;
-          else {
-            const dist = hyp(cc.x - d.x, cc.y - d.y);
-            if (dist < 2.2) {
-              const tx = cc.x + cc.vx * 0.15, ty = cc.y + cc.vy * 0.15, n = hyp(tx - d.x, ty - d.y) || 1;
-              d.dive = { dx: (tx - d.x) / n, dy: (ty - d.y) / n, t: 0.28 }; d.armed = false;
-              this.pop(`#${d.info.num} dives!`, '#ffffff');
-              continue;
-            }
-            const lead = this.capLead(d, cc, Math.min(0.6, (dist / d.spd) * 0.6));
-            d.held = false; d.eng = d.shed;
-            go(d, cc.x + cc.vx * lead, cc.y + cc.vy * lead, d.spd * 1.15, dt, 10);
-            continue;
-          }
         }
         if (d.stun > 0) { d.stun -= dt; continue; }
         if (d.bite > 0 && !runPhase) { d.bite -= dt; go(d, this.los + 1, d.y, d.spd * 0.8, dt, 6); continue; }   // biting on the fake
@@ -1783,13 +1765,14 @@
       if (Math.random() < clamp(0.18 + ((d.info.ball != null ? d.info.ball : d.info.cov) - 70) * 0.01 + (3 - dist) * 0.08, 0.06, 0.6)) return this.intercepted(b.tx);
       return this.incomplete(`Broken up by #${d.info.num}`);
     }
-    // ---------- your lineman's dive (defense) ----------
-    // The ringed lineman plays his assignment; swipe toward their offense and he goes for whoever has the ball (the
-    // quarterback, or the back on a run). If he's blocked he first tries to beat his man: his pass rush (run stop on
-    // runs) against the blocker, easier the longer the play goes. Win, and he rushes the ball carrier at full tilt
-    // (15% over his speed) and dives when he's within about 2 yards: a hit is a tackle attempt with a bonus (on the
-    // quarterback, very likely a sack). Lose the block or miss the dive and he's on the ground, the ball carrier
-    // free. Once the quarterback throws, the ring goes.
+    // ---------- your ringed lineman (defense) ----------
+    // He plays his assignment on his own. One swipe toward their offense, two uses, depending on where he is:
+    // - Blocked: a skill move (a swim or spin) to get off the block. It only works in a short window once a play,
+    //   when his ring flashes (about half a second, a beat after the snap), and even then not often: about 25%,
+    //   more if he's stronger than the lineman blocking him, less if he's weaker (5% to 40%). One try a play.
+    // - Free and within about 4 yards of the ball carrier: a dive, a short lunge of about 3 yards to get a hand on a
+    //   tackle he'd otherwise just miss. Hit: a tackle attempt with a bonus. Miss: he's on the ground.
+    // Once the quarterback throws, the ring goes.
     ringOn() {
       const c = this.carrier;
       return this.defending && this.ringD && (this.phase === 'presnap' || (this.phase === 'live' && this.ball.state === 'held' && (c === this.qb || c === this.rb)));
@@ -1807,24 +1790,31 @@
       if (!best) return;
       this.ringD = best; this.pop(`#${best.info.num} is through!`, '#ffffff');
     }
+    // free of his blocker (or never blocked), through the line, on his feet
+    ringFree(d) { return d.stun <= 0 && !d.held && !(d.eng > 0 && d.eng < d.shed) && d.x < this.los - 0.5; }
+    skillOpen() { const w = this.skillWin; return !!w && !w.used && this.t >= w.at && this.t <= w.at + w.len; }
     lineDive() {
       const d = this.ringD, c = this.carrier;
       if (!this.ringOn() || this.phase !== 'live' || !d || d.dove || d.stun > 0) return;
-      d.dove = true;
-      // still at the line counts as tied up too: right after the snap the blocks haven't landed yet, and a man
-      // who hasn't gotten into the backfield has to beat his blocker before he can dive (it used to skip that)
-      const tied = d.held || (d.eng > 0 && d.eng < d.shed) || d.x > this.los - 0.5;
-      if (tied) {
-        const blocker = this.off.find((o) => o.role === 'OL' && (o.mark === d || o.otarget === d)) || { blk: 65 };
-        const stat = this.play.type === 'run' ? d.info.run : d.info.rush;
-        if (Math.random() > clamp(0.12 + (stat - blocker.blk) * 0.015 + Math.min(this.t, 3) * 0.16, 0.08, 0.85)) {
-          d.stun = 1.0; d.eng = 0; this.pop(`#${d.info.num} stonewalled!`, '#ff8a5c'); return;   // lost the battle, on the ground (and still has to get past his man after)
-        }
-        d.eng = d.shed;                                                  // beat his man
+      const num = `#${d.info.num}`;
+      if (!this.ringFree(d)) {                                           // blocked: a skill move, in its window
+        const w = this.skillWin;
+        if (!w || w.used) return;
+        w.used = true;
+        if (this.t < w.at || this.t > w.at + w.len) return this.pop(`${num} mistimed his move`, '#ff8a5c');
+        const ol = this.off.find((o) => o.role === 'OL' && (o.mark === d || o.otarget === d))
+          || this.off.filter((o) => o.role === 'OL').reduce((a, o) => (!a || hyp(o.x - d.x, o.y - d.y) < hyp(a.x - d.x, a.y - d.y) ? o : a), null);
+        const pc = clamp(0.25 + ((d.info.pow || 65) - ((ol && ol.pow) || 65)) * 0.01, 0.05, 0.4);
+        if (Math.random() < pc) { d.eng = d.shed; d.held = false; this.pop(`${num} SPINS FREE!`, '#ffd84a'); }
+        else this.pop(`${num} stuffed by the blocker`, '#ff8a5c');
+        return;
       }
-      // free: he goes after the ball carrier at full speed and dives when he's close (see the defense update)
-      d.armed = true;
-      this.pop(tied ? `#${d.info.num} breaks free!` : `#${d.info.num} goes after him!`, '#ffffff');
+      const dist = hyp(c.x - d.x, c.y - d.y);
+      if (dist > 4.2) return this.pop('Too far to dive', '#ffffff');      // not used up: get closer and try again
+      d.dove = true;
+      const tx = c.x + c.vx * 0.2, ty = c.y + c.vy * 0.2, n = hyp(tx - d.x, ty - d.y) || 1;
+      d.dive = { dx: (tx - d.x) / n, dy: (ty - d.y) / n, t: 0.35 };
+      this.pop(`${num} dives!`, '#ffffff');
     }
     // the next down, for whichever side has the ball
     nextDown() { if (this.defending) this.defChoose(); else this.toChoose(); }
@@ -3011,10 +3001,15 @@
         Px.box(u, Math.round(AW / 2 - w / 2), SB + 4, w, 12, 'rgba(16,24,42,.8)');
         Px.text(u, t, AW / 2, SB + 7, '#ffd84a', 1, { center: true });
       }
-      if (this.phase === 'presnap') this.hint(this.defending ? `${callName(this.dcall).toUpperCase()} · ` + (this.ringD ? `RINGED #${this.ringD.info.num}: SWIPE ${this.sideWord(-1)} TO DIVE · TAP TO SNAP` : 'TAP THE FIELD WHEN READY')
+      if (this.phase === 'presnap') this.hint(this.defending ? `${callName(this.dcall).toUpperCase()} · ` + (this.ringD ? `RINGED #${this.ringD.info.num}: SWIPE ${this.sideWord(-1)} WHEN HIS RING FLASHES, OR TO DIVE WHEN HE'S CLOSE · TAP TO SNAP` : 'TAP THE FIELD WHEN READY')
         : this.play && this.play.rpo ? `${this.play.name.toUpperCase()} · SWIPE BACK: SNAP AND THROW · TAP THE BACK: SNAP AND RUN`
         : `${this.play ? this.play.name.toUpperCase() + ' · ' : ''}TAP THE FIELD TO SNAP`, 'CHANGE');
-      else if (this.phase === 'live' && this.defending) this.hint(this.ringOn() && !this.ringD.dove ? `SWIPE ${this.sideWord(-1)}: #${this.ringD.info.num} DIVES AT THE BALL CARRIER` : 'SWIPE UP AS THE BALL ARRIVES TO GO FOR THE PICK');
+      else if (this.phase === 'live' && this.defending) {
+        const d = this.ringD, dir = this.sideWord(-1);
+        if (!this.ringOn() || !d || d.dove) this.hint('SWIPE UP AS THE BALL ARRIVES TO GO FOR THE PICK');
+        else if (!this.ringFree(d)) this.hint(this.skillOpen() ? `NOW! SWIPE ${dir}: SKILL MOVE` : this.skillWin && !this.skillWin.used ? `BLOCKED · SWIPE ${dir} WHEN HIS RING FLASHES` : 'BLOCKED');
+        else this.hint(hyp(this.carrier.x - d.x, this.carrier.y - d.y) <= 4.2 ? `SWIPE ${dir}: DIVE AT HIM!` : `FREE! SWIPE ${dir} TO DIVE WHEN HE'S CLOSE`);
+      }
       else if (this.phase === 'live' && this.passing() && !this.aim) this.hint(this.play.rpo && !this.rpoDone ? 'TAP THE BACK TO HAND OFF · OR DRAG BACK TO THROW'
         : `DRAG BACK TO THROW · TAP: ${this.bulletMode ? 'LOB' : 'BULLET'} · SWIPE AHEAD: RUN`);
       else if (this.phase === 'kick' && this.kick && this.kick.cpu && (this.kick.type === 'fg' || this.kick.type === 'pat'))
@@ -3141,7 +3136,9 @@
       // his leap: up and down in under half a second
       const jt = leaper && kk.leapAt ? (performance.now() - kk.leapAt) / 450 : 1, lift = jt < 1 ? Math.round(Math.sin(Math.PI * jt) * 9) : 0;
       if ((p === this.ringD && this.ringOn() && !p.dive) || (leaper && kk.stage === 'approach' && !kk.leapt)) {
-        Px.ring(g, X, Y + 2, 9, 4, 'rgba(16,24,42,.55)'); Px.ring(g, X, Y + 1, 9, 4, '#ffffff'); Px.ring(g, X, Y + 1, 8, 3, '#ffffff');
+        const flash = p === this.ringD && this.phase === 'live' && this.skillOpen() && !this.ringFree(p), col = flash && Math.floor(this.animT * 12) % 2 ? '#ffd84a' : flash ? '#ff8a5c' : '#ffffff';
+        Px.ring(g, X, Y + 2, 9, 4, 'rgba(16,24,42,.55)'); Px.ring(g, X, Y + 1, 9, 4, col); Px.ring(g, X, Y + 1, 8, 3, col);
+        if (flash) Px.ring(g, X, Y + 1, 11, 5, col);
       }
       const party = this.celebrate && this.celebrate.who === p && this.celebrate.arrived;   // he's dropped the ball to celebrate
       if (p === this.carrier && !down && !party) {
