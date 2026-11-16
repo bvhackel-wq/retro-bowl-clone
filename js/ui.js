@@ -370,7 +370,7 @@
     return x;
   };
   const coachPortrait = (c, kit) => {
-    const src = GP.Pixel.portrait(coachFace(c), kit), img = document.createElement('canvas');
+    const src = GP.Pixel.portrait(coachFace(c), kit, { gray: c.age >= 55 }), img = document.createElement('canvas');   // older coaches are gray
     img.width = src.width; img.height = src.height; img.getContext('2d').drawImage(src, 0, 0); img.className = 'portrait';
     return img;
   };

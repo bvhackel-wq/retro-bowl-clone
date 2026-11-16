@@ -380,6 +380,8 @@
       if (this.phase === 'presnap') {
         const cb = this.changeBox, ax = p.x / 2, ay = p.y / 2;     // canvas units are twice the art's
         if (cb && ax >= cb.x - 6 && ax <= cb.x + cb.w + 6 && ay >= cb.y - 8 && ay <= AH) return this.reopenCalls();
+        // an RPO: the choice comes with the snap (decided when the finger lifts: a swipe back or a tap on the back)
+        if (this.play && this.play.rpo && !this.defending) { this.rpoG = { x: p.x, y: p.y, cx: p.x, cy: p.y }; return; }
         this.hidePanel(); return this.snap();
       }
       if (this.phase === 'choose' && !this.el.panel.hidden && this.el.panel.className !== 'modal') return this.takeCall();
@@ -398,6 +400,7 @@
     }
     pMove(e) {
       const p = this.pos(e);
+      if (this.rpoG) { this.rpoG.cx = p.x; this.rpoG.cy = p.y; return; }
       if (this.kaim) { this.kaim.cx = p.x; this.kaim.cy = p.y; return; }
       if (this.aim) { this.aim.cx = p.x; this.aim.cy = p.y; return; }
       const g = this.gesture;
@@ -420,6 +423,16 @@
     }
     pUp() {
       if (this.kaim) return this.kickRelease();
+      if (this.rpoG) {                                    // an RPO snap: swipe back to throw, tap the back to run
+        const g = this.rpoG, dx = g.cx - g.x, dy = g.cy - g.y; this.rpoG = null;
+        if (this.phase !== 'presnap') return;
+        if (dx < -30 && Math.abs(dx) > Math.abs(dy)) { this.hidePanel(); this.snap(); this.rpoDone = true; if (this.rb.route) this.rb.route.block = true; this.pop('KEEP IT: PASS', '#ffffff'); return; }
+        if (hyp(dx, dy) < 14) {
+          const f = this.fieldAt({ x: g.x, y: g.y }); this.hidePanel(); this.snap();
+          if (hyp(f.x - this.rb.x, f.y - this.rb.y) < 3.5) this.rpoHandoff();   // tapped the back: hand it off at the snap
+        }
+        return;
+      }
       if (this.aim && this.phase === 'live' && this.passing()) {
         const a = this.aim, dx = a.cx - a.sx, dy = a.cy - a.sy;
         if (dx > 30 && dx > Math.abs(dy)) this.tuck();          // swiped toward the end zone: run it
@@ -1889,9 +1902,15 @@
     }
     // Their try after a touchdown. They go for two by the usual chart (in the second half, when it changes what
     // the score means: down 10, 5 or 2, or up 1, 4 or 5), most of the time; otherwise they kick it, played out.
-    cpuTry() {
+    // sim: their drives are being simulated, so a two-point try is too (about 48% in the NFL)
+    cpuTry(sim) {
       const m = this.score.opp - this.score.me, o = this.cfg.opp;
       if (this.q >= 3 && [-10, -5, -2, 1, 4, 5].includes(m) && Math.random() < 0.85) {
+        if (sim) {
+          const good = Math.random() < 0.48; if (good) this.score.opp += 2;
+          this.kick = null; this.carrier = null;
+          return this.endPlay(`${o.name} go for two — ${good ? 'GOOD' : 'no good'}`, () => this.checkClock(() => this.receiveKick()), 2);
+        }
         this.setSide(true); this.kick = null; this.carrier = null;
         this.conv = true; this.los = 108; this.down = 1; this.fdx = 110;
         this.banner = { text: `${o.name.toUpperCase()} GO FOR TWO`, t: 1.6 };
@@ -2400,7 +2419,7 @@
       this.carrier = null; this.ball = { state: 'held' }; this.kick = null;
       this.downed = c;
       if (k.cpu) {                                                       // they kicked to you, and got it back
-        if (td) { this.score.opp += 7; return this.endPlay(`${msg} in the end zone — TOUCHDOWN ${this.cfg.opp.name}`, () => this.checkClock(() => this.receiveKick()), 3); }
+        if (td) { this.score.opp += 6; return this.endPlay(`${msg} in the end zone — TOUCHDOWN ${this.cfg.opp.name}`, () => this.cpuTry(), 3); }
         return this.endPlay(`${msg} at ${this.spot(120 - x)}`, () => this.checkClock(() => this.oppDrive(110 - x, 'They keep the ball after the recovery.')), 2);
       }
       if (td) { this.score.me += 6; return this.endPlay(`${msg} in the end zone — TOUCHDOWN!`, () => (this.q === 5 ? this.final() : this.afterTD()), 3); }
@@ -2492,8 +2511,8 @@
         this.celebrateTD(R, -1);
         this.carrier = null;
         if (k.cpu) return this.puntOver(null, 'PUNT RETURN TOUCHDOWN!');
-        this.score.opp += 7;
-        return this.puntOver(null, `Punt returned for a TOUCHDOWN by ${this.cfg.opp.name}`);
+        this.score.opp += 6; this.kick = null; this.ball = { state: 'held' };
+        return this.endPlay(`${k.res.ko ? 'Kickoff' : 'Punt'} returned for a TOUCHDOWN by ${this.cfg.opp.name}`, () => this.cpuTry(), 3);
       }
       if (R.y <= 0.4 || R.y >= FW - 0.4) this.startCoast(R);
       if (R.y <= 0.4 || R.y >= FW - 0.4) return this.puntOver(R.x, `Punt — returned ${Math.round(k.res.ex - R.x)} out of bounds at ${this.spotK(R.x)}`);
@@ -2606,13 +2625,14 @@
       let text, nextX;
       const r = Math.random();
       if (this.clock !== Infinity && this.clock < 12) { text = 'The clock runs out on their drive.'; need = this.clock; nextX = 35; }
-      else if (r < pTD) { this.score.opp += 7; text = `TOUCHDOWN ${o.name}. They march ${Math.round(dist)} yards and kick the extra point.`; nextX = 'ko'; }
+      else if (r < pTD) { this.score.opp += 6; text = `TOUCHDOWN ${o.name}. They march ${Math.round(dist)} yards.`; nextX = 'try'; }
       else if (r < pTD + pFG) { this.score.opp += 3; text = `${o.name} settle for a field goal.`; nextX = 'ko'; }
       else if (r < pTD + pFG + pTO) { text = Math.random() < 0.5 ? 'Your defense forces a fumble!' : 'Your defense picks it off!'; nextX = rnd(45, 65); }
       else { text = 'Your defense holds. They punt it away.'; nextX = rnd(28, 40); }
       if (this.clock !== Infinity) this.clock = Math.max(0, this.clock - need);
       this.showPanel(`${o.name} possession`, `${lead}\n${text}\n\n${this.cfg.me.abbr} ${this.score.me} — ${this.score.opp} ${o.abbr}`,
-        [{ label: 'Continue', fn: () => this.checkClock(() => (nextX === 'ko' ? this.receiveKick() : this.startDrive(nextX))) }], true);
+        [{ label: 'Continue', fn: () => (nextX === 'try' ? this.cpuTry(this.cfg.playDefense === false)   // the try is untimed
+          : this.checkClock(() => (nextX === 'ko' ? this.receiveKick() : this.startDrive(nextX)))) }], true);
     }
 
     // Your drive, simulated from where it stands: your offense (its starters plus your OC's stars) against their
@@ -2955,6 +2975,7 @@
         Px.text(u, t, AW / 2, SB + 7, '#ffd84a', 1, { center: true });
       }
       if (this.phase === 'presnap') this.hint(this.defending ? `${callName(this.dcall).toUpperCase()} · ` + (this.ringD ? `RINGED #${this.ringD.info.num}: SWIPE LEFT TO DIVE · TAP TO SNAP` : 'TAP THE FIELD WHEN READY')
+        : this.play && this.play.rpo ? `${this.play.name.toUpperCase()} · SWIPE BACK: SNAP AND THROW · TAP THE BACK: SNAP AND RUN`
         : `${this.play ? this.play.name.toUpperCase() + ' · ' : ''}TAP THE FIELD TO SNAP`, 'CHANGE');
       else if (this.phase === 'live' && this.defending) this.hint(this.ringOn() && !this.ringD.dove ? `SWIPE LEFT: #${this.ringD.info.num} DIVES AT THE BALL CARRIER` : 'SWIPE UP AS THE BALL ARRIVES TO GO FOR THE PICK');
       else if (this.phase === 'live' && this.passing() && !this.aim) this.hint(this.play.rpo && !this.rpoDone ? 'TAP THE BACK TO HAND OFF · OR DRAG BACK TO THROW'
