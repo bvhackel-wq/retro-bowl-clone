@@ -1467,9 +1467,28 @@
       const recs = this.off.filter((p) => p.route);
       for (const d of this.def) {
         if (d.dive) {                                          // diving: a burst at the ball carrier, then down if he missed
-          d.dive.t -= dt; d.held = false; go(d, d.x + d.dive.dx * 5, d.y + d.dive.dy * 5, 11, dt, 60);
+          d.dive.t -= dt; d.held = false; go(d, d.x + d.dive.dx * 5, d.y + d.dive.dy * 5, 9, dt, 40);   // a short lunge: about 2.5 yards
           if (d.dive.t <= 0) { d.dive = null; d.stun = 1.0; this.pop(`#${d.info.num} missed!`, '#ff8a5c'); }
           continue;
+        }
+        // your lineman after a swipe: free of his blocker, he rushes the ball carrier at full tilt (15% over his
+        // speed) and dives when he gets within about 2 yards. If the ball's gone, he's back to playing the down.
+        if (d.armed && !(d.stun > 0)) {
+          const cc = this.carrier;
+          if (!cc || this.ball.state !== 'held' || (cc !== this.qb && cc !== this.rb)) d.armed = false;
+          else {
+            const dist = hyp(cc.x - d.x, cc.y - d.y);
+            if (dist < 2.2) {
+              const tx = cc.x + cc.vx * 0.15, ty = cc.y + cc.vy * 0.15, n = hyp(tx - d.x, ty - d.y) || 1;
+              d.dive = { dx: (tx - d.x) / n, dy: (ty - d.y) / n, t: 0.28 }; d.armed = false;
+              this.pop(`#${d.info.num} dives!`, '#ffffff');
+              continue;
+            }
+            const lead = this.capLead(d, cc, Math.min(0.6, (dist / d.spd) * 0.6));
+            d.held = false; d.eng = d.shed;
+            go(d, cc.x + cc.vx * lead, cc.y + cc.vy * lead, d.spd * 1.15, dt, 10);
+            continue;
+          }
         }
         if (d.stun > 0) { d.stun -= dt; continue; }
         if (d.bite > 0 && !runPhase) { d.bite -= dt; go(d, this.los + 1, d.y, d.spd * 0.8, dt, 6); continue; }   // biting on the fake
@@ -1765,11 +1784,12 @@
       return this.incomplete(`Broken up by #${d.info.num}`);
     }
     // ---------- your lineman's dive (defense) ----------
-    // The ringed lineman plays his assignment; swipe left and he goes for whoever has the ball (the quarterback,
-    // or the back on a run). If he's blocked he first tries to beat his man: his pass rush (run stop on runs)
-    // against the blocker, easier the longer the play goes. Win, and he bursts and dives up to about 6.5 yards:
-    // a hit is a tackle attempt with a bonus (on the quarterback, very likely a sack). Lose the block or miss
-    // the dive and he's on the ground, the ball carrier free. Once the quarterback throws, the ring goes.
+    // The ringed lineman plays his assignment; swipe toward their offense and he goes for whoever has the ball (the
+    // quarterback, or the back on a run). If he's blocked he first tries to beat his man: his pass rush (run stop on
+    // runs) against the blocker, easier the longer the play goes. Win, and he rushes the ball carrier at full tilt
+    // (15% over his speed) and dives when he's within about 2 yards: a hit is a tackle attempt with a bonus (on the
+    // quarterback, very likely a sack). Lose the block or miss the dive and he's on the ground, the ball carrier
+    // free. Once the quarterback throws, the ring goes.
     ringOn() {
       const c = this.carrier;
       return this.defending && this.ringD && (this.phase === 'presnap' || (this.phase === 'live' && this.ball.state === 'held' && (c === this.qb || c === this.rb)));
@@ -1802,10 +1822,9 @@
         }
         d.eng = d.shed;                                                  // beat his man
       }
-      const lead = Math.min(0.5, hyp(c.x - d.x, c.y - d.y) / 11);
-      const tx = c.x + c.vx * lead, ty = c.y + c.vy * lead, dx = tx - d.x, dy = ty - d.y, n = hyp(dx, dy) || 1;
-      d.dive = { dx: dx / n, dy: dy / n, t: 0.6 };
-      this.pop(`#${d.info.num} dives!`, '#ffffff');
+      // free: he goes after the ball carrier at full speed and dives when he's close (see the defense update)
+      d.armed = true;
+      this.pop(tied ? `#${d.info.num} breaks free!` : `#${d.info.num} goes after him!`, '#ffffff');
     }
     // the next down, for whichever side has the ball
     nextDown() { if (this.defending) this.defChoose(); else this.toChoose(); }
